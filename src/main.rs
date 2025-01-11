@@ -14,32 +14,53 @@ use walkdir::WalkDir;
 
 /// We provide an optional config that can add or override ignore patterns
 /// and priority rules. All fields are optional and merged with defaults.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct LlmSerializeConfig {
     #[serde(default)]
     ignore_patterns: IgnoreConfig,
     #[serde(default)]
     priority_rules: Vec<PriorityRule>,
+    #[serde(default)]
+    binary_extensions: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 struct IgnoreConfig {
     #[serde(default)]
     patterns: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct PriorityRule {
     score: i32,
     patterns: Vec<String>,
 }
+
+/// BINARY file checks by extension
+const BINARY_FILE_EXTENSIONS: &[&str] = &[
+    ".jpg", ".pdf", ".mid", ".blend", ".p12", ".rco", ".tgz", ".jpeg", ".mp4", ".midi", ".crt",
+    ".p7b", ".ovl", ".bz2", ".png", ".webm", ".aac", ".key", ".gbr", ".mo", ".xz", ".gif", ".mov",
+    ".flac", ".pem", ".pcb", ".nib", ".dat", ".ico", ".mp3", ".bmp", ".der", ".icns", ".xap", ".lib",
+    ".webp", ".wav", ".psd", ".png2", ".xdf", ".psf", ".jar", ".ttf", ".exe", ".ai", ".jp2", ".zip",
+    ".pak", ".vhd", ".woff", ".dll", ".eps", ".swc", ".rar", ".img3", ".gho", ".woff2", ".bin",
+    ".raw", ".mso", ".7z", ".img4", ".efi", ".eot", ".iso", ".tif", ".class", ".gz", ".msi", ".ocx",
+    ".sys", ".img", ".tiff", ".apk", ".tar", ".cab", ".scr", ".so", ".dmg", ".3ds", ".com", ".elf",
+    ".o", ".max", ".obj", ".drv", ".rom", ".a", ".vhdx", ".fbx", ".bpl", ".cpl",
+];
 
 /// We'll define a minimal default config. The user can override parts of it from a TOML file.
 impl Default for LlmSerializeConfig {
     fn default() -> Self {
         LlmSerializeConfig {
             ignore_patterns: IgnoreConfig::default(),
-            priority_rules: Vec::new(),
+            priority_rules: vec![
+                // Default fallback - everything has same priority
+                PriorityRule {
+                    score: 1,
+                    patterns: vec![".*".to_string()],
+                },
+            ],
+            binary_extensions: Vec::new(), // User extensions only, we'll combine with BINARY_FILE_EXTENSIONS
         }
     }
 }
@@ -249,23 +270,12 @@ fn build_final_config(cfg: Option<LlmSerializeConfig>) -> FinalConfig {
     }
 }
 
-/// BINARY file checks by extension
-const BINARY_FILE_EXTENSIONS: &[&str] = &[
-    ".jpg", ".pdf", ".mid", ".blend", ".p12", ".rco", ".tgz", ".jpeg", ".mp4", ".midi", ".crt",
-    ".p7b", ".ovl", ".bz2", ".png", ".webm", ".aac", ".key", ".gbr", ".mo", ".xz", ".gif", ".mov",
-    ".flac", ".pem", ".pcb", ".nib", ".dat", ".ico", ".mp3", ".bmp", ".der", ".icns", ".xap", ".lib",
-    ".webp", ".wav", ".psd", ".png2", ".xdf", ".psf", ".jar", ".ttf", ".exe", ".ai", ".jp2", ".zip",
-    ".pak", ".vhd", ".woff", ".dll", ".eps", ".swc", ".rar", ".img3", ".gho", ".woff2", ".bin",
-    ".raw", ".mso", ".7z", ".img4", ".efi", ".eot", ".iso", ".tif", ".class", ".gz", ".msi", ".ocx",
-    ".sys", ".img", ".tiff", ".apk", ".tar", ".cab", ".scr", ".so", ".dmg", ".3ds", ".com", ".elf",
-    ".o", ".max", ".obj", ".drv", ".rom", ".a", ".vhdx", ".fbx", ".bpl", ".cpl",
-];
-
 /// Check if file is text by extension or scanning first chunk for null bytes.
-fn is_text_file(file_path: &Path) -> bool {
+fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool {
     if let Some(ext) = file_path.extension().and_then(|s| s.to_str()) {
         let dot_ext = format!(".{}", ext.to_lowercase());
-        if BINARY_FILE_EXTENSIONS.contains(&dot_ext.as_str()) {
+        // Check both built-in and user-provided extensions
+        if BINARY_FILE_EXTENSIONS.contains(&dot_ext.as_str()) || user_binary_extensions.contains(&dot_ext) {
             return false;
         }
     }
@@ -436,7 +446,8 @@ fn serialize_repo(
     stream: bool,
     config: Option<LlmSerializeConfig>,
 ) -> Result<Option<PathBuf>> {
-    let final_cfg = build_final_config(config);
+    let config = config.unwrap_or_default();
+    let final_cfg = build_final_config(Some(config.clone()));
 
     // Build an .gitignore-based ignore
     let mut gi_builder = GitignoreBuilder::new(".");
@@ -495,7 +506,7 @@ fn serialize_repo(
             Match::Whitelist(_) | Match::None => {}
         }
         // Check if text
-        if !is_text_file(abs_path) {
+        if !is_text_file(abs_path, &config.binary_extensions) {
             continue;
         }
         // Priority
@@ -606,7 +617,7 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("configfile")
                 .long("config-file")
-                .help("Path to optional llm-serialize config TOML.")
+                .help("Path to optional yek.toml config file.")
                 .value_parser(clap::value_parser!(String))
                 .required(false),
         )
@@ -620,12 +631,12 @@ fn main() -> Result<()> {
     let stream = matches.get_flag("stream");
     let config_file = matches.get_one::<String>("configfile").map(PathBuf::from);
 
-    // If config file is provided or if there's a default llm-serialize.toml
+    // If config file is provided or if there's a default yek.toml
     let config = if let Some(cf) = config_file {
         load_config_file(&cf)
     } else {
         // try default
-        let def = PathBuf::from("llm-serialize.toml");
+        let def = PathBuf::from("yek.toml");
         if def.exists() {
             load_config_file(&def)
         } else {

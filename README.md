@@ -1,9 +1,8 @@
-# yek
+# `yek`
 
 A simple tool to read text-based files in a repository or directory, chunk them, and serialize them for LLM consumption. By default, the tool:
 - Uses `.gitignore` rules to skip unwanted files.
 - Infers additional ignore patterns (binary, large, etc.).
-- Prioritizes files by patterns (like `src/lib`, `prisma/schema.prisma`, etc.).
 - Splits content into chunks based on either approximate "token" count or byte size.
 
 ## Installation
@@ -14,8 +13,15 @@ A simple tool to read text-based files in a repository or directory, chunk them,
 
 ## Usage
 
+### Add to your PATH
+
 ```bash
-./target/release/yek --help
+export PATH=$(pwd)/target/release:$PATH
+```
+
+### Run
+```bash
+yek --help
 
 yek 0.1.0
 Serialize a repo or subdirectory's text files into chunked text with optional token counting.
@@ -28,7 +34,7 @@ Options:
   -m, --model <MODEL>            Model name, not actually used for real token counting, but accepted for parity
   -c, --count-tokens             Count tokens in a naive way rather than bytes
   -s, --stream                   Stream output to stdout instead of writing to files
-      --config-file <CONFIGFILE> Path to optional llm-serialize config TOML
+      --config-file <CONFIGFILE> Path to optional yek.toml config file
   -h, --help                     Print help
   -V, --version                  Print version
 ```
@@ -36,34 +42,41 @@ Options:
 ## Examples
 - Serialize entire repository into a single file (infinite chunk size)
 ```bash
-./target/release/yek
+yek
 ```
 
 - Split repository into chunks of ~128KB:
 ```bash
-./target/release/yek -t 128000
+yek -t 128000
 ```
 
 - Split into chunks of ~128k tokens (naive)
 ```bash
-./target/release/yek -t 128000 -c
+yek -t 128000 -c
 ```
 
 - Serialize only the src/app directory
 ```bash
-./target/release/yek -p src/app
+yek -p src/app
 ```
 
 - Stream output to stdout instead of writing files
 ```bash
-./target/release/yek -s
+yek -s
 ```
 
-## Optional Configuration File
+## Configuration File
 
-You can place a file called `llm-serialize.toml` at your project root or pass a custom path via `--config-file`. The tool will parse and apply custom rules to override or extend priorities and ignore patterns. Example:
+You can place a file called `yek.toml` at your project root or pass a custom path via `--config-file`. The configuration file allows you to:
+
+1. Add custom ignore patterns
+2. Define file priority rules for processing order
+3. Add additional binary file extensions to ignore (extends the built-in list)
+
+Example configuration:
 
 ```toml
+# Add patterns to ignore (in addition to .gitignore)
 [ignore_patterns]
 patterns = [
   "node_modules/",
@@ -71,9 +84,31 @@ patterns = [
   "my_custom_folder/"
 ]
 
+# Define priority rules for processing order
+# Higher scores are processed first
 [[priority_rules]]
-score = 101
-patterns = ["^my_special_folder/"]
+score = 100
+patterns = ["^src/lib/"]
+
+[[priority_rules]]
+score = 90
+patterns = ["^src/"]
+
+[[priority_rules]]
+score = 80
+patterns = ["^docs/"]
+
+# Add additional binary file extensions to ignore
+# These extend the built-in list (.jpg, .png, .exe, etc.)
+binary_extensions = [
+  ".blend",  # Blender files
+  ".fbx",    # 3D model files
+  ".max",    # 3ds Max files
+  ".psd",    # Photoshop files
+]
 ```
 
-All keys are optional. The `ignore_patterns.patterns` array adds to the global ignore. The `priority_rules` array adds or overrides existing priority rules. 
+All configuration keys are optional. By default:
+- No extra ignore patterns
+- All files have equal priority (score: 1)
+- Common binary file extensions are ignored (.jpg, .png, .exe, etc. - see source for full list) 
