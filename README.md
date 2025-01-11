@@ -7,9 +7,22 @@ A simple tool to read text-based files in a repository or directory, chunk them,
 
 ## Installation
 
+### Via Homebrew (recommended)
+
+```bash
+brew tap mohsen1/tap
+brew install yek
+```
+
+### From Source
+
 1. [Install Rust](https://www.rust-lang.org/tools/install).
 2. Clone this repository.
 3. Run `make macos` or `make linux` to build for your platform (both run `cargo build --release`).
+4. Add to your PATH:
+```bash
+export PATH=$(pwd)/target/release:$PATH
+```
 
 ## Usage
 
