@@ -125,3 +125,12 @@ All configuration keys are optional. By default:
 - No extra ignore patterns
 - All files have equal priority (score: 1)
 - Common binary file extensions are ignored (.jpg, .png, .exe, etc. - see source for full list) 
+
+## Planned Features
+
+- [ ] Priotize recently changed files via git history
+- [ ] Be smarter about finding out test files
+
+## License
+
+MIT
