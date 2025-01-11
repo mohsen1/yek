@@ -13,3 +13,6 @@ anyhow = "1.0"
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
+
+[dev-dependencies]
+tempfile = "3.8"

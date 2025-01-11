@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Arg, ArgAction, Command};
-use ignore::gitignore::{GitignoreBuilder, Gitignore};
+use ignore::gitignore::GitignoreBuilder;
 use ignore::Match;
 use regex::Regex;
 use serde::Deserialize;
@@ -40,12 +40,13 @@ struct PriorityRule {
 const BINARY_FILE_EXTENSIONS: &[&str] = &[
     ".jpg", ".pdf", ".mid", ".blend", ".p12", ".rco", ".tgz", ".jpeg", ".mp4", ".midi", ".crt",
     ".p7b", ".ovl", ".bz2", ".png", ".webm", ".aac", ".key", ".gbr", ".mo", ".xz", ".gif", ".mov",
-    ".flac", ".pem", ".pcb", ".nib", ".dat", ".ico", ".mp3", ".bmp", ".der", ".icns", ".xap", ".lib",
-    ".webp", ".wav", ".psd", ".png2", ".xdf", ".psf", ".jar", ".ttf", ".exe", ".ai", ".jp2", ".zip",
-    ".pak", ".vhd", ".woff", ".dll", ".eps", ".swc", ".rar", ".img3", ".gho", ".woff2", ".bin",
-    ".raw", ".mso", ".7z", ".img4", ".efi", ".eot", ".iso", ".tif", ".class", ".gz", ".msi", ".ocx",
-    ".sys", ".img", ".tiff", ".apk", ".tar", ".cab", ".scr", ".so", ".dmg", ".3ds", ".com", ".elf",
-    ".o", ".max", ".obj", ".drv", ".rom", ".a", ".vhdx", ".fbx", ".bpl", ".cpl",
+    ".flac", ".pem", ".pcb", ".nib", ".dat", ".ico", ".mp3", ".bmp", ".der", ".icns", ".xap",
+    ".lib", ".webp", ".wav", ".psd", ".png2", ".xdf", ".psf", ".jar", ".ttf", ".exe", ".ai",
+    ".jp2", ".zip", ".pak", ".vhd", ".woff", ".dll", ".eps", ".swc", ".rar", ".img3", ".gho",
+    ".woff2", ".bin", ".raw", ".mso", ".7z", ".img4", ".efi", ".eot", ".iso", ".tif", ".class",
+    ".gz", ".msi", ".ocx", ".sys", ".img", ".tiff", ".apk", ".tar", ".cab", ".scr", ".so", ".dmg",
+    ".3ds", ".com", ".elf", ".o", ".max", ".obj", ".drv", ".rom", ".a", ".vhdx", ".fbx", ".bpl",
+    ".cpl",
 ];
 
 /// We'll define a minimal default config. The user can override parts of it from a TOML file.
@@ -82,29 +83,11 @@ fn default_priority_list() -> Vec<PriorityPattern> {
     vec![
         PriorityPattern {
             score: 100,
-            patterns: vec![Regex::new(r"^prisma/schema\.prisma$").unwrap()],
-        },
-        PriorityPattern {
-            score: 95,
-            patterns: vec![
-                Regex::new(r"^package\.json$").unwrap(),
-                Regex::new(r"^pnpm-lock\.yaml$").unwrap(),
-                Regex::new(r"^tsconfig\.json$").unwrap(),
-                Regex::new(r"^config/next\.config\.ts$").unwrap(),
-                Regex::new(r"^config/tailwind\.config\.ts$").unwrap(),
-                Regex::new(r"^config/eslint\.config\.mjs$").unwrap(),
-                Regex::new(r"^config/vitest\.config\.ts$").unwrap(),
-                Regex::new(r"^\.env\.example$").unwrap(),
-                Regex::new(r"^\.gitignore$").unwrap(),
-                Regex::new(r"^README\.md$").unwrap(),
-                Regex::new(r"^vercel\.json$").unwrap(),
-                Regex::new(r"^components\.json$").unwrap(),
-            ],
+            patterns: vec![Regex::new(r"^src/lib/").unwrap()],
         },
         PriorityPattern {
             score: 90,
             patterns: vec![
-                Regex::new(r"^src/lib/").unwrap(),
                 Regex::new(r"^src/utils/").unwrap(),
                 Regex::new(r"^src/contexts/").unwrap(),
                 Regex::new(r"^src/hooks/").unwrap(),
@@ -113,68 +96,33 @@ fn default_priority_list() -> Vec<PriorityPattern> {
             ],
         },
         PriorityPattern {
-            score: 85,
-            patterns: vec![
-                Regex::new(r"^src/app/api/").unwrap(),
-                Regex::new(r"^src/app/layout\.tsx$").unwrap(),
-                Regex::new(r"^src/app/page\.tsx$").unwrap(),
-                Regex::new(r"^src/app/error\.tsx$").unwrap(),
-                Regex::new(r"^src/app/not-found\.tsx$").unwrap(),
-            ],
-        },
-        PriorityPattern {
             score: 80,
             patterns: vec![
-                Regex::new(r"^src/app/.*\.tsx$").unwrap(),
-                Regex::new(r"^src/components/(?!ui|emails|.*\.stories\.[jt]sx?$)").unwrap(),
-            ],
-        },
-        PriorityPattern {
-            score: 75,
-            patterns: vec![
-                Regex::new(r"^src/components/ui/").unwrap(),
-                Regex::new(r"^src/app/.*/.*\.tsx$").unwrap(),
-                Regex::new(r"^src/design-system/(?!.*\.stories\.[jt]sx?$)").unwrap(),
-                Regex::new(r"^src/styles/").unwrap(),
+                Regex::new(r"^src/app/").unwrap(),
+                Regex::new(r"^src/components/").unwrap(),
             ],
         },
         PriorityPattern {
             score: 70,
             patterns: vec![
-                Regex::new(r"^prisma/migrations/").unwrap(),
-                Regex::new(r"^prisma/seed\.ts$").unwrap(),
-                Regex::new(r"^src/prisma/").unwrap(),
-            ],
-        },
-        PriorityPattern {
-            score: 65,
-            patterns: vec![
-                Regex::new(r"^src/e2e/").unwrap(),
-                Regex::new(r"^src/__tests__/").unwrap(),
-                Regex::new(r"^src/.*\.test\.[jt]sx?$").unwrap(),
-                Regex::new(r"^src/.*\.spec\.[jt]sx?$").unwrap(),
-                Regex::new(r"^src/__mocks__/").unwrap(),
+                Regex::new(r"^src/styles/").unwrap(),
+                Regex::new(r"^src/design-system/").unwrap(),
             ],
         },
         PriorityPattern {
             score: 60,
             patterns: vec![
-                Regex::new(r"^\.github/").unwrap(),
-                Regex::new(r"^src/docker/").unwrap(),
-                Regex::new(r"^src/scripts/").unwrap(),
-                Regex::new(r"^config/").unwrap(),
-            ],
-        },
-        PriorityPattern {
-            score: 55,
-            patterns: vec![
-                Regex::new(r"^src/.*\.stories\.[jt]sx?$").unwrap(),
-                Regex::new(r"^src/components/emails/").unwrap(),
+                Regex::new(r"^src/tests/").unwrap(),
+                Regex::new(r"^src/e2e/").unwrap(),
+                Regex::new(r"^src/__tests__/").unwrap(),
             ],
         },
         PriorityPattern {
             score: 50,
-            patterns: vec![Regex::new(r"^public/").unwrap()],
+            patterns: vec![
+                Regex::new(r"^src/").unwrap(),
+                Regex::new(r"^docs/").unwrap(),
+            ],
         },
         // default fallback
         PriorityPattern {
@@ -275,7 +223,9 @@ fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool {
     if let Some(ext) = file_path.extension().and_then(|s| s.to_str()) {
         let dot_ext = format!(".{}", ext.to_lowercase());
         // Check both built-in and user-provided extensions
-        if BINARY_FILE_EXTENSIONS.contains(&dot_ext.as_str()) || user_binary_extensions.contains(&dot_ext) {
+        if BINARY_FILE_EXTENSIONS.contains(&dot_ext.as_str())
+            || user_binary_extensions.contains(&dot_ext)
+        {
             return false;
         }
     }
@@ -324,7 +274,7 @@ fn format_size(size: usize, is_tokens: bool) -> String {
 /// Attempt to compute a short hash from git. If not available, fallback to timestamp.
 fn get_repo_checksum(chunk_size: usize) -> String {
     let out = SysCommand::new("git")
-        .args(&["ls-files", "-c", "--exclude-standard"])
+        .args(["ls-files", "-c", "--exclude-standard"])
         .stderr(Stdio::null())
         .output();
 
@@ -344,13 +294,13 @@ fn get_repo_checksum(chunk_size: usize) -> String {
 
             for file in lines {
                 let ho = SysCommand::new("git")
-                    .args(&["hash-object", file])
+                    .args(["hash-object", file])
                     .stderr(Stdio::null())
                     .output();
                 if let Ok(h) = ho {
                     if h.status.success() {
                         let fh = String::from_utf8_lossy(&h.stdout).trim().to_string();
-                        let _ = write!(hasher, "{}:{}\n", file, fh);
+                        let _ = writeln!(hasher, "{}:{}", file, fh);
                     }
                 }
             }
@@ -459,9 +409,9 @@ fn serialize_repo(
         let checksum = get_repo_checksum(max_size);
         let path_suffix = base_path
             .and_then(|bp| bp.file_name().map(|os| os.to_string_lossy().to_string()))
-            .unwrap_or_else(|| "".to_string());
+            .unwrap_or_default();
         let path_suffix = if path_suffix.is_empty() {
-            "".to_string()
+            String::new()
         } else {
             format!("_{}", path_suffix)
         };
@@ -472,7 +422,9 @@ fn serialize_repo(
         } else {
             format!("{}{}_{}{}", checksum, path_suffix, max_size, size_type)
         };
-        let out_dir = std::env::current_dir()?.join("repo-serialized").join(dir_name);
+        let out_dir = std::env::current_dir()?
+            .join("repo-serialized")
+            .join(dir_name);
         create_dir_all(&out_dir)?;
         Some(out_dir)
     } else {
@@ -510,7 +462,11 @@ fn serialize_repo(
             continue;
         }
         // Priority
-        let prio = get_file_priority(&rel_path, &final_cfg.ignore_patterns, &final_cfg.priority_list);
+        let prio = get_file_priority(
+            &rel_path,
+            &final_cfg.ignore_patterns,
+            &final_cfg.priority_list,
+        );
         if prio < 0 {
             continue;
         }
@@ -623,9 +579,7 @@ fn main() -> Result<()> {
         )
         .get_matches();
 
-    let max_size: usize = *matches
-        .get_one::<usize>("max_size")
-        .unwrap_or(&0);
+    let max_size: usize = *matches.get_one::<usize>("max_size").unwrap_or(&0);
     let path_opt = matches.get_one::<String>("path").map(PathBuf::from);
     let count_tokens = matches.get_flag("count_tokens");
     let stream = matches.get_flag("stream");
@@ -653,17 +607,15 @@ fn main() -> Result<()> {
             "Serializing repo from {} with max {}{} per chunk...",
             from_path,
             format_size(max_size, count_tokens),
-            if count_tokens { " (tokens)" } else { " (bytes)" }
+            if count_tokens {
+                " (tokens)"
+            } else {
+                " (bytes)"
+            }
         );
     }
 
-    let output = serialize_repo(
-        max_size,
-        path_opt.as_deref(),
-        count_tokens,
-        stream,
-        config,
-    )?;
+    let output = serialize_repo(max_size, path_opt.as_deref(), count_tokens, stream, config)?;
 
     if !stream {
         eprintln!("✨ Repository serialized successfully!");
@@ -685,4 +637,72 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn create_test_file(dir: &Path, name: &str, content: &[u8]) -> PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn test_is_text_file() {
+        let temp = TempDir::new().unwrap();
+        let text_file = create_test_file(temp.path(), "test.txt", b"Hello World");
+        let binary_file = create_test_file(temp.path(), "test.jpg", &[0u8; 100]);
+
+        assert!(is_text_file(&text_file, &[]));
+        assert!(!is_text_file(&binary_file, &[]));
+        assert!(!is_text_file(&text_file, &[".txt".to_string()]));
+    }
+
+    #[test]
+    fn test_count_size() {
+        let text = "Hello World\nThis is a test";
+        assert_eq!(count_size(text, false), text.len());
+        assert_eq!(count_size(text, true), 6); // "Hello", "World", "This", "is", "a", "test"
+    }
+
+    #[test]
+    fn test_format_size() {
+        assert_eq!(format_size(1000, true), "1000 tokens");
+        assert_eq!(format_size(1000, false), "1000.0 B");
+        assert_eq!(format_size(1500, false), "1.5 KB");
+        assert_eq!(format_size(1_500_000, false), "1.4 MB"); // Fixed to match actual calculation
+    }
+
+    #[test]
+    fn test_config_merge() {
+        let user_config = LlmSerializeConfig {
+            ignore_patterns: IgnoreConfig {
+                patterns: vec!["test/".to_string()],
+            },
+            priority_rules: vec![PriorityRule {
+                score: 100,
+                patterns: vec!["src/.*".to_string()],
+            }],
+            binary_extensions: vec![".custom".to_string()],
+        };
+
+        let final_cfg = build_final_config(Some(user_config));
+
+        // Test ignore patterns
+        assert!(final_cfg
+            .ignore_patterns
+            .iter()
+            .any(|p| p.as_str() == "test/"));
+
+        // Test priority rules
+        let src_file = "src/main.rs";
+        let other_file = "other/file.rs";
+        let prio_src = get_file_priority(src_file, &[], &final_cfg.priority_list);
+        let prio_other = get_file_priority(other_file, &[], &final_cfg.priority_list);
+        assert!(prio_src > prio_other);
+    }
 }

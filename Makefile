@@ -1,4 +1,4 @@
-.PHONY: all macos linux clean
+.PHONY: all macos linux clean test lint
 
 all: macos
 
@@ -9,4 +9,11 @@ linux:
 	cargo build --release
 
 clean:
-	cargo clean 
+	cargo clean
+
+test:
+	cargo test
+
+lint:
+	cargo clippy -- -D warnings
+	cargo fmt --check 
