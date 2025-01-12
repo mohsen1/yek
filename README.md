@@ -26,12 +26,6 @@ export PATH=$(pwd)/target/release:$PATH
 
 ## Usage
 
-### Add to your PATH
-
-```bash
-export PATH=$(pwd)/target/release:$PATH
-```
-
 ### Run
 ```bash
 yek --help
