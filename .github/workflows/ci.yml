@@ -69,11 +69,7 @@ jobs:
         run: |
           staging="yek-${{ matrix.target }}"
           mkdir -p "$staging"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}.exe" "$staging/"
-          else
-            cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
-          fi
+          cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
           tar czf "${{ matrix.asset_name }}" "$staging"
       - name: Upload artifact
         uses: actions/upload-artifact@v3
