@@ -595,11 +595,11 @@ fn main() -> Result<()> {
     debug!("Starting yek with debug logging enabled");
 
     let path = matches.get_one::<String>("path").map(|s| s.as_str()).unwrap_or(".");
-    let delay = matches.get_one::<String>("delay").map(|s| s.as_str());
+    let _delay = matches.get_one::<String>("delay").map(|s| s.as_str());
     let max_size = *matches.get_one::<usize>("tokens").unwrap_or(&10000);
     let stream = matches.get_flag("stream");
     let count_tokens = matches.contains_id("tokens");
-    let output_dir = matches.get_one::<String>("output-dir").map(|p| Path::new(p));
+    let output_dir = matches.get_one::<String>("output-dir").map(Path::new);
 
     debug!("CLI Arguments:");
     debug!("  Repository path: {}", path);
