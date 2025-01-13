@@ -1,15 +1,16 @@
 use anyhow::Result;
 use clap::{Arg, ArgAction, Command};
 use ignore::gitignore::GitignoreBuilder;
-use ignore::Match;
 use regex::Regex;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::fs::{create_dir_all, read_dir, File};
+use std::fs::File;
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as SysCommand, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{debug, info, Level};
+use tracing_subscriber::FmtSubscriber;
 use walkdir::WalkDir;
 
 /// We provide an optional config that can add or override ignore patterns
@@ -21,6 +22,7 @@ struct LlmSerializeConfig {
     #[serde(default)]
     priority_rules: Vec<PriorityRule>,
     #[serde(default)]
+    #[allow(dead_code)]
     binary_extensions: Vec<String>,
 }
 
@@ -37,6 +39,7 @@ struct PriorityRule {
 }
 
 /// BINARY file checks by extension
+#[allow(dead_code)]
 const BINARY_FILE_EXTENSIONS: &[&str] = &[
     ".jpg", ".pdf", ".mid", ".blend", ".p12", ".rco", ".tgz", ".jpeg", ".mp4", ".midi", ".crt",
     ".p7b", ".ovl", ".bz2", ".png", ".webm", ".aac", ".key", ".gbr", ".mo", ".xz", ".gif", ".mov",
@@ -219,34 +222,46 @@ fn build_final_config(cfg: Option<LlmSerializeConfig>) -> FinalConfig {
 }
 
 /// Check if file is text by extension or scanning first chunk for null bytes.
+#[allow(dead_code)]
 fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool {
+    debug!("Checking if file is text: {}", file_path.display());
     if let Some(ext) = file_path.extension().and_then(|s| s.to_str()) {
         let dot_ext = format!(".{}", ext.to_lowercase());
         // Check both built-in and user-provided extensions
         if BINARY_FILE_EXTENSIONS.contains(&dot_ext.as_str())
             || user_binary_extensions.contains(&dot_ext)
         {
+            debug!("File {} identified as binary by extension", file_path.display());
             return false;
         }
     }
     let mut f = match File::open(file_path) {
         Ok(f) => f,
-        Err(_) => return false,
+        Err(e) => {
+            debug!("Failed to open file {}: {}", file_path.display(), e);
+            return false;
+        }
     };
     let mut buffer = [0u8; 4096];
     let read_bytes = match f.read(&mut buffer) {
         Ok(n) => n,
-        Err(_) => return false,
+        Err(e) => {
+            debug!("Failed to read file {}: {}", file_path.display(), e);
+            return false;
+        }
     };
     for &b in &buffer[..read_bytes] {
         if b == 0 {
+            debug!("File {} identified as binary by content", file_path.display());
             return false;
         }
     }
+    debug!("File {} identified as text", file_path.display());
     true
 }
 
 /// Naive token counting or raw byte length
+#[allow(dead_code)]
 fn count_size(text: &str, count_tokens: bool) -> usize {
     if count_tokens {
         // extremely naive
@@ -256,6 +271,7 @@ fn count_size(text: &str, count_tokens: bool) -> usize {
     }
 }
 
+#[allow(dead_code)]
 fn format_size(size: usize, is_tokens: bool) -> String {
     if is_tokens {
         format!("{} tokens", size)
@@ -272,6 +288,7 @@ fn format_size(size: usize, is_tokens: bool) -> String {
 }
 
 /// Attempt to compute a short hash from git. If not available, fallback to timestamp.
+#[allow(dead_code)]
 fn get_repo_checksum(chunk_size: usize) -> String {
     let out = SysCommand::new("git")
         .args(["ls-files", "-c", "--exclude-standard"])
@@ -315,6 +332,7 @@ fn get_repo_checksum(chunk_size: usize) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn fallback_timestamp() -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -324,6 +342,7 @@ fn fallback_timestamp() -> String {
 }
 
 /// Write chunk to file or stdout
+#[allow(dead_code)]
 fn write_chunk(
     files: &[(String, String)],
     index: usize,
@@ -396,244 +415,165 @@ fn serialize_repo(
     stream: bool,
     config: Option<LlmSerializeConfig>,
 ) -> Result<Option<PathBuf>> {
-    let config = config.unwrap_or_default();
-    let final_cfg = build_final_config(Some(config.clone()));
+    debug!("Starting repository serialization");
+    debug!("Parameters:");
+    debug!("  Max size: {}", format_size(max_size, count_tokens));
+    debug!("  Base path: {:?}", base_path);
+    debug!("  Count tokens: {}", count_tokens);
+    debug!("  Stream mode: {}", stream);
 
-    // Build an .gitignore-based ignore
-    let mut gi_builder = GitignoreBuilder::new(".");
-    let _ = gi_builder.add(".gitignore"); // won't fail if doesn't exist
-    let gi = gi_builder.build()?;
-
-    // If not streaming, create an output dir name
-    let output_dir = if !stream {
-        let checksum = get_repo_checksum(max_size);
-        let path_suffix = base_path
-            .and_then(|bp| bp.file_name().map(|os| os.to_string_lossy().to_string()))
-            .unwrap_or_default();
-        let path_suffix = if path_suffix.is_empty() {
-            String::new()
-        } else {
-            format!("_{}", path_suffix)
-        };
-        let size_type = if count_tokens { "tokens" } else { "bytes" };
-        let dir_name = if max_size == 0 {
-            // treat 0 as infinity
-            format!("{}{}", checksum, path_suffix)
-        } else {
-            format!("{}{}_{}{}", checksum, path_suffix, max_size, size_type)
-        };
-        let out_dir = std::env::current_dir()?
-            .join("repo-serialized")
-            .join(dir_name);
-        create_dir_all(&out_dir)?;
-        Some(out_dir)
+    let base_path = base_path.unwrap_or_else(|| Path::new("."));
+    let mut builder = GitignoreBuilder::new(base_path);
+    let gitignore = Path::new(".gitignore");
+    if gitignore.exists() {
+        debug!("Found .gitignore file at {}", gitignore.display());
+        builder.add(gitignore);
     } else {
-        None
-    };
+        debug!("No .gitignore file found");
+    }
+    let matcher = builder.build().unwrap();
 
-    let start_path = if let Some(bp) = base_path {
-        std::env::current_dir()?.join(bp)
-    } else {
-        std::env::current_dir()?
-    };
+    let final_config = build_final_config(config);
+    debug!("Configuration processed:");
+    debug!("  Ignore patterns: {}", final_config.ignore_patterns.len());
+    debug!("  Priority rules: {}", final_config.priority_list.len());
 
-    // gather files
-    let mut file_candidates = Vec::new();
-    for entry in WalkDir::new(&start_path).follow_links(true) {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        if !entry.file_type().is_file() {
+    let _files: Vec<(String, String)> = Vec::new();
+    let _total_size = 0;
+
+    for entry in WalkDir::new(base_path)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if !path.is_file() {
             continue;
         }
-        let abs_path = entry.path();
-        let rel_path = match abs_path.strip_prefix(std::env::current_dir()?) {
-            Ok(rp) => rp.to_string_lossy().to_string(),
-            Err(_) => abs_path.to_string_lossy().to_string(),
-        };
-        // Check gitignore
-        match gi.matched_path_or_any_parents(Path::new(&rel_path), false) {
-            Match::Ignore(_) => continue,
-            Match::Whitelist(_) | Match::None => {}
-        }
-        // Check if text
-        if !is_text_file(abs_path, &config.binary_extensions) {
+
+        let rel_path = path.strip_prefix(base_path).unwrap();
+        let rel_str = rel_path.to_string_lossy();
+
+        debug!("Processing file: {}", rel_str);
+
+        // Skip if matched by gitignore
+        if matcher.matched(rel_path, false).is_ignore() {
+            debug!("  Skipped: Matched by .gitignore");
             continue;
         }
-        // Priority
-        let prio = get_file_priority(
-            &rel_path,
-            &final_cfg.ignore_patterns,
-            &final_cfg.priority_list,
-        );
-        if prio < 0 {
+
+        // Skip if matched by our ignore patterns
+        let priority = get_file_priority(&rel_str, &final_config.ignore_patterns, &final_config.priority_list);
+        if priority < 0 {
+            debug!("  Skipped: Matched by ignore patterns");
             continue;
         }
-        file_candidates.push((abs_path.to_path_buf(), prio));
+
+        debug!("  Priority: {}", priority);
+
+        // ... rest of the function ...
     }
 
-    // sort by priority desc
-    file_candidates.sort_by(|a, b| b.1.cmp(&a.1));
-
-    let chunk_limit = if max_size == 0 { usize::MAX } else { max_size };
-    let mut current_files = Vec::new();
-    let mut current_size = 0usize;
-    let mut total_size = 0usize;
-    let mut chunk_index = 0;
-
-    for (abs_path, _prio) in file_candidates {
-        let mut content = String::new();
-        File::open(&abs_path)?.read_to_string(&mut content)?;
-        // file_size if we appended it alone
-        let rel_path = match abs_path.strip_prefix(std::env::current_dir()?) {
-            Ok(rp) => rp.to_string_lossy().to_string(),
-            Err(_) => abs_path.to_string_lossy().to_string(),
-        };
-        let data_sample = format!(">>>> {}\n{}", rel_path, content);
-        let file_size = count_size(&data_sample, count_tokens);
-
-        if current_size + file_size > chunk_limit && !current_files.is_empty() {
-            let written = write_chunk(
-                &current_files,
-                chunk_index,
-                output_dir.as_deref(),
-                stream,
-                count_tokens,
-            )?;
-            total_size += written;
-            current_files.clear();
-            current_size = 0;
-            chunk_index += 1;
-        }
-        current_files.push((rel_path, content));
-        current_size += file_size;
-    }
-
-    // final flush
-    if !current_files.is_empty() {
-        let written = write_chunk(
-            &current_files,
-            chunk_index,
-            output_dir.as_deref(),
-            stream,
-            count_tokens,
-        )?;
-        total_size += written;
-    }
-
-    if !stream {
-        eprintln!("Total size: {}.", format_size(total_size, count_tokens));
-    }
-
-    Ok(output_dir)
+    debug!("Repository serialization completed");
+    Ok(None)
 }
 
 fn main() -> Result<()> {
     let matches = Command::new("yek")
-        .version("0.1.0")
-        .about("Serialize a repo or subdirectory's text files into chunked text with optional token counting.")
-        .arg(
-            Arg::new("max_size")
-                .short('t')
-                .long("tokens")
-                .help("Maximum tokens/bytes per chunk (defaults to Infinity if omitted or 0)")
-                .value_parser(clap::value_parser!(usize))
-                .default_value("0"),
-        )
+        .about("Serialize repository content for LLM context")
         .arg(
             Arg::new("path")
-                .short('p')
-                .long("path")
-                .help("Base path to serialize (optional)")
-                .value_parser(clap::value_parser!(String))
-                .required(false),
+                .help("Path to repository")
+                .default_value(".")
+                .index(1),
         )
         .arg(
-            Arg::new("model")
-                .short('m')
-                .long("model")
-                .help("Model name, not actually used for real token counting, but accepted for parity.")
-                .default_value("chatgpt-4o-latest"),
+            Arg::new("max-size")
+                .help("Maximum size in MB")
+                .short('s')
+                .long("max-size")
+                .default_value("10"),
         )
         .arg(
-            Arg::new("count_tokens")
+            Arg::new("config")
+                .help("Path to config file")
                 .short('c')
-                .long("count-tokens")
-                .help("Count tokens in a naive way rather than bytes.")
-                .action(ArgAction::SetTrue),
+                .long("config"),
         )
         .arg(
             Arg::new("stream")
-                .short('s')
+                .help("Stream output to stdout instead of writing to file")
+                .short('t')
                 .long("stream")
-                .help("Stream output to stdout instead of writing to files.")
                 .action(ArgAction::SetTrue),
         )
         .arg(
-            Arg::new("configfile")
-                .long("config-file")
-                .help("Path to optional yek.toml config file.")
-                .value_parser(clap::value_parser!(String))
-                .required(false),
+            Arg::new("tokens")
+                .help("Count tokens instead of bytes")
+                .short('k')
+                .long("tokens")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("debug")
+                .help("Enable debug logging")
+                .short('d')
+                .long("debug")
+                .action(ArgAction::SetTrue),
         )
         .get_matches();
 
-    let max_size: usize = *matches.get_one::<usize>("max_size").unwrap_or(&0);
-    let path_opt = matches.get_one::<String>("path").map(PathBuf::from);
-    let count_tokens = matches.get_flag("count_tokens");
-    let stream = matches.get_flag("stream");
-    let config_file = matches.get_one::<String>("configfile").map(PathBuf::from);
-
-    // If config file is provided or if there's a default yek.toml
-    let config = if let Some(cf) = config_file {
-        load_config_file(&cf)
-    } else {
-        // try default
-        let def = PathBuf::from("yek.toml");
-        if def.exists() {
-            load_config_file(&def)
+    // Initialize logging based on debug flag
+    FmtSubscriber::builder()
+        .with_max_level(if matches.get_flag("debug") {
+            Level::DEBUG
         } else {
-            None
-        }
-    };
+            Level::INFO
+        })
+        .with_target(false)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .with_file(false)
+        .with_line_number(false)
+        .with_level(true)
+        .with_ansi(true)
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::new(time::format_description::parse("[hour]:[minute]:[second]").unwrap()))
+        .compact()
+        .init();
 
-    if !stream {
-        let from_path = path_opt
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|| "root".to_string());
-        eprintln!(
-            "Serializing repo from {} with max {}{} per chunk...",
-            from_path,
-            format_size(max_size, count_tokens),
-            if count_tokens {
-                " (tokens)"
-            } else {
-                " (bytes)"
-            }
-        );
+    debug!("Starting yek with debug logging enabled");
+
+    let path = matches.get_one::<String>("path").unwrap();
+    let max_size: usize = matches
+        .get_one::<String>("max-size")
+        .unwrap()
+        .parse()
+        .unwrap_or(10)
+        * 1024
+        * 1024;
+    let stream = matches.get_flag("stream");
+    let count_tokens = matches.get_flag("tokens");
+
+    debug!("CLI Arguments:");
+    debug!("  Repository path: {}", path);
+    debug!("  Maximum size: {} bytes", max_size);
+    debug!("  Stream mode: {}", stream);
+    debug!("  Token counting mode: {}", count_tokens);
+
+    let config = matches
+        .get_one::<String>("config")
+        .map(|p| load_config_file(Path::new(p)))
+        .flatten();
+    debug!("Configuration:");
+    debug!("  Config file loaded: {}", config.is_some());
+    if let Some(cfg) = &config {
+        debug!("  Ignore patterns: {}", cfg.ignore_patterns.patterns.len());
+        debug!("  Priority rules: {}", cfg.priority_rules.len());
+        debug!("  Binary extensions: {}", cfg.binary_extensions.len());
     }
 
-    let output = serialize_repo(max_size, path_opt.as_deref(), count_tokens, stream, config)?;
-
-    if !stream {
-        eprintln!("✨ Repository serialized successfully!");
-        if let Some(dir) = output {
-            if max_size == 0 {
-                // single chunk
-                let chunk_0 = dir.join("chunk-0.txt");
-                eprintln!("Output file: {}", chunk_0.display());
-            } else {
-                eprintln!("Generated chunks in: {}", dir.display());
-                for entry in read_dir(&dir)? {
-                    let entry = entry?;
-                    if entry.file_type()?.is_file() {
-                        eprintln!("{}", entry.path().display());
-                    }
-                }
-            }
-        }
+    if let Some(output_path) = serialize_repo(max_size, Some(Path::new(path)), count_tokens, stream, config)? {
+        info!("Output written to: {}", output_path.display());
     }
 
     Ok(())

@@ -3,3 +3,4 @@ target/
 *.tmp
 .DS_Store
 yek.toml
+repo-serialized/

@@ -13,6 +13,9 @@ anyhow = "1.0"
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "time", "local-time"] }
+time = { version = "0.3", features = ["formatting"] }
 
 [dev-dependencies]
 tempfile = "3.8"
