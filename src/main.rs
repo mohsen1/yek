@@ -84,12 +84,10 @@ struct PriorityPattern {
 
 /// Default sets of priority patterns
 fn default_priority_list() -> Vec<PriorityPattern> {
-    vec![
-        PriorityPattern {
-            score: 50,
-            patterns: vec![Regex::new(r"^src/").unwrap()],
-        },
-    ]
+    vec![PriorityPattern {
+        score: 50,
+        patterns: vec![Regex::new(r"^src/").unwrap()],
+    }]
 }
 
 /// Default sets of ignore patterns (separate from .gitignore)
@@ -220,7 +218,10 @@ fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool {
         if BINARY_FILE_EXTENSIONS.contains(&dot_ext.as_str())
             || user_binary_extensions.contains(&dot_ext)
         {
-            debug!("File {} identified as binary by extension", file_path.display());
+            debug!(
+                "File {} identified as binary by extension",
+                file_path.display()
+            );
             return false;
         }
     }
@@ -241,7 +242,10 @@ fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool {
     };
     for &b in &buffer[..read_bytes] {
         if b == 0 {
-            debug!("File {} identified as binary by content", file_path.display());
+            debug!(
+                "File {} identified as binary by content",
+                file_path.display()
+            );
             return false;
         }
     }
@@ -449,7 +453,11 @@ fn serialize_repo(
         }
 
         // Skip if matched by our ignore patterns
-        let priority = get_file_priority(&rel_str, &final_config.ignore_patterns, &final_config.priority_list);
+        let priority = get_file_priority(
+            &rel_str,
+            &final_config.ignore_patterns,
+            &final_config.priority_list,
+        );
         if priority < 0 {
             debug!("  Skipped: Matched by ignore patterns");
             continue;
@@ -459,7 +467,10 @@ fn serialize_repo(
 
         // Skip binary files
         let empty_vec = vec![];
-        let binary_extensions = config.as_ref().map(|c| &c.binary_extensions).unwrap_or(&empty_vec);
+        let binary_extensions = config
+            .as_ref()
+            .map(|c| &c.binary_extensions)
+            .unwrap_or(&empty_vec);
         if !is_text_file(path, binary_extensions) {
             debug!("  Skipped: Binary file");
             continue;
@@ -479,7 +490,11 @@ fn serialize_repo(
 
     // Sort files by priority and write chunks
     files.sort_by_key(|(path, _)| {
-        -get_file_priority(path, &final_config.ignore_patterns, &final_config.priority_list)
+        -get_file_priority(
+            path,
+            &final_config.ignore_patterns,
+            &final_config.priority_list,
+        )
     });
 
     let chunk_size = max_size;
@@ -588,13 +603,18 @@ fn main() -> Result<()> {
         .with_line_number(false)
         .with_level(true)
         .with_ansi(true)
-        .with_timer(tracing_subscriber::fmt::time::LocalTime::new(time::format_description::parse("[hour]:[minute]:[second]").unwrap()))
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::new(
+            time::format_description::parse("[hour]:[minute]:[second]").unwrap(),
+        ))
         .compact()
         .init();
 
     debug!("Starting yek with debug logging enabled");
 
-    let path = matches.get_one::<String>("path").map(|s| s.as_str()).unwrap_or(".");
+    let path = matches
+        .get_one::<String>("path")
+        .map(|s| s.as_str())
+        .unwrap_or(".");
     let _delay = matches.get_one::<String>("delay").map(|s| s.as_str());
     let max_size = *matches.get_one::<usize>("tokens").unwrap_or(&10000);
     let stream = matches.get_flag("stream");
@@ -620,7 +640,14 @@ fn main() -> Result<()> {
         debug!("  Output directory: {:?}", cfg.output_dir);
     }
 
-    if let Some(output_path) = serialize_repo(max_size, Some(Path::new(path)), count_tokens, stream, config, output_dir)? {
+    if let Some(output_path) = serialize_repo(
+        max_size,
+        Some(Path::new(path)),
+        count_tokens,
+        stream,
+        config,
+        output_dir,
+    )? {
         info!("Output written to: {}", output_path.display());
     }
 
