@@ -10,7 +10,7 @@ A simple tool to read text-based files in a repository or directory, chunk them,
 ### Via Homebrew (recommended)
 
 ```bash
-brew tap mohsen1/tap
+brew tap mohsen1/yek https://github.com/mohsen1/yek.git
 brew install yek
 ```
 

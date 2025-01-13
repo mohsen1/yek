@@ -390,9 +390,50 @@ fn get_file_priority(rel_str: &str, ignore_pats: &[Regex], prio_list: &[Priority
 
 /// Merge config from a TOML file if present
 fn load_config_file(path: &Path) -> Option<LlmSerializeConfig> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let parsed = toml::from_str::<LlmSerializeConfig>(&content).ok()?;
-    Some(parsed)
+    debug!("Attempting to load config from: {}", path.display());
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            debug!("Failed to read config file: {}", e);
+            return None;
+        }
+    };
+    match toml::from_str::<LlmSerializeConfig>(&content) {
+        Ok(cfg) => {
+            debug!("Successfully loaded config");
+            Some(cfg)
+        }
+        Err(e) => {
+            debug!("Failed to parse config: {}", e);
+            None
+        }
+    }
+}
+
+/// Find yek.toml by walking up directories
+fn find_config_file(start_path: &Path) -> Option<PathBuf> {
+    let mut current = if start_path.is_absolute() {
+        debug!("Starting config search from absolute path: {}", start_path.display());
+        start_path.to_path_buf()
+    } else {
+        let path = std::env::current_dir().ok()?.join(start_path);
+        debug!("Starting config search from relative path: {}", path.display());
+        path
+    };
+    
+    loop {
+        let config_path = current.join("yek.toml");
+        debug!("Checking for config at: {}", config_path.display());
+        if config_path.exists() {
+            debug!("Found config at: {}", config_path.display());
+            return Some(config_path);
+        }
+        if !current.pop() {
+            debug!("No more parent directories to check");
+            break;
+        }
+    }
+    None
 }
 
 /// Serialize a repository or subdir
@@ -406,7 +447,9 @@ fn serialize_repo(
 ) -> Result<Option<PathBuf>> {
     debug!("Starting repository serialization");
     debug!("Parameters:");
-    debug!("  Max size: {}", format_size(max_size, count_tokens));
+    if max_size > 0 {
+        debug!("  Max size: {}", format_size(max_size, count_tokens));
+    }
     debug!("  Base path: {:?}", base_path);
     debug!("  Count tokens: {}", count_tokens);
     debug!("  Stream mode: {}", stream);
@@ -501,19 +544,23 @@ fn serialize_repo(
     let chunk_hash = get_repo_checksum(chunk_size);
     let output_dir = if !stream {
         if let Some(dir) = output_dir_override {
+            debug!("Using output directory from command line: {}", dir.display());
             std::fs::create_dir_all(dir)?;
             Some(dir.to_path_buf())
         } else if let Some(cfg) = &config {
             if let Some(dir) = &cfg.output_dir {
+                debug!("Using output directory from config: {}", dir);
                 let path = Path::new(dir);
                 std::fs::create_dir_all(path)?;
                 Some(path.to_path_buf())
             } else {
+                debug!("Using default temporary directory");
                 let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
                 std::fs::create_dir_all(&dir)?;
                 Some(dir)
             }
         } else {
+            debug!("Using default temporary directory");
             let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
             std::fs::create_dir_all(&dir)?;
             Some(dir)
@@ -628,9 +675,12 @@ fn main() -> Result<()> {
     debug!("  Token counting mode: {}", count_tokens);
     debug!("  Output directory: {:?}", output_dir);
 
-    let config = matches
+    let config_path = matches
         .get_one::<String>("config")
-        .and_then(|p| load_config_file(Path::new(p)));
+        .map(|p| PathBuf::from(p))
+        .or_else(|| find_config_file(Path::new(path)));
+    
+    let config = config_path.and_then(|p| load_config_file(&p));
     debug!("Configuration:");
     debug!("  Config file loaded: {}", config.is_some());
     if let Some(cfg) = &config {
