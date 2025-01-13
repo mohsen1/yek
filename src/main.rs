@@ -22,7 +22,6 @@ struct LlmSerializeConfig {
     #[serde(default)]
     priority_rules: Vec<PriorityRule>,
     #[serde(default)]
-    #[allow(dead_code)]
     binary_extensions: Vec<String>,
 }
 
@@ -39,7 +38,6 @@ struct PriorityRule {
 }
 
 /// BINARY file checks by extension
-#[allow(dead_code)]
 const BINARY_FILE_EXTENSIONS: &[&str] = &[
     ".jpg", ".pdf", ".mid", ".blend", ".p12", ".rco", ".tgz", ".jpeg", ".mp4", ".midi", ".crt",
     ".p7b", ".ovl", ".bz2", ".png", ".webm", ".aac", ".key", ".gbr", ".mo", ".xz", ".gif", ".mov",
@@ -85,52 +83,8 @@ struct PriorityPattern {
 fn default_priority_list() -> Vec<PriorityPattern> {
     vec![
         PriorityPattern {
-            score: 100,
-            patterns: vec![Regex::new(r"^src/lib/").unwrap()],
-        },
-        PriorityPattern {
-            score: 90,
-            patterns: vec![
-                Regex::new(r"^src/utils/").unwrap(),
-                Regex::new(r"^src/contexts/").unwrap(),
-                Regex::new(r"^src/hooks/").unwrap(),
-                Regex::new(r"^src/constant/").unwrap(),
-                Regex::new(r"^src/shared/").unwrap(),
-            ],
-        },
-        PriorityPattern {
-            score: 80,
-            patterns: vec![
-                Regex::new(r"^src/app/").unwrap(),
-                Regex::new(r"^src/components/").unwrap(),
-            ],
-        },
-        PriorityPattern {
-            score: 70,
-            patterns: vec![
-                Regex::new(r"^src/styles/").unwrap(),
-                Regex::new(r"^src/design-system/").unwrap(),
-            ],
-        },
-        PriorityPattern {
-            score: 60,
-            patterns: vec![
-                Regex::new(r"^src/tests/").unwrap(),
-                Regex::new(r"^src/e2e/").unwrap(),
-                Regex::new(r"^src/__tests__/").unwrap(),
-            ],
-        },
-        PriorityPattern {
             score: 50,
-            patterns: vec![
-                Regex::new(r"^src/").unwrap(),
-                Regex::new(r"^docs/").unwrap(),
-            ],
-        },
-        // default fallback
-        PriorityPattern {
-            score: 40,
-            patterns: vec![Regex::new(r".*").unwrap()],
+            patterns: vec![Regex::new(r"^src/").unwrap()],
         },
     ]
 }
@@ -255,7 +209,6 @@ fn build_final_config(cfg: Option<LlmSerializeConfig>) -> FinalConfig {
 }
 
 /// Check if file is text by extension or scanning first chunk for null bytes.
-#[allow(dead_code)]
 fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool {
     debug!("Checking if file is text: {}", file_path.display());
     if let Some(ext) = file_path.extension().and_then(|s| s.to_str()) {
@@ -294,7 +247,6 @@ fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool {
 }
 
 /// Naive token counting or raw byte length
-#[allow(dead_code)]
 fn count_size(text: &str, count_tokens: bool) -> usize {
     if count_tokens {
         // extremely naive
@@ -304,7 +256,6 @@ fn count_size(text: &str, count_tokens: bool) -> usize {
     }
 }
 
-#[allow(dead_code)]
 fn format_size(size: usize, is_tokens: bool) -> String {
     if is_tokens {
         format!("{} tokens", size)
@@ -321,7 +272,6 @@ fn format_size(size: usize, is_tokens: bool) -> String {
 }
 
 /// Attempt to compute a short hash from git. If not available, fallback to timestamp.
-#[allow(dead_code)]
 fn get_repo_checksum(chunk_size: usize) -> String {
     let out = SysCommand::new("git")
         .args(["ls-files", "-c", "--exclude-standard"])
@@ -365,7 +315,6 @@ fn get_repo_checksum(chunk_size: usize) -> String {
     }
 }
 
-#[allow(dead_code)]
 fn fallback_timestamp() -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -375,7 +324,6 @@ fn fallback_timestamp() -> String {
 }
 
 /// Write chunk to file or stdout
-#[allow(dead_code)]
 fn write_chunk(
     files: &[(String, String)],
     index: usize,
@@ -466,13 +414,13 @@ fn serialize_repo(
     }
     let matcher = builder.build().unwrap();
 
-    let final_config = build_final_config(config);
+    let final_config = build_final_config(config.clone());
     debug!("Configuration processed:");
     debug!("  Ignore patterns: {}", final_config.ignore_patterns.len());
     debug!("  Priority rules: {}", final_config.priority_list.len());
 
-    let _files: Vec<(String, String)> = Vec::new();
-    let _total_size = 0;
+    let mut files: Vec<(String, String)> = Vec::new();
+    let mut total_size = 0;
 
     for entry in WalkDir::new(base_path)
         .follow_links(true)
@@ -504,11 +452,45 @@ fn serialize_repo(
 
         debug!("  Priority: {}", priority);
 
-        // ... rest of the function ...
+        // Skip binary files
+        let empty_vec = vec![];
+        let binary_extensions = config.as_ref().map(|c| &c.binary_extensions).unwrap_or(&empty_vec);
+        if !is_text_file(path, binary_extensions) {
+            debug!("  Skipped: Binary file");
+            continue;
+        }
+
+        // Read file content and add to files list
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let size = count_size(&content, count_tokens);
+            if total_size + size > max_size {
+                debug!("  Skipped: Would exceed size limit");
+                continue;
+            }
+            total_size += size;
+            files.push((rel_str.to_string(), content));
+        }
     }
 
-    debug!("Repository serialization completed");
-    Ok(None)
+    // Sort files by priority and write chunks
+    files.sort_by_key(|(path, _)| {
+        -get_file_priority(path, &final_config.ignore_patterns, &final_config.priority_list)
+    });
+
+    let chunk_size = max_size;
+    let chunk_hash = get_repo_checksum(chunk_size);
+    let output_dir = if !stream {
+        let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
+        std::fs::create_dir_all(&dir)?;
+        Some(dir)
+    } else {
+        None
+    };
+
+    let size = write_chunk(&files, 0, output_dir.as_deref(), stream, count_tokens)?;
+    debug!("Total size: {}", format_size(size, count_tokens));
+
+    Ok(output_dir)
 }
 
 fn main() -> Result<()> {
@@ -595,8 +577,7 @@ fn main() -> Result<()> {
 
     let config = matches
         .get_one::<String>("config")
-        .map(|p| load_config_file(Path::new(p)))
-        .flatten();
+        .and_then(|p| load_config_file(Path::new(p)));
     debug!("Configuration:");
     debug!("  Config file loaded: {}", config.is_some());
     if let Some(cfg) = &config {
