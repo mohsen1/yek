@@ -30,20 +30,23 @@ export PATH=$(pwd)/target/release:$PATH
 ```bash
 yek --help
 
-yek 0.1.0
-Serialize a repo or subdirectory's text files into chunked text with optional token counting.
+Serialize repository content for LLM context
 
-Usage: yek [OPTIONS]
+Usage: yek [OPTIONS] [path]
+
+Arguments:
+  [path]  Path to repository [default: .]
 
 Options:
-  -t, --tokens <MAX_SIZE>        Maximum tokens/bytes per chunk (defaults to Infinity if omitted or 0)
-  -p, --path <PATH>              Base path to serialize (optional)
-  -m, --model <MODEL>            Model name, not actually used for real token counting, but accepted for parity
-  -c, --count-tokens             Count tokens in a naive way rather than bytes
-  -s, --stream                   Stream output to stdout instead of writing to files
-      --config-file <CONFIGFILE> Path to optional yek.toml config file
+  -s, --max-size <max-size>      Maximum size in MB [default: 10]
+  -c, --config <config>          Path to config file
+  -o, --output-dir <output-dir>  Directory to write output files (overrides config file)
+  -t, --stream                   Stream output to stdout instead of writing to file
+  -d, --delay <DELAY>            Delay between file processing
+  -k, --tokens <MAX_TOKENS>      Maximum number of tokens [default: 10000]
+  -d, --debug                    Enable debug logging
   -h, --help                     Print help
-  -V, --version                  Print version
+
 ```
 
 ## Examples

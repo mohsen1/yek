@@ -543,14 +543,14 @@ fn main() -> Result<()> {
         )
         .arg(
             Arg::new("stream")
-                .help("Stream output to stdout instead of writing to file")
+                .help("Stream output to stdout instead of writing to files (disables output directory)")
                 .short('t')
                 .long("stream")
                 .action(ArgAction::SetTrue),
         )
         .arg(
             Arg::new("delay")
-                .short('d')
+                .short('w')
                 .long("delay")
                 .help("Delay between file processing")
                 .value_name("DELAY")
