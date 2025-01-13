@@ -23,6 +23,8 @@ struct LlmSerializeConfig {
     priority_rules: Vec<PriorityRule>,
     #[serde(default)]
     binary_extensions: Vec<String>,
+    #[serde(default)]
+    output_dir: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -63,6 +65,7 @@ impl Default for LlmSerializeConfig {
                 },
             ],
             binary_extensions: Vec::new(), // User extensions only, we'll combine with BINARY_FILE_EXTENSIONS
+            output_dir: None,
         }
     }
 }
@@ -395,6 +398,7 @@ fn serialize_repo(
     count_tokens: bool,
     stream: bool,
     config: Option<LlmSerializeConfig>,
+    output_dir_override: Option<&Path>,
 ) -> Result<Option<PathBuf>> {
     debug!("Starting repository serialization");
     debug!("Parameters:");
@@ -402,6 +406,7 @@ fn serialize_repo(
     debug!("  Base path: {:?}", base_path);
     debug!("  Count tokens: {}", count_tokens);
     debug!("  Stream mode: {}", stream);
+    debug!("  Output dir override: {:?}", output_dir_override);
 
     let base_path = base_path.unwrap_or_else(|| Path::new("."));
     let mut builder = GitignoreBuilder::new(base_path);
@@ -480,9 +485,24 @@ fn serialize_repo(
     let chunk_size = max_size;
     let chunk_hash = get_repo_checksum(chunk_size);
     let output_dir = if !stream {
-        let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
-        std::fs::create_dir_all(&dir)?;
-        Some(dir)
+        if let Some(dir) = output_dir_override {
+            std::fs::create_dir_all(dir)?;
+            Some(dir.to_path_buf())
+        } else if let Some(cfg) = &config {
+            if let Some(dir) = &cfg.output_dir {
+                let path = Path::new(dir);
+                std::fs::create_dir_all(path)?;
+                Some(path.to_path_buf())
+            } else {
+                let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
+                std::fs::create_dir_all(&dir)?;
+                Some(dir)
+            }
+        } else {
+            let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
+            std::fs::create_dir_all(&dir)?;
+            Some(dir)
+        }
     } else {
         None
     };
@@ -514,6 +534,12 @@ fn main() -> Result<()> {
                 .help("Path to config file")
                 .short('c')
                 .long("config"),
+        )
+        .arg(
+            Arg::new("output-dir")
+                .help("Directory to write output files (overrides config file)")
+                .short('o')
+                .long("output-dir"),
         )
         .arg(
             Arg::new("stream")
@@ -568,12 +594,14 @@ fn main() -> Result<()> {
         * 1024;
     let stream = matches.get_flag("stream");
     let count_tokens = matches.get_flag("tokens");
+    let output_dir = matches.get_one::<String>("output-dir").map(|p| Path::new(p));
 
     debug!("CLI Arguments:");
     debug!("  Repository path: {}", path);
     debug!("  Maximum size: {} bytes", max_size);
     debug!("  Stream mode: {}", stream);
     debug!("  Token counting mode: {}", count_tokens);
+    debug!("  Output directory: {:?}", output_dir);
 
     let config = matches
         .get_one::<String>("config")
@@ -584,9 +612,10 @@ fn main() -> Result<()> {
         debug!("  Ignore patterns: {}", cfg.ignore_patterns.patterns.len());
         debug!("  Priority rules: {}", cfg.priority_rules.len());
         debug!("  Binary extensions: {}", cfg.binary_extensions.len());
+        debug!("  Output directory: {:?}", cfg.output_dir);
     }
 
-    if let Some(output_path) = serialize_repo(max_size, Some(Path::new(path)), count_tokens, stream, config)? {
+    if let Some(output_path) = serialize_repo(max_size, Some(Path::new(path)), count_tokens, stream, config, output_dir)? {
         info!("Output written to: {}", output_path.display());
     }
 
@@ -642,6 +671,7 @@ mod tests {
                 patterns: vec!["src/.*".to_string()],
             }],
             binary_extensions: vec![".custom".to_string()],
+            output_dir: None,
         };
 
         let final_cfg = build_final_config(Some(user_config));
