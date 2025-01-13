@@ -44,8 +44,7 @@ Options:
   -x, --max-size <max-size>      Maximum size in MB [default: 10]
   -c, --config <config>          Path to config file
   -o, --output-dir <output-dir>  Directory to write output files (overrides config file)
-  -s, --stream                   Stream output to stdout instead of writing to file
-  -d, --delay <DELAY>            Delay between file processing
+  -s, --stream                   Stream output to stdout instead of writing to files
   -k, --tokens                   Count in tokens instead of bytes
   -p, --path-prefix <PREFIX>     Only process files under this path prefix
   -v, --debug                    Enable debug logging
@@ -55,31 +54,31 @@ Options:
 
 ## Examples
 
-- Serialize entire repository into a single file (infinite chunk size)
+- Serialize entire repository into chunks of 10MB (default):
 
 ```bash
 yek
 ```
 
-- Split repository into chunks of ~128KB:
+- Split repository into chunks of 128MB:
 
 ```bash
 yek --max-size 128
 ```
 
-- Split into chunks of ~128k tokens
+- Split into chunks by token count instead of bytes:
 
 ```bash
 yek --tokens --max-size 128000
 ```
 
-- Serialize only the src/app directory
+- Serialize only files under a specific path:
 
 ```bash
 yek --path-prefix src/app
 ```
 
-- Stream output to stdout instead of writing files
+- Stream output to stdout instead of writing files:
 
 ```bash
 yek --stream
@@ -87,7 +86,7 @@ yek --stream
 
 ## Configuration File
 
-You can place a file called `yek.toml` at your project root or pass a custom path via `--config-file`. The configuration file allows you to:
+You can place a file called `yek.toml` at your project root or pass a custom path via `--config`. The configuration file allows you to:
 
 1. Add custom ignore patterns
 2. Define file priority rules for processing order
