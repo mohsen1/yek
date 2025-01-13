@@ -16,7 +16,7 @@ use walkdir::WalkDir;
 /// We provide an optional config that can add or override ignore patterns
 /// and priority rules. All fields are optional and merged with defaults.
 #[derive(Debug, Deserialize, Clone)]
-struct LlmSerializeConfig {
+struct YekConfig {
     #[serde(default)]
     ignore_patterns: IgnoreConfig,
     #[serde(default)]
@@ -53,9 +53,9 @@ const BINARY_FILE_EXTENSIONS: &[&str] = &[
 ];
 
 /// We'll define a minimal default config. The user can override parts of it from a TOML file.
-impl Default for LlmSerializeConfig {
+impl Default for YekConfig {
     fn default() -> Self {
-        LlmSerializeConfig {
+        YekConfig {
             ignore_patterns: IgnoreConfig::default(),
             priority_rules: vec![
                 // Default fallback - everything has same priority
@@ -157,7 +157,7 @@ fn default_ignore_patterns() -> Vec<Regex> {
 }
 
 /// Merge default + config
-fn build_final_config(cfg: Option<LlmSerializeConfig>) -> FinalConfig {
+fn build_final_config(cfg: Option<YekConfig>) -> FinalConfig {
     // Start with default
     let mut merged_ignore = default_ignore_patterns();
     let mut merged_priority = default_priority_list();
@@ -389,7 +389,7 @@ fn get_file_priority(rel_str: &str, ignore_pats: &[Regex], prio_list: &[Priority
 }
 
 /// Merge config from a TOML file if present
-fn load_config_file(path: &Path) -> Option<LlmSerializeConfig> {
+fn load_config_file(path: &Path) -> Option<YekConfig> {
     debug!("Attempting to load config from: {}", path.display());
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
@@ -398,7 +398,7 @@ fn load_config_file(path: &Path) -> Option<LlmSerializeConfig> {
             return None;
         }
     };
-    match toml::from_str::<LlmSerializeConfig>(&content) {
+    match toml::from_str::<YekConfig>(&content) {
         Ok(cfg) => {
             debug!("Successfully loaded config");
             Some(cfg)
@@ -442,8 +442,9 @@ fn serialize_repo(
     base_path: Option<&Path>,
     count_tokens: bool,
     stream: bool,
-    config: Option<LlmSerializeConfig>,
+    config: Option<YekConfig>,
     output_dir_override: Option<&Path>,
+    path_prefix: Option<&str>,
 ) -> Result<Option<PathBuf>> {
     debug!("Starting repository serialization");
     debug!("Parameters:");
@@ -471,8 +472,38 @@ fn serialize_repo(
     debug!("  Ignore patterns: {}", final_config.ignore_patterns.len());
     debug!("  Priority rules: {}", final_config.priority_list.len());
 
+    let chunk_hash = get_repo_checksum(max_size);
+    let output_dir = if !stream {
+        if let Some(dir) = output_dir_override {
+            debug!("Using output directory from command line: {}", dir.display());
+            std::fs::create_dir_all(dir)?;
+            Some(dir.to_path_buf())
+        } else if let Some(cfg) = &config {
+            if let Some(dir) = &cfg.output_dir {
+                debug!("Using output directory from config: {}", dir);
+                let path = Path::new(dir);
+                std::fs::create_dir_all(path)?;
+                Some(path.to_path_buf())
+            } else {
+                debug!("Using default temporary directory");
+                let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
+                std::fs::create_dir_all(&dir)?;
+                Some(dir)
+            }
+        } else {
+            debug!("Using default temporary directory");
+            let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
+            std::fs::create_dir_all(&dir)?;
+            Some(dir)
+        }
+    } else {
+        None
+    };
+
     let mut files: Vec<(String, String)> = Vec::new();
-    let mut total_size = 0;
+    let mut current_chunk: Vec<(String, String)> = Vec::new();
+    let mut current_chunk_size = 0;
+    let mut chunk_index = 0;
 
     for entry in WalkDir::new(base_path)
         .follow_links(true)
@@ -486,6 +517,14 @@ fn serialize_repo(
 
         let rel_path = path.strip_prefix(base_path).unwrap();
         let rel_str = rel_path.to_string_lossy();
+
+        // Apply path prefix filter if specified
+        if let Some(prefix) = path_prefix {
+            if !rel_str.starts_with(prefix) {
+                debug!("  Skipped: Does not match path prefix {}", prefix);
+                continue;
+            }
+        }
 
         debug!("Processing file: {}", rel_str);
 
@@ -519,58 +558,68 @@ fn serialize_repo(
             continue;
         }
 
-        // Read file content and add to files list
+        // Read file content
         if let Ok(content) = std::fs::read_to_string(path) {
             let size = count_size(&content, count_tokens);
-            if total_size + size > max_size {
-                debug!("  Skipped: Would exceed size limit");
-                continue;
+            
+            // If a single file is larger than max_size, split it into multiple chunks
+            if size > max_size {
+                debug!("  File exceeds chunk size, splitting into multiple chunks");
+                let mut remaining = content.as_str();
+                while !remaining.is_empty() {
+                    let mut chunk_content = String::new();
+                    let mut chunk_bytes = 0;
+                    
+                    // Take words until we hit the size limit
+                    for word in remaining.split_whitespace() {
+                        let word_size = count_size(word, count_tokens);
+                        if chunk_bytes + word_size + 1 > max_size {
+                            break;
+                        }
+                        if !chunk_content.is_empty() {
+                            chunk_content.push(' ');
+                        }
+                        chunk_content.push_str(word);
+                        chunk_bytes += word_size + 1;
+                    }
+                    
+                    // Write current chunk
+                    if !chunk_content.is_empty() {
+                        current_chunk.push((format!("{} (part {})", rel_str, chunk_index), chunk_content.clone()));
+                        current_chunk_size += chunk_bytes;
+                        
+                        // Start new chunk if needed
+                        if current_chunk_size >= max_size {
+                            write_chunk(&current_chunk, chunk_index, output_dir.as_deref(), stream, count_tokens)?;
+                            chunk_index += 1;
+                            current_chunk.clear();
+                            current_chunk_size = 0;
+                        }
+                    }
+                    
+                    // Move to remaining content
+                    remaining = &remaining[chunk_content.len()..].trim_start();
+                }
+            } else {
+                // Regular file handling
+                if current_chunk_size + size > max_size && !current_chunk.is_empty() {
+                    // Write current chunk and start new one
+                    write_chunk(&current_chunk, chunk_index, output_dir.as_deref(), stream, count_tokens)?;
+                    chunk_index += 1;
+                    current_chunk.clear();
+                    current_chunk_size = 0;
+                }
+                
+                current_chunk.push((rel_str.to_string(), content));
+                current_chunk_size += size;
             }
-            total_size += size;
-            files.push((rel_str.to_string(), content));
         }
     }
 
-    // Sort files by priority and write chunks
-    files.sort_by_key(|(path, _)| {
-        -get_file_priority(
-            path,
-            &final_config.ignore_patterns,
-            &final_config.priority_list,
-        )
-    });
-
-    let chunk_size = max_size;
-    let chunk_hash = get_repo_checksum(chunk_size);
-    let output_dir = if !stream {
-        if let Some(dir) = output_dir_override {
-            debug!("Using output directory from command line: {}", dir.display());
-            std::fs::create_dir_all(dir)?;
-            Some(dir.to_path_buf())
-        } else if let Some(cfg) = &config {
-            if let Some(dir) = &cfg.output_dir {
-                debug!("Using output directory from config: {}", dir);
-                let path = Path::new(dir);
-                std::fs::create_dir_all(path)?;
-                Some(path.to_path_buf())
-            } else {
-                debug!("Using default temporary directory");
-                let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
-                std::fs::create_dir_all(&dir)?;
-                Some(dir)
-            }
-        } else {
-            debug!("Using default temporary directory");
-            let dir = std::env::temp_dir().join(format!("yek-{}", chunk_hash));
-            std::fs::create_dir_all(&dir)?;
-            Some(dir)
-        }
-    } else {
-        None
-    };
-
-    let size = write_chunk(&files, 0, output_dir.as_deref(), stream, count_tokens)?;
-    debug!("Total size: {}", format_size(size, count_tokens));
+    // Write any remaining files in the last chunk
+    if !current_chunk.is_empty() {
+        write_chunk(&current_chunk, chunk_index, output_dir.as_deref(), stream, count_tokens)?;
+    }
 
     Ok(output_dir)
 }
@@ -589,6 +638,7 @@ fn main() -> Result<()> {
                 .help("Maximum size in MB")
                 .short('s')
                 .long("max-size")
+                .value_parser(clap::value_parser!(usize))
                 .default_value("10"),
         )
         .arg(
@@ -605,14 +655,14 @@ fn main() -> Result<()> {
         )
         .arg(
             Arg::new("stream")
-                .help("Stream output to stdout instead of writing to files (disables output directory)")
-                .short('t')
+                .help("Stream output to stdout instead of writing to files")
+                .short('s')
                 .long("stream")
                 .action(ArgAction::SetTrue),
         )
         .arg(
             Arg::new("delay")
-                .short('w')
+                .short('d')
                 .long("delay")
                 .help("Delay between file processing")
                 .value_name("DELAY")
@@ -622,15 +672,20 @@ fn main() -> Result<()> {
             Arg::new("tokens")
                 .short('k')
                 .long("tokens")
-                .help("Maximum number of tokens")
-                .value_name("MAX_TOKENS")
-                .value_parser(clap::value_parser!(usize))
-                .default_value("10000")
+                .help("Count in tokens instead of bytes")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("path-prefix")
+                .short('p')
+                .long("path-prefix")
+                .help("Only process files under this path prefix")
+                .value_name("PREFIX"),
         )
         .arg(
             Arg::new("debug")
                 .help("Enable debug logging")
-                .short('d')
+                .short('v')
                 .long("debug")
                 .action(ArgAction::SetTrue),
         )
@@ -662,11 +717,12 @@ fn main() -> Result<()> {
         .get_one::<String>("path")
         .map(|s| s.as_str())
         .unwrap_or(".");
-    let _delay = matches.get_one::<String>("delay").map(|s| s.as_str());
-    let max_size = *matches.get_one::<usize>("tokens").unwrap_or(&10000);
+    let delay = matches.get_one::<String>("delay").map(|s| s.as_str());
+    let max_size = matches.get_one::<usize>("max-size").map(|s| s * 1024 * 1024).unwrap_or(10 * 1024 * 1024);
     let stream = matches.get_flag("stream");
-    let count_tokens = matches.contains_id("tokens");
+    let count_tokens = matches.get_flag("tokens");
     let output_dir = matches.get_one::<String>("output-dir").map(Path::new);
+    let path_prefix = matches.get_one::<String>("path-prefix").map(|s| s.as_str());
 
     debug!("CLI Arguments:");
     debug!("  Repository path: {}", path);
@@ -697,6 +753,7 @@ fn main() -> Result<()> {
         stream,
         config,
         output_dir,
+        path_prefix,
     )? {
         info!("Output written to: {}", output_path.display());
     }
@@ -744,7 +801,7 @@ mod tests {
 
     #[test]
     fn test_config_merge() {
-        let user_config = LlmSerializeConfig {
+        let user_config = YekConfig {
             ignore_patterns: IgnoreConfig {
                 patterns: vec!["test/".to_string()],
             },

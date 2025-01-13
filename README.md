@@ -41,10 +41,11 @@ Options:
   -s, --max-size <max-size>      Maximum size in MB [default: 10]
   -c, --config <config>          Path to config file
   -o, --output-dir <output-dir>  Directory to write output files (overrides config file)
-  -t, --stream                   Stream output to stdout instead of writing to file
+  -s, --stream                   Stream output to stdout instead of writing to file
   -d, --delay <DELAY>            Delay between file processing
-  -k, --tokens <MAX_TOKENS>      Maximum number of tokens [default: 10000]
-  -d, --debug                    Enable debug logging
+  -k, --tokens                   Count in tokens instead of bytes
+  -p, --path-prefix <PREFIX>     Only process files under this path prefix
+  -v, --debug                    Enable debug logging
   -h, --help                     Print help
 
 ```
@@ -57,22 +58,22 @@ yek
 
 - Split repository into chunks of ~128KB:
 ```bash
-yek -t 128000
+yek --max-size 128
 ```
 
-- Split into chunks of ~128k tokens (naive)
+- Split into chunks of ~128k tokens
 ```bash
-yek -t 128000 -c
+yek --tokens --max-size 128000
 ```
 
 - Serialize only the src/app directory
 ```bash
-yek -p src/app
+yek --path-prefix src/app
 ```
 
 - Stream output to stdout instead of writing files
 ```bash
-yek -s
+yek --stream
 ```
 
 ## Configuration File
