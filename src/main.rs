@@ -413,14 +413,20 @@ fn load_config_file(path: &Path) -> Option<YekConfig> {
 /// Find yek.toml by walking up directories
 fn find_config_file(start_path: &Path) -> Option<PathBuf> {
     let mut current = if start_path.is_absolute() {
-        debug!("Starting config search from absolute path: {}", start_path.display());
+        debug!(
+            "Starting config search from absolute path: {}",
+            start_path.display()
+        );
         start_path.to_path_buf()
     } else {
         let path = std::env::current_dir().ok()?.join(start_path);
-        debug!("Starting config search from relative path: {}", path.display());
+        debug!(
+            "Starting config search from relative path: {}",
+            path.display()
+        );
         path
     };
-    
+
     loop {
         let config_path = current.join("yek.toml");
         debug!("Checking for config at: {}", config_path.display());
@@ -475,7 +481,10 @@ fn serialize_repo(
     let chunk_hash = get_repo_checksum(max_size);
     let output_dir = if !stream {
         if let Some(dir) = output_dir_override {
-            debug!("Using output directory from command line: {}", dir.display());
+            debug!(
+                "Using output directory from command line: {}",
+                dir.display()
+            );
             std::fs::create_dir_all(dir)?;
             Some(dir.to_path_buf())
         } else if let Some(cfg) = &config {
@@ -500,7 +509,6 @@ fn serialize_repo(
         None
     };
 
-    let mut files: Vec<(String, String)> = Vec::new();
     let mut current_chunk: Vec<(String, String)> = Vec::new();
     let mut current_chunk_size = 0;
     let mut chunk_index = 0;
@@ -561,18 +569,38 @@ fn serialize_repo(
         // Read file content
         if let Ok(content) = std::fs::read_to_string(path) {
             let size = count_size(&content, count_tokens);
-            
+
             // If a single file is larger than max_size, split it into multiple chunks
             if size > max_size {
                 debug!("  File exceeds chunk size, splitting into multiple chunks");
                 let mut remaining = content.as_str();
+                let mut part = 0;
+
                 while !remaining.is_empty() {
                     let mut chunk_content = String::new();
                     let mut chunk_bytes = 0;
-                    
+
                     // Take words until we hit the size limit
                     for word in remaining.split_whitespace() {
                         let word_size = count_size(word, count_tokens);
+
+                        // If a single word is larger than max_size, we need to split it
+                        if word_size > max_size {
+                            if chunk_content.is_empty() {
+                                // Take a portion of the word that fits
+                                let mut chars = word.chars();
+                                while chunk_bytes < max_size && !chars.as_str().is_empty() {
+                                    if let Some(c) = chars.next() {
+                                        chunk_content.push(c);
+                                        chunk_bytes += count_size(&c.to_string(), count_tokens);
+                                    }
+                                }
+                                remaining = chars.as_str();
+                            }
+                            break;
+                        }
+
+                        // Normal word handling
                         if chunk_bytes + word_size + 1 > max_size {
                             break;
                         }
@@ -582,34 +610,72 @@ fn serialize_repo(
                         chunk_content.push_str(word);
                         chunk_bytes += word_size + 1;
                     }
-                    
+
                     // Write current chunk
                     if !chunk_content.is_empty() {
-                        current_chunk.push((format!("{} (part {})", rel_str, chunk_index), chunk_content.clone()));
+                        current_chunk.push((
+                            format!("{} (part {})", rel_str, part),
+                            chunk_content.clone(),
+                        ));
                         current_chunk_size += chunk_bytes;
-                        
+                        part += 1;
+
                         // Start new chunk if needed
                         if current_chunk_size >= max_size {
-                            write_chunk(&current_chunk, chunk_index, output_dir.as_deref(), stream, count_tokens)?;
+                            write_chunk(
+                                &current_chunk,
+                                chunk_index,
+                                output_dir.as_deref(),
+                                stream,
+                                count_tokens,
+                            )?;
                             chunk_index += 1;
                             current_chunk.clear();
                             current_chunk_size = 0;
                         }
                     }
-                    
-                    // Move to remaining content
-                    remaining = &remaining[chunk_content.len()..].trim_start();
+
+                    // Move to remaining content, handling the case where no progress was made
+                    let new_remaining = if chunk_content.is_empty() {
+                        // Force progress by taking the first word
+                        if let Some(first_space) = remaining.find(char::is_whitespace) {
+                            &remaining[first_space..].trim_start()
+                        } else {
+                            // No spaces found, force take some characters
+                            let take_chars = std::cmp::min(remaining.len(), max_size);
+                            &remaining[take_chars..].trim_start()
+                        }
+                    } else {
+                        &remaining[chunk_content.len()..].trim_start()
+                    };
+
+                    // Ensure we're making progress
+                    if new_remaining.len() == remaining.len() {
+                        // Emergency break to prevent infinite loop
+                        debug!(
+                            "Warning: Unable to make progress in splitting file {}",
+                            rel_str
+                        );
+                        break;
+                    }
+                    remaining = new_remaining;
                 }
             } else {
                 // Regular file handling
                 if current_chunk_size + size > max_size && !current_chunk.is_empty() {
                     // Write current chunk and start new one
-                    write_chunk(&current_chunk, chunk_index, output_dir.as_deref(), stream, count_tokens)?;
+                    write_chunk(
+                        &current_chunk,
+                        chunk_index,
+                        output_dir.as_deref(),
+                        stream,
+                        count_tokens,
+                    )?;
                     chunk_index += 1;
                     current_chunk.clear();
                     current_chunk_size = 0;
                 }
-                
+
                 current_chunk.push((rel_str.to_string(), content));
                 current_chunk_size += size;
             }
@@ -618,7 +684,13 @@ fn serialize_repo(
 
     // Write any remaining files in the last chunk
     if !current_chunk.is_empty() {
-        write_chunk(&current_chunk, chunk_index, output_dir.as_deref(), stream, count_tokens)?;
+        write_chunk(
+            &current_chunk,
+            chunk_index,
+            output_dir.as_deref(),
+            stream,
+            count_tokens,
+        )?;
     }
 
     Ok(output_dir)
@@ -656,17 +728,8 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("stream")
                 .help("Stream output to stdout instead of writing to files")
-                .short('s')
                 .long("stream")
                 .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("delay")
-                .short('d')
-                .long("delay")
-                .help("Delay between file processing")
-                .value_name("DELAY")
-                .value_parser(clap::value_parser!(String))
         )
         .arg(
             Arg::new("tokens")
@@ -717,8 +780,10 @@ fn main() -> Result<()> {
         .get_one::<String>("path")
         .map(|s| s.as_str())
         .unwrap_or(".");
-    let delay = matches.get_one::<String>("delay").map(|s| s.as_str());
-    let max_size = matches.get_one::<usize>("max-size").map(|s| s * 1024 * 1024).unwrap_or(10 * 1024 * 1024);
+    let max_size = matches
+        .get_one::<usize>("max-size")
+        .map(|s| s * 1024 * 1024)
+        .unwrap_or(10 * 1024 * 1024);
     let stream = matches.get_flag("stream");
     let count_tokens = matches.get_flag("tokens");
     let output_dir = matches.get_one::<String>("output-dir").map(Path::new);
@@ -733,9 +798,9 @@ fn main() -> Result<()> {
 
     let config_path = matches
         .get_one::<String>("config")
-        .map(|p| PathBuf::from(p))
+        .map(PathBuf::from)
         .or_else(|| find_config_file(Path::new(path)));
-    
+
     let config = config_path.and_then(|p| load_config_file(&p));
     debug!("Configuration:");
     debug!("  Config file loaded: {}", config.is_some());
