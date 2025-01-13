@@ -1,7 +1,7 @@
 class Yek < Formula
   desc "A tool to chunk and serialize repository content for LLM consumption"
   homepage "https://github.com/mohsen1/yek"
-  version "0.1.0"
+  version "0.2.0"
 
   if OS.mac?
     if Hardware::CPU.arm?
