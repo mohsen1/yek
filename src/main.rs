@@ -594,7 +594,7 @@ fn main() -> Result<()> {
         * 1024;
     let stream = matches.get_flag("stream");
     let count_tokens = matches.get_flag("tokens");
-    let output_dir = matches.get_one::<String>("output-dir").map(|p| Path::new(p));
+    let output_dir = matches.get_one::<String>("output-dir").map(Path::new);
 
     debug!("CLI Arguments:");
     debug!("  Repository path: {}", path);
