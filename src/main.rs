@@ -549,13 +549,21 @@ fn main() -> Result<()> {
                 .action(ArgAction::SetTrue),
         )
         .arg(
+            Arg::new("delay")
+                .short('d')
+                .long("delay")
+                .help("Delay between file processing")
+                .value_name("DELAY")
+                .value_parser(clap::value_parser!(String))
+        )
+        .arg(
             Arg::new("tokens")
-                .help("Count tokens instead of bytes")
                 .short('k')
                 .long("tokens")
+                .help("Maximum number of tokens")
                 .value_name("MAX_TOKENS")
                 .value_parser(clap::value_parser!(usize))
-                .default_value("10000"),
+                .default_value("10000")
         )
         .arg(
             Arg::new("debug")
@@ -586,18 +594,9 @@ fn main() -> Result<()> {
 
     debug!("Starting yek with debug logging enabled");
 
-    let path = matches.get_one::<String>("path").unwrap();
-    let max_size: usize = if matches.contains_id("tokens") {
-        matches.get_one::<usize>("tokens").copied().unwrap_or(10000)
-    } else {
-        matches
-            .get_one::<String>("max-size")
-            .unwrap()
-            .parse()
-            .unwrap_or(10)
-            * 1024
-            * 1024
-    };
+    let path = matches.get_one::<String>("path").map(|s| s.as_str()).unwrap_or(".");
+    let delay = matches.get_one::<String>("delay").map(|s| s.as_str());
+    let max_size = *matches.get_one::<usize>("tokens").unwrap_or(&10000);
     let stream = matches.get_flag("stream");
     let count_tokens = matches.contains_id("tokens");
     let output_dir = matches.get_one::<String>("output-dir").map(|p| Path::new(p));
