@@ -456,27 +456,28 @@ fn load_config_file(path: &Path) -> Option<YekConfig> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) => {
-            info!("Failed to read config file: {}", e);
+            eprintln!("Failed to read config file: {}", e);
             return None;
         }
     };
-    
+
     match toml::from_str::<YekConfig>(&content) {
         Ok(cfg) => {
             debug!("Successfully loaded config");
             // Validate the config
             let errors = validate_config(&cfg);
             if !errors.is_empty() {
-                info!("Invalid configuration in {}:", path.display());
+                eprintln!("Invalid configuration in {}:", path.display());
                 for error in errors {
-                    info!("  {}: {}", error.field, error.message);
+                    eprintln!("  {}: {}", error.field, error.message);
                 }
-                return None;
+                None
+            } else {
+                Some(cfg)
             }
-            Some(cfg)
         }
         Err(e) => {
-            info!("Failed to parse config file: {}", e);
+            eprintln!("Failed to parse config file: {}", e);
             None
         }
     }
@@ -514,6 +515,12 @@ fn find_config_file(start_path: &Path) -> Option<PathBuf> {
     None
 }
 
+#[derive(Debug)]
+struct FileEntry {
+    path: PathBuf,
+    priority: i32,
+}
+
 /// Serialize a repository or subdir
 fn serialize_repo(
     max_size: usize,
@@ -534,12 +541,15 @@ fn serialize_repo(
     debug!("  Stream mode: {}", stream);
     debug!("  Output dir override: {:?}", output_dir_override);
 
-    let base_path = base_path.unwrap_or_else(|| Path::new("."));
-    let mut builder = GitignoreBuilder::new(base_path);
-    let gitignore = Path::new(".gitignore");
+    let base_path = base_path
+        .unwrap_or_else(|| Path::new("."))
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new(".").to_path_buf());
+    let mut builder = GitignoreBuilder::new(&base_path);
+    let gitignore = base_path.join(".gitignore");
     if gitignore.exists() {
         debug!("Found .gitignore file at {}", gitignore.display());
-        builder.add(gitignore);
+        builder.add(&gitignore);
     } else {
         debug!("No .gitignore file found");
     }
@@ -581,11 +591,10 @@ fn serialize_repo(
         None
     };
 
-    let mut current_chunk: Vec<(String, String)> = Vec::new();
-    let mut current_chunk_size = 0;
-    let mut chunk_index = 0;
+    let mut files: Vec<FileEntry> = Vec::new();
 
-    for entry in WalkDir::new(base_path)
+    // First collect all files and their priorities
+    for entry in WalkDir::new(&base_path)
         .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -595,7 +604,7 @@ fn serialize_repo(
             continue;
         }
 
-        let rel_path = path.strip_prefix(base_path).unwrap();
+        let rel_path = path.strip_prefix(&base_path).unwrap();
         let rel_str = rel_path.to_string_lossy();
 
         // Apply path prefix filter if specified
@@ -609,7 +618,7 @@ fn serialize_repo(
         debug!("Processing file: {}", rel_str);
 
         // Skip if matched by gitignore
-        if matcher.matched(rel_path, false).is_ignore() {
+        if matcher.matched(rel_path, path.is_dir()).is_ignore() {
             debug!("  Skipped: Matched by .gitignore");
             continue;
         }
@@ -638,8 +647,27 @@ fn serialize_repo(
             continue;
         }
 
+        files.push(FileEntry {
+            path: path.to_path_buf(),
+            priority,
+        });
+    }
+
+    // Sort files by priority (highest first)
+    files.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+    let mut current_chunk: Vec<(String, String)> = Vec::new();
+    let mut current_chunk_size = 0;
+    let mut chunk_index = 0;
+
+    // Process files in priority order
+    for file in files {
+        let path = file.path;
+        let rel_path = path.strip_prefix(&base_path).unwrap();
+        let rel_str = rel_path.to_string_lossy();
+
         // Read file content
-        if let Ok(content) = std::fs::read_to_string(path) {
+        if let Ok(content) = std::fs::read_to_string(&path) {
             let size = count_size(&content, count_tokens);
 
             // If a single file is larger than max_size, split it into multiple chunks
@@ -852,12 +880,12 @@ fn main() -> Result<()> {
         .get_one::<String>("path")
         .map(|s| s.as_str())
         .unwrap_or(".");
+    let count_tokens = matches.get_flag("tokens");
     let max_size = matches
         .get_one::<usize>("max-size")
-        .map(|s| s * 1024 * 1024)
+        .map(|s| if count_tokens { *s } else { s * 1024 * 1024 })
         .unwrap_or(10 * 1024 * 1024);
     let stream = matches.get_flag("stream");
-    let count_tokens = matches.get_flag("tokens");
     let output_dir = matches.get_one::<String>("output-dir").map(Path::new);
     let path_prefix = matches.get_one::<String>("path-prefix").map(|s| s.as_str());
 
