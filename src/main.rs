@@ -388,23 +388,95 @@ fn get_file_priority(rel_str: &str, ignore_pats: &[Regex], prio_list: &[Priority
     40 // fallback
 }
 
+#[derive(Debug)]
+struct ConfigError {
+    field: String,
+    message: String,
+}
+
+fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
+    let mut errors = Vec::new();
+
+    // Validate ignore patterns
+    for pattern in &config.ignore_patterns.patterns {
+        if let Err(e) = Regex::new(pattern) {
+            errors.push(ConfigError {
+                field: "ignore_patterns".to_string(),
+                message: format!("Invalid regex pattern '{}': {}", pattern, e),
+            });
+        }
+    }
+
+    // Validate priority rules
+    for rule in &config.priority_rules {
+        if rule.score < 0 || rule.score > 1000 {
+            errors.push(ConfigError {
+                field: "priority_rules".to_string(),
+                message: format!("Priority score {} must be between 0 and 1000", rule.score),
+            });
+        }
+        for pattern in &rule.patterns {
+            if let Err(e) = Regex::new(pattern) {
+                errors.push(ConfigError {
+                    field: "priority_rules".to_string(),
+                    message: format!("Invalid regex pattern '{}': {}", pattern, e),
+                });
+            }
+        }
+    }
+
+    // Validate output directory if specified
+    if let Some(dir) = &config.output_dir {
+        let path = Path::new(dir);
+        if path.exists() && !path.is_dir() {
+            errors.push(ConfigError {
+                field: "output_dir".to_string(),
+                message: format!("Output path '{}' exists but is not a directory", dir),
+            });
+        } else if !path.exists() {
+            // Try to create the directory to test if we have permissions
+            if let Err(e) = std::fs::create_dir_all(path) {
+                errors.push(ConfigError {
+                    field: "output_dir".to_string(),
+                    message: format!("Cannot create output directory '{}': {}", dir, e),
+                });
+            } else {
+                // Clean up the test directory if we created it
+                let _ = std::fs::remove_dir(path);
+            }
+        }
+    }
+
+    errors
+}
+
 /// Merge config from a TOML file if present
 fn load_config_file(path: &Path) -> Option<YekConfig> {
     debug!("Attempting to load config from: {}", path.display());
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) => {
-            debug!("Failed to read config file: {}", e);
+            info!("Failed to read config file: {}", e);
             return None;
         }
     };
+    
     match toml::from_str::<YekConfig>(&content) {
         Ok(cfg) => {
             debug!("Successfully loaded config");
+            // Validate the config
+            let errors = validate_config(&cfg);
+            if !errors.is_empty() {
+                info!("Invalid configuration in {}:", path.display());
+                for error in errors {
+                    info!("  {}: {}", error.field, error.message);
+                }
+                return None;
+            }
             Some(cfg)
         }
         Err(e) => {
-            debug!("Failed to parse config: {}", e);
+            info!("Failed to parse config file: {}", e);
             None
         }
     }
@@ -892,5 +964,50 @@ mod tests {
         let prio_src = get_file_priority(src_file, &[], &final_cfg.priority_list);
         let prio_other = get_file_priority(other_file, &[], &final_cfg.priority_list);
         assert!(prio_src > prio_other);
+    }
+
+    #[test]
+    fn test_config_validation() {
+        // Test invalid regex patterns
+        let config = YekConfig {
+            ignore_patterns: IgnoreConfig {
+                patterns: vec!["[".to_string()], // Invalid regex
+            },
+            priority_rules: vec![],
+            binary_extensions: vec![],
+            output_dir: None,
+        };
+        let errors = validate_config(&config);
+        assert!(!errors.is_empty());
+        assert!(errors[0].message.contains("Invalid regex pattern"));
+
+        // Test invalid priority score
+        let config = YekConfig {
+            ignore_patterns: IgnoreConfig { patterns: vec![] },
+            priority_rules: vec![PriorityRule {
+                score: -1,
+                patterns: vec![".*".to_string()],
+            }],
+            binary_extensions: vec![],
+            output_dir: None,
+        };
+        let errors = validate_config(&config);
+        assert!(!errors.is_empty());
+        assert!(errors[0].message.contains("must be between 0 and 1000"));
+
+        // Test valid config
+        let config = YekConfig {
+            ignore_patterns: IgnoreConfig {
+                patterns: vec![".*\\.txt$".to_string()],
+            },
+            priority_rules: vec![PriorityRule {
+                score: 100,
+                patterns: vec!["^src/.*".to_string()],
+            }],
+            binary_extensions: vec![],
+            output_dir: None,
+        };
+        let errors = validate_config(&config);
+        assert!(errors.is_empty());
     }
 }
