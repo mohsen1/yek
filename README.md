@@ -136,7 +136,6 @@ All configuration keys are optional. By default:
 
 ## Planned Features
 
-- [ ] Priotize recently changed files via git history
 - [ ] Be smarter about finding out test files
 
 ## License

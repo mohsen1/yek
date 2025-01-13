@@ -4,20 +4,20 @@ version = "0.3.0"
 edition = "2021"
 
 [dependencies]
-clap = "4.3"
-ignore = "0.4"
-walkdir = "2.3"
-sha2 = "0.10"
-regex = "1.9"
 anyhow = "1.0"
-toml = "0.8"
+clap = "4.4"
+ignore = "0.4"
+regex = "1.10"
 serde = { version = "1.0", features = ["derive"] }
-serde_derive = "1.0"
+sha2 = "0.10"
+time = "0.3"
+toml = "0.8"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "time", "local-time"] }
-time = { version = "0.3", features = ["formatting"] }
+tracing-subscriber = { version = "0.3", features = ["time", "local-time"] }
+walkdir = "2.4"
 
 [dev-dependencies]
-tempfile = "3.8"
-assert_cmd = "2"
-predicates = "2"
+assert_cmd = "2.0"
+chrono = "0.4"
+predicates = "3.0"
+tempfile = "3.9"
