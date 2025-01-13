@@ -1,6 +1,7 @@
 # `yek`
 
 A simple tool to read text-based files in a repository or directory, chunk them, and serialize them for LLM consumption. By default, the tool:
+
 - Uses `.gitignore` rules to skip unwanted files.
 - Infers additional ignore patterns (binary, large, etc.).
 - Splits content into chunks based on either approximate "token" count or byte size.
@@ -20,6 +21,7 @@ brew install yek
 2. Clone this repository.
 3. Run `make macos` or `make linux` to build for your platform (both run `cargo build --release`).
 4. Add to your PATH:
+
 ```bash
 export PATH=$(pwd)/target/release:$PATH
 ```
@@ -27,6 +29,7 @@ export PATH=$(pwd)/target/release:$PATH
 ## Usage
 
 ### Run
+
 ```bash
 yek --help
 
@@ -38,7 +41,7 @@ Arguments:
   [path]  Path to repository [default: .]
 
 Options:
-  -s, --max-size <max-size>      Maximum size in MB [default: 10]
+  -x, --max-size <max-size>      Maximum size in MB [default: 10]
   -c, --config <config>          Path to config file
   -o, --output-dir <output-dir>  Directory to write output files (overrides config file)
   -s, --stream                   Stream output to stdout instead of writing to file
@@ -51,27 +54,33 @@ Options:
 ```
 
 ## Examples
+
 - Serialize entire repository into a single file (infinite chunk size)
+
 ```bash
 yek
 ```
 
 - Split repository into chunks of ~128KB:
+
 ```bash
 yek --max-size 128
 ```
 
 - Split into chunks of ~128k tokens
+
 ```bash
 yek --tokens --max-size 128000
 ```
 
 - Serialize only the src/app directory
+
 ```bash
 yek --path-prefix src/app
 ```
 
 - Stream output to stdout instead of writing files
+
 ```bash
 yek --stream
 ```
@@ -120,9 +129,10 @@ binary_extensions = [
 ```
 
 All configuration keys are optional. By default:
+
 - No extra ignore patterns
 - All files have equal priority (score: 1)
-- Common binary file extensions are ignored (.jpg, .png, .exe, etc. - see source for full list) 
+- Common binary file extensions are ignored (.jpg, .png, .exe, etc. - see source for full list)
 
 ## Planned Features
 

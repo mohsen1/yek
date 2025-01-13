@@ -808,7 +808,7 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("max-size")
                 .help("Maximum size in MB")
-                .short('s')
+                .short('x')
                 .long("max-size")
                 .value_parser(clap::value_parser!(usize))
                 .default_value("10"),
@@ -828,6 +828,7 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("stream")
                 .help("Stream output to stdout instead of writing to files")
+                .short('s')
                 .long("stream")
                 .action(ArgAction::SetTrue),
         )
