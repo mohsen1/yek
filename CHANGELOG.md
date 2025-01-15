@@ -56,3 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Priority rules for file processing
 - Ignore patterns support
 - Binary file detection
+
+## [Unreleased]
+
+### Changed
+
+- Removed `--stream` flag in favor of automatic pipe detection
+- Improved file processing to collect and sort before processing
+- Enhanced error handling and validation messages
+- Better debug logging throughout the codebase

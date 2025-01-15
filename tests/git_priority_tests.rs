@@ -116,7 +116,7 @@ fn test_git_priority_boost() -> Result<(), Box<dyn std::error::Error>> {
         1024 * 1024, // 1MB max size
         Some(temp.path()),
         false, // don't count tokens
-        true,  // stream mode
+        true,  // stream mode (simulated pipe)
         None,  // no config
         None,  // no output dir override
         None,  // no path prefix
@@ -160,7 +160,7 @@ fn test_no_git_fallback() {
         1024 * 1024, // 1MB max size
         Some(temp.path()),
         false, // don't count tokens
-        true,  // stream mode
+        true,  // stream mode (simulated pipe)
         None,  // no config
         None,  // no output dir override
         None,  // no path prefix

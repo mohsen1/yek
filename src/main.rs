@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Arg, ArgAction, Command};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -33,13 +34,6 @@ fn main() -> Result<()> {
                 .help("Directory to write output files (overrides config file)")
                 .short('o')
                 .long("output-dir"),
-        )
-        .arg(
-            Arg::new("stream")
-                .help("Stream output to stdout instead of writing to files")
-                .short('s')
-                .long("stream")
-                .action(ArgAction::SetTrue),
         )
         .arg(
             Arg::new("tokens")
@@ -95,7 +89,7 @@ fn main() -> Result<()> {
         .get_one::<usize>("max-size")
         .map(|s| if count_tokens { *s } else { s * 1024 * 1024 })
         .unwrap_or(10 * 1024 * 1024);
-    let stream = matches.get_flag("stream");
+    let stream = !std::io::stdout().is_terminal();
     let output_dir = matches.get_one::<String>("output-dir").map(Path::new);
     let path_prefix = matches.get_one::<String>("path-prefix").map(|s| s.as_str());
 

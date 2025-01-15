@@ -5,6 +5,7 @@ A simple tool to read text-based files in a repository or directory, chunk them,
 - Uses `.gitignore` rules to skip unwanted files.
 - Infers additional ignore patterns (binary, large, etc.).
 - Splits content into chunks based on either approximate "token" count or byte size.
+- Automatically detects if output is being piped and streams content instead of writing to files.
 
 ## Installation
 
@@ -44,7 +45,6 @@ Options:
   -x, --max-size <max-size>      Maximum size in MB [default: 10]
   -c, --config <config>          Path to config file
   -o, --output-dir <output-dir>  Directory to write output files (overrides config file)
-  -s, --stream                   Stream output to stdout instead of writing to files
   -k, --tokens                   Count in tokens instead of bytes
   -p, --path-prefix <PREFIX>     Only process files under this path prefix
   -v, --debug                    Enable debug logging
@@ -78,10 +78,10 @@ yek --tokens --max-size 128000
 yek --path-prefix src/app
 ```
 
-- Stream output to stdout instead of writing files:
+- Stream output to another command:
 
 ```bash
-yek --stream
+yek | other-command
 ```
 
 ## Configuration File

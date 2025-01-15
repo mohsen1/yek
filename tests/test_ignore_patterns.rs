@@ -26,20 +26,16 @@ fn respects_gitignore() {
     );
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    let assert = cmd
+    let output = cmd
         .current_dir(repo.path())
-        .arg("--stream")
         .arg("--debug")
-        .assert()
-        .success();
+        .output()
+        .expect("Failed to execute command");
 
-    // Print full output for debugging
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
     println!("\nSTDOUT:\n{}", stdout);
-    println!(
-        "\nSTDERR:\n{}",
-        String::from_utf8_lossy(&assert.get_output().stderr)
-    );
+    println!("\nSTDERR:\n{}", String::from_utf8_lossy(&output.stderr));
 
     // Check that only the non-ignored file is in stdout
     assert!(
@@ -83,20 +79,16 @@ patterns = ["^dont_serialize/"]
     );
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    let assert = cmd
+    let output = cmd
         .current_dir(repo.path())
-        .arg("--stream")
         .arg("--debug")
-        .assert()
-        .success();
+        .output()
+        .expect("Failed to execute command");
 
-    // Print full output for debugging
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
     println!("\nSTDOUT:\n{}", stdout);
-    println!(
-        "\nSTDERR:\n{}",
-        String::from_utf8_lossy(&assert.get_output().stderr)
-    );
+    println!("\nSTDERR:\n{}", String::from_utf8_lossy(&output.stderr));
 
     // Check that only the non-ignored file is in stdout
     assert!(

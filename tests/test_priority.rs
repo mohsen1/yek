@@ -22,18 +22,19 @@ patterns = ["^less_important/"]
     create_file(repo.path(), "less_important/two.txt", "lower priority");
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    let assert = cmd
+    let output = cmd
         .current_dir(repo.path())
-        .arg("--stream")
-        .assert()
-        .success();
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Check that less_important appears before very_important in the output
-    let output = String::from_utf8_lossy(&assert.get_output().stdout);
-    let very_pos = output
+    let very_pos = stdout
         .find("very_important")
         .expect("very_important not found");
-    let less_pos = output
+    let less_pos = stdout
         .find("less_important")
         .expect("less_important not found");
     assert!(
