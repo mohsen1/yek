@@ -658,8 +658,8 @@ pub fn serialize_repo(
         });
     }
 
-    // Sort the final file list by priority desc
-    files.sort_by(|a, b| b.priority.cmp(&a.priority));
+    // Sort the final file list by priority asc (higher priority last)
+    files.sort_by(|a, b| a.priority.cmp(&b.priority));
 
     let mut current_chunk: Vec<(String, String)> = Vec::new();
     let mut current_chunk_size = 0;
