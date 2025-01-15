@@ -14,7 +14,7 @@ fn splits_large_file_in_chunks_bytes_mode() {
         .current_dir(repo.path())
         // Setting max-size to 10MB in bytes mode
         .arg("--max-size")
-        .arg("10")
+        .arg("10MB")
         .arg("--debug") // Enable debug output
         .assert()
         .success();

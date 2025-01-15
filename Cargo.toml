@@ -15,6 +15,7 @@ toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["time", "local-time"] }
 walkdir = "2.4"
+byte-unit = "4.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"

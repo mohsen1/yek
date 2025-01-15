@@ -42,7 +42,7 @@ Arguments:
   [path]  Path to repository [default: .]
 
 Options:
-  -x, --max-size <max-size>      Maximum size in MB [default: 10]
+  -x, --max-size <max-size>      Maximum size (e.g. '10MB', '128KB', '1GB') [default: 10MB]
   -c, --config <config>          Path to config file
   -o, --output-dir <output-dir>  Directory to write output files (overrides config file)
   -k, --tokens                   Count in tokens instead of bytes
@@ -63,7 +63,7 @@ yek
 - Split repository into chunks of 128MB:
 
 ```bash
-yek --max-size 128
+yek --max-size 128MB
 ```
 
 - Split into chunks by token count instead of bytes:
@@ -81,7 +81,7 @@ yek --path-prefix src/app
 - Stream output to another command:
 
 ```bash
-yek | other-command
+yek | pbcopy
 ```
 
 ## Configuration File

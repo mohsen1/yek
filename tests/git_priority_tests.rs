@@ -216,7 +216,7 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
     // Run serialization with non-stream mode to check output files
     let output_dir = temp.path().join("output");
     let result = serialize_repo(
-        1024 * 1024,
+        1024 * 1024, // 1MB max size
         Some(temp.path()),
         false,
         false,

@@ -1,10 +1,17 @@
 use anyhow::Result;
+use byte_unit::Byte;
 use clap::{Arg, ArgAction, Command};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use yek::{find_config_file, load_config_file, serialize_repo};
+
+fn parse_size_input(input: &str) -> std::result::Result<usize, String> {
+    Byte::from_str(input)
+        .map(|b| b.get_bytes() as usize)
+        .map_err(|e| e.to_string())
+}
 
 fn main() -> Result<()> {
     let matches = Command::new("yek")
@@ -17,11 +24,11 @@ fn main() -> Result<()> {
         )
         .arg(
             Arg::new("max-size")
-                .help("Maximum size in MB")
+                .help("Maximum size (e.g. '10MB', '128KB', '1GB')")
                 .short('x')
                 .long("max-size")
-                .value_parser(clap::value_parser!(usize))
-                .default_value("10"),
+                .value_parser(parse_size_input)
+                .default_value("10MB"),
         )
         .arg(
             Arg::new("config")
@@ -87,7 +94,7 @@ fn main() -> Result<()> {
     let count_tokens = matches.get_flag("tokens");
     let max_size = matches
         .get_one::<usize>("max-size")
-        .map(|s| if count_tokens { *s } else { s * 1024 * 1024 })
+        .copied()
         .unwrap_or(10 * 1024 * 1024);
     let stream = !std::io::stdout().is_terminal();
     let output_dir = matches.get_one::<String>("output-dir").map(Path::new);

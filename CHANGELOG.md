@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Added user-friendly size input format (e.g. '10MB', '128KB', '1GB')
 - Removed `--stream` flag in favor of automatic pipe detection
 - Improved file processing to collect and sort before processing
 - Enhanced error handling and validation messages
