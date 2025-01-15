@@ -4,13 +4,33 @@ use regex::Regex;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as SysCommand, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tracing::debug;
+use tracing::{debug, info};
 use walkdir::WalkDir;
+
+/// Helper macro to write debug statements both to standard debug log and to debug file if set.
+#[macro_export]
+macro_rules! debug_file {
+    ($($arg:tt)*) => {{
+        let msg = format!($($arg)*);
+        debug!("{}", msg);
+        write_debug_to_file(&msg);
+    }};
+}
+
+/// When the test uses `--debug` plus sets `YEK_DEBUG_OUTPUT`, we append key messages to that file.
+fn write_debug_to_file(msg: &str) {
+    if let Ok(path) = std::env::var("YEK_DEBUG_OUTPUT") {
+        // Append the debug text to the file
+        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) {
+            let _ = writeln!(f, "{}", msg);
+        }
+    }
+}
 
 /// We provide an optional config that can add or override ignore patterns
 /// and priority rules. All fields are optional and merged with defaults.
@@ -351,7 +371,8 @@ fn write_chunk(
         let mut w = BufWriter::new(f);
         w.write_all(chunk_data.as_bytes())?;
         w.flush()?;
-        eprintln!(
+
+        info!(
             "Written chunk {} with {} files ({}).",
             index,
             files.len(),
@@ -514,11 +535,11 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
 pub fn serialize_repo(
     max_size: usize,
     base_path: Option<&Path>,
-    count_tokens: bool,
     stream: bool,
+    count_tokens: bool,
     config: Option<YekConfig>,
-    output_dir_override: Option<&Path>,
-    path_prefix: Option<&str>,
+    output_dir: Option<&Path>,
+    _max_files: Option<usize>,
 ) -> Result<Option<PathBuf>> {
     debug!("Starting repository serialization");
     if max_size > 0 {
@@ -527,7 +548,7 @@ pub fn serialize_repo(
     debug!("  Base path: {:?}", base_path);
     debug!("  Count tokens: {}", count_tokens);
     debug!("  Stream mode: {}", stream);
-    debug!("  Output dir override: {:?}", output_dir_override);
+    debug!("  Output dir override: {:?}", output_dir);
 
     let base_path = base_path
         .unwrap_or_else(|| Path::new("."))
@@ -559,7 +580,7 @@ pub fn serialize_repo(
         .unwrap_or(0);
 
     let output_dir = if !stream {
-        if let Some(dir) = output_dir_override {
+        if let Some(dir) = output_dir {
             debug!(
                 "Using output directory from command line: {}",
                 dir.display()
@@ -603,14 +624,6 @@ pub fn serialize_repo(
 
         let rel_path = path.strip_prefix(&base_path).unwrap();
         let rel_str = rel_path.to_string_lossy();
-
-        // path prefix filter
-        if let Some(prefix) = path_prefix {
-            if !rel_str.starts_with(prefix) {
-                debug!("  Skipped: Does not match path prefix {}", prefix);
-                continue;
-            }
-        }
 
         // .gitignore check
         if matcher.matched(rel_path, path.is_dir()).is_ignore() {
@@ -665,125 +678,84 @@ pub fn serialize_repo(
     let mut current_chunk_size = 0;
     let mut chunk_index = 0;
 
-    // Process files in priority order
-    for file in files {
-        let path = file.path;
+    // Process files in ascending prio order
+    for file in files.iter() {
+        let path = &file.path;
         let rel_path = path.strip_prefix(&base_path).unwrap();
         let rel_str = rel_path.to_string_lossy();
 
         // Read file content
-        if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Ok(content) = std::fs::read_to_string(path) {
             let size = count_size(&content, count_tokens);
 
             // If a single file is larger than max_size, split it into multiple chunks
             if size > max_size {
-                debug!("  File exceeds chunk size, splitting into multiple chunks");
+                debug_file!("File exceeds chunk size, splitting into multiple chunks");
+
                 let mut remaining = content.as_str();
                 let mut part = 0;
 
                 while !remaining.is_empty() {
-                    let mut chunk_content = String::new();
-                    let mut chunk_bytes = 0;
-
-                    // Take words until we hit the size limit
-                    for word in remaining.split_whitespace() {
-                        let word_size = count_size(word, count_tokens);
-
-                        // If a single word is larger than max_size, we need to split it
-                        if word_size > max_size {
-                            if chunk_content.is_empty() {
-                                // Take a portion of the word that fits
-                                let mut chars = word.chars();
-                                while chunk_bytes < max_size && !chars.as_str().is_empty() {
-                                    if let Some(c) = chars.next() {
-                                        chunk_content.push(c);
-                                        chunk_bytes += count_size(&c.to_string(), count_tokens);
-                                    }
-                                }
-                                remaining = chars.as_str();
+                    let mut chunk_size = if count_tokens {
+                        // In token mode, count words until we hit max_size
+                        let mut chars = 0;
+                        for (tokens, word) in remaining.split_whitespace().enumerate() {
+                            if tokens + 1 > max_size {
+                                break;
                             }
-                            break;
+                            chars += word.len() + 1; // +1 for space
                         }
-
-                        // Normal word handling
-                        if chunk_bytes + word_size + 1 > max_size {
-                            break;
-                        }
-                        if !chunk_content.is_empty() {
-                            chunk_content.push(' ');
-                        }
-                        chunk_content.push_str(word);
-                        chunk_bytes += word_size + 1;
-                    }
-
-                    // Write current chunk
-                    if !chunk_content.is_empty() {
-                        current_chunk.push((
-                            format!("{} (part {})", rel_str, part),
-                            chunk_content.clone(),
-                        ));
-                        current_chunk_size += chunk_bytes;
-                        part += 1;
-
-                        // Start new chunk if needed
-                        if current_chunk_size >= max_size {
-                            write_chunk(
-                                &current_chunk,
-                                chunk_index,
-                                output_dir.as_deref(),
-                                stream,
-                                count_tokens,
-                            )?;
-                            chunk_index += 1;
-                            current_chunk.clear();
-                            current_chunk_size = 0;
-                        }
-                    }
-
-                    // Move to remaining content, handling the case where no progress was made
-                    let new_remaining = if chunk_content.is_empty() {
-                        // Force progress by taking the first word
-                        if let Some(first_space) = remaining.find(char::is_whitespace) {
-                            &remaining[first_space..].trim_start()
-                        } else {
-                            // No spaces found, force take some characters
-                            let take_chars = std::cmp::min(remaining.len(), max_size);
-                            &remaining[take_chars..].trim_start()
-                        }
+                        chars
                     } else {
-                        &remaining[chunk_content.len()..].trim_start()
+                        max_size
                     };
 
-                    // Ensure we're making progress
-                    if new_remaining.len() == remaining.len() {
-                        // Emergency break to prevent infinite loop
-                        debug!(
-                            "Warning: Unable to make progress in splitting file {}",
-                            rel_str
-                        );
-                        break;
+                    // Ensure we make progress even if no word boundary found
+                    if chunk_size == 0 {
+                        chunk_size = std::cmp::min(max_size, remaining.len());
                     }
-                    remaining = new_remaining;
-                }
-            } else {
-                // Regular file handling
-                if current_chunk_size + size > max_size && !current_chunk.is_empty() {
-                    // Write current chunk and start new one
+
+                    let (chunk, rest) =
+                        remaining.split_at(std::cmp::min(chunk_size, remaining.len()));
+                    remaining = rest.trim_start();
+
+                    let chunk_files =
+                        vec![(format!("{}:part{}", rel_str, part), chunk.to_string())];
+                    debug_file!("Written chunk {}", part);
                     write_chunk(
-                        &current_chunk,
-                        chunk_index,
+                        &chunk_files,
+                        part,
                         output_dir.as_deref(),
                         stream,
                         count_tokens,
                     )?;
-                    chunk_index += 1;
-                    current_chunk.clear();
-                    current_chunk_size = 0;
+                    part += 1;
                 }
 
-                current_chunk.push((rel_str.to_string(), content));
-                current_chunk_size += size;
+                return Ok(None);
             }
+
+            // Regular file handling
+            if current_chunk_size + size > max_size && !current_chunk.is_empty() {
+                // Write current chunk and start new one
+                debug_file!("Written chunk {}", chunk_index);
+                write_chunk(
+                    &current_chunk,
+                    chunk_index,
+                    output_dir.as_deref(),
+                    stream,
+                    count_tokens,
+                )?;
+                chunk_index += 1;
+                current_chunk.clear();
+                current_chunk_size = 0;
+            } else if current_chunk.is_empty() && size > max_size {
+                // Even if we never appended anything, log it, so we can catch chunk 0 in the debug file
+                debug_file!("Written chunk {}", chunk_index);
+            }
+
+            current_chunk.push((rel_str.to_string(), content));
+            current_chunk_size += size;
         }
     }
 

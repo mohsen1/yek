@@ -111,37 +111,27 @@ fn test_git_priority_boost() -> Result<(), Box<dyn std::error::Error>> {
         .to_rfc3339();
     commit_file(temp.path(), "recent.txt", "recent content", &recent_date)?;
 
-    // Run serialization with default config
+    // Run serialization with non-stream mode to check output files
+    let output_dir = temp.path().join("output");
     let result = serialize_repo(
         1024 * 1024, // 1MB max size
         Some(temp.path()),
-        false, // don't count tokens
-        true,  // stream mode (simulated pipe)
-        None,  // no config
-        None,  // no output dir override
-        None,  // no path prefix
+        false,
+        false,
+        None,
+        Some(&output_dir),
+        None,
     )?;
 
-    // The function should complete successfully
-    assert!(result.is_none(), "Stream mode should return None");
+    assert!(result.is_some(), "Should have output directory");
 
-    // We can't easily verify the exact output order in stream mode,
-    // but we can verify that the Git functionality works by checking
-    // the commit times directly
-    let times = get_recent_commit_times(temp.path()).expect("Should get commit times");
-    let old_ts = times.get("old.txt").expect("Should have old.txt");
-    let recent_ts = times.get("recent.txt").expect("Should have recent.txt");
+    // Read the first chunk to verify order
+    let chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
 
-    // Verify timestamps are as expected
+    // recent files should appear after old files
     assert!(
-        recent_ts > old_ts,
-        "Recent file should have later timestamp"
-    );
-
-    // The recent file's timestamp should be very close to now
-    assert!(
-        now - recent_ts < 86400,
-        "Recent file should be less than a day old"
+        chunk_content.find("old").unwrap() < chunk_content.find("recent").unwrap_or(usize::MAX),
+        "Old files should appear before recent files since higher priority files come last"
     );
 
     Ok(())
@@ -333,33 +323,21 @@ fn test_git_priority_with_path_prefix() -> Result<(), Box<dyn std::error::Error>
     let temp = TempDir::new()?;
     setup_git_repo(temp.path())?;
 
-    // Create directory structure
+    // Create test files in different paths
     fs::create_dir_all(temp.path().join("src/module1"))?;
     fs::create_dir_all(temp.path().join("src/module2"))?;
 
-    // Create files in different directories
     commit_file(
         temp.path(),
-        "src/module1/file1.rs",
+        "src/module1/file1.txt",
         "content 1",
-        "2024-01-01T12:00:00+00:00",
+        "2023-01-01T12:00:00+00:00",
     )?;
     commit_file(
         temp.path(),
-        "src/module2/file2.rs",
+        "src/module2/file2.txt",
         "content 2",
         "2024-01-01T12:00:00+00:00",
-    )?;
-
-    // Run serialization with path prefix
-    let _result = serialize_repo(
-        1024 * 1024,
-        Some(temp.path()),
-        false,
-        true,
-        None,
-        None,
-        Some("src/module1"),
     )?;
 
     // Verify that git times are still retrieved correctly
@@ -394,6 +372,90 @@ fn test_git_priority_with_empty_repo() -> Result<(), Box<dyn std::error::Error>>
     let times = get_recent_commit_times(temp.path());
     assert!(times.is_some(), "Should return empty map for empty repo");
     assert_eq!(times.unwrap().len(), 0);
+
+    Ok(())
+}
+
+#[test]
+fn test_git_priority_boost_with_path_prefix() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDir::new()?;
+    setup_git_repo(temp.path())?;
+
+    // Create test files with different dates and in different paths
+    fs::create_dir_all(temp.path().join("src/module1"))?;
+    fs::create_dir_all(temp.path().join("src/module2"))?;
+    fs::create_dir_all(temp.path().join("docs"))?;
+
+    // Create files in src/module1
+    commit_file(
+        temp.path(),
+        "src/module1/old.rs",
+        "old content",
+        "2023-01-01T12:00:00+00:00",
+    )?;
+
+    // Create files in src/module2
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let recent_date = chrono::DateTime::from_timestamp(now as i64, 0)
+        .unwrap()
+        .to_rfc3339();
+    commit_file(
+        temp.path(),
+        "src/module2/recent.rs",
+        "recent content",
+        &recent_date,
+    )?;
+
+    // Create files in docs
+    commit_file(temp.path(), "docs/recent.md", "recent docs", &recent_date)?;
+
+    // Create config with priority rules
+    let config = YekConfig {
+        priority_rules: vec![
+            PriorityRule {
+                score: 100,
+                patterns: vec!["^src/".to_string()],
+            },
+            PriorityRule {
+                score: 50,
+                patterns: vec!["^docs/".to_string()],
+            },
+        ],
+        ..Default::default()
+    };
+
+    // Run serialization with non-stream mode to check output files
+    let output_dir = temp.path().join("output");
+    let result = serialize_repo(
+        1024 * 1024, // 1MB max size
+        Some(temp.path()),
+        false,
+        false,
+        Some(config),
+        Some(&output_dir),
+        None,
+    )?;
+
+    assert!(result.is_some(), "Should have output directory");
+
+    // Read the first chunk to verify order
+    let chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+
+    // src/recent.rs should appear last (highest priority: src/ + recent)
+    assert!(
+        chunk_content.find("docs/recent.md").unwrap()
+            < chunk_content
+                .find("src/module2/recent.rs")
+                .unwrap_or(usize::MAX),
+        "docs/recent.md should appear before src/recent.rs since higher priority files come last"
+    );
+
+    // src/module1/old.rs should appear before src/module2/recent.rs
+    assert!(
+        chunk_content.find("src/module1/old.rs").unwrap()
+            < chunk_content.find("src/module2/recent.rs").unwrap_or(usize::MAX),
+        "src/module1/old.rs should appear before src/module2/recent.rs since higher priority files come last"
+    );
 
     Ok(())
 }

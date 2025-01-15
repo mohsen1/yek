@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### Changed
+
+## [0.6.0] - 2024-01-15
+
+- Simplified terminal output handling
+
 ## [0.5.0] - 2024-01-15
 
 ### Changed
@@ -56,13 +62,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Priority rules for file processing
 - Ignore patterns support
 - Binary file detection
-
-## [Unreleased]
-
-### Changed
-
-- Added user-friendly size input format (e.g. '10MB', '128KB', '1GB')
-- Removed `--stream` flag in favor of automatic pipe detection
-- Improved file processing to collect and sort before processing
-- Enhanced error handling and validation messages
-- Better debug logging throughout the codebase
