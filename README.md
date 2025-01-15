@@ -29,6 +29,8 @@ export PATH=$(pwd)/target/release:$PATH
 
 ## Usage
 
+`yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. It will serialize all files in the repository into chunks of 10MB by default. The file will be written to the temp directory and file path will be printed to the console.
+
 ### Run
 
 ```bash

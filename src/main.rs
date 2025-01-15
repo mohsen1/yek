@@ -2,9 +2,9 @@ use anyhow::Result;
 use byte_unit::Byte;
 use clap::{Arg, ArgAction, Command};
 use std::io::IsTerminal;
-use std::path::{Path, PathBuf};
-use tracing::{debug, info, Level};
-use tracing_subscriber::FmtSubscriber;
+use std::path::Path;
+use tracing::{info, Level};
+use tracing_subscriber::fmt;
 use yek::{find_config_file, load_config_file, serialize_repo};
 
 fn parse_size_input(input: &str) -> std::result::Result<usize, String> {
@@ -15,123 +15,77 @@ fn parse_size_input(input: &str) -> std::result::Result<usize, String> {
 
 fn main() -> Result<()> {
     let matches = Command::new("yek")
-        .about("Serialize repository content for LLM context")
-        .arg(
-            Arg::new("path")
-                .help("Path to repository")
-                .default_value(".")
-                .index(1),
-        )
+        .version(env!("CARGO_PKG_VERSION"))
+        .about("Repository content chunker and serializer for LLM consumption")
         .arg(
             Arg::new("max-size")
-                .help("Maximum size (e.g. '10MB', '128KB', '1GB')")
-                .short('x')
                 .long("max-size")
-                .value_parser(parse_size_input)
+                .help("Maximum size per chunk (e.g. '10MB', '128KB', '1GB')")
                 .default_value("10MB"),
         )
         .arg(
-            Arg::new("config")
-                .help("Path to config file")
-                .short('c')
-                .long("config"),
-        )
-        .arg(
-            Arg::new("output-dir")
-                .help("Directory to write output files (overrides config file)")
-                .short('o')
-                .long("output-dir"),
-        )
-        .arg(
             Arg::new("tokens")
-                .short('k')
                 .long("tokens")
-                .help("Count in tokens instead of bytes")
+                .help("Count size in tokens instead of bytes")
                 .action(ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("path-prefix")
-                .short('p')
-                .long("path-prefix")
-                .help("Only process files under this path prefix")
-                .value_name("PREFIX"),
         )
         .arg(
             Arg::new("debug")
-                .help("Enable debug logging")
-                .short('v')
                 .long("debug")
+                .help("Enable debug output")
                 .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("output-dir")
+                .long("output-dir")
+                .help("Output directory for chunks"),
         )
         .get_matches();
 
-    // Initialize logging based on debug flag
-    FmtSubscriber::builder()
-        .with_max_level(if matches.get_flag("debug") {
-            Level::DEBUG
-        } else {
-            Level::INFO
-        })
+    // Setup logging
+    let level = if matches.get_flag("debug") {
+        Level::DEBUG
+    } else {
+        Level::INFO
+    };
+    fmt()
+        .with_max_level(level)
         .with_target(false)
+        .with_file(true)
+        .with_line_number(true)
         .with_thread_ids(false)
         .with_thread_names(false)
-        .with_file(false)
-        .with_line_number(false)
-        .with_level(true)
         .with_ansi(true)
-        .with_timer(tracing_subscriber::fmt::time::LocalTime::new(
-            time::format_description::parse("[hour]:[minute]:[second]").unwrap(),
-        ))
-        .compact()
         .init();
 
-    debug!("Starting yek with debug logging enabled");
+    // Parse max size
+    let max_size_str = matches.get_one::<String>("max-size").unwrap();
+    let max_size = parse_size_input(max_size_str).map_err(|e| anyhow::anyhow!(e))?;
 
-    let path = matches
-        .get_one::<String>("path")
-        .map(|s| s.as_str())
-        .unwrap_or(".");
-    let count_tokens = matches.get_flag("tokens");
-    let max_size = matches
-        .get_one::<usize>("max-size")
-        .copied()
-        .unwrap_or(10 * 1024 * 1024);
-    let stream = !std::io::stdout().is_terminal();
-    let output_dir = matches.get_one::<String>("output-dir").map(Path::new);
-    let path_prefix = matches.get_one::<String>("path-prefix").map(|s| s.as_str());
+    // Get current directory
+    let current_dir = std::env::current_dir()?;
 
-    debug!("CLI Arguments:");
-    debug!("  Repository path: {}", path);
-    debug!("  Maximum size: {} bytes", max_size);
-    debug!("  Stream mode: {}", stream);
-    debug!("  Token counting mode: {}", count_tokens);
-    debug!("  Output directory: {:?}", output_dir);
+    // Find config file
+    let config = find_config_file(&current_dir).and_then(|p| load_config_file(&p));
 
-    let config_path = matches
-        .get_one::<String>("config")
-        .map(PathBuf::from)
-        .or_else(|| find_config_file(Path::new(path)));
+    // Get output directory from command line or config
+    let output_dir = matches
+        .get_one::<String>("output-dir")
+        .map(|s| Path::new(s).to_path_buf());
 
-    let config = config_path.and_then(|p| load_config_file(&p));
-    debug!("Configuration:");
-    debug!("  Config file loaded: {}", config.is_some());
-    if let Some(cfg) = &config {
-        debug!("  Ignore patterns: {}", cfg.ignore_patterns.patterns.len());
-        debug!("  Priority rules: {}", cfg.priority_rules.len());
-        debug!("  Binary extensions: {}", cfg.binary_extensions.len());
-        debug!("  Output directory: {:?}", cfg.output_dir);
-    }
+    // Check if we're in stream mode (piped output)
+    let stream = output_dir.is_none() && !std::io::stdout().is_terminal();
 
     if let Some(output_path) = serialize_repo(
         max_size,
-        Some(Path::new(path)),
-        count_tokens,
+        Some(&current_dir),
         stream,
+        matches.get_flag("tokens"),
         config,
-        output_dir,
-        path_prefix,
+        output_dir.as_deref(),
+        None,
     )? {
-        info!("Output written to: {}", output_path.display());
+        info!("Output written to {}", output_path.display());
     }
 
     Ok(())

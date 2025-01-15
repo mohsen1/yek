@@ -1,6 +1,7 @@
 mod integration_common;
 use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
+use std::fs;
 
 /// Writes a file larger than the default 10MB limit in tokens or bytes, forcing multiple chunks.
 #[test]
@@ -9,35 +10,33 @@ fn splits_large_file_in_chunks_bytes_mode() {
     let large_content = "A ".repeat(1024 * 1024 * 11); // ~ 11MB
     create_file(repo.path(), "BIG.txt", &large_content);
 
+    // Create temp file for debug output
+    let debug_output = repo.path().join("debug_output.txt");
+    let debug_output_path = debug_output.to_str().unwrap();
+
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    let assert = cmd
-        .current_dir(repo.path())
-        // Setting max-size to 10MB in bytes mode
+    cmd.current_dir(repo.path())
         .arg("--max-size")
         .arg("10MB")
-        .arg("--debug") // Enable debug output
+        .arg("--debug")
+        .env("YEK_DEBUG_OUTPUT", debug_output_path)
         .assert()
         .success();
 
-    // Print full output for debugging
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    println!("\nSTDOUT:\n{}", stdout);
-    println!("\nSTDERR:\n{}", stderr);
+    // Read debug output from file
+    let debug_content = fs::read_to_string(debug_output).unwrap();
 
-    // Check debug message in stdout
+    // Check debug messages
     assert!(
-        stdout.contains("File exceeds chunk size, splitting into multiple chunks"),
+        debug_content.contains("File exceeds chunk size, splitting into multiple chunks"),
         "Should indicate file exceeds chunk size"
     );
-
-    // Check chunk messages in stderr
     assert!(
-        stderr.contains("Written chunk 0"),
+        debug_content.contains("Written chunk 0"),
         "Should write first chunk"
     );
     assert!(
-        stderr.contains("Written chunk 1"),
+        debug_content.contains("Written chunk 1"),
         "Should write second chunk"
     );
 }
@@ -49,36 +48,34 @@ fn splits_large_file_in_chunks_token_mode() {
     let large_content = "TOKEN ".repeat(200_000); // enough tokens to exceed default
     create_file(repo.path(), "BIG_token.txt", &large_content);
 
+    // Create temp file for debug output
+    let debug_output = repo.path().join("debug_output.txt");
+    let debug_output_path = debug_output.to_str().unwrap();
+
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    let assert = cmd
-        .current_dir(repo.path())
-        // Switch to token mode
+    cmd.current_dir(repo.path())
         .arg("--tokens")
         .arg("--max-size")
         .arg("150000") // ~150k tokens
-        .arg("--debug") // Enable debug output
+        .arg("--debug")
+        .env("YEK_DEBUG_OUTPUT", debug_output_path)
         .assert()
         .success();
 
-    // Print full output for debugging
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    println!("\nSTDOUT:\n{}", stdout);
-    println!("\nSTDERR:\n{}", stderr);
+    // Read debug output from file
+    let debug_content = fs::read_to_string(debug_output).unwrap();
 
-    // Check debug message in stdout
+    // Check debug messages
     assert!(
-        stdout.contains("File exceeds chunk size, splitting into multiple chunks"),
+        debug_content.contains("File exceeds chunk size, splitting into multiple chunks"),
         "Should indicate file exceeds chunk size"
     );
-
-    // Check chunk messages in stderr
     assert!(
-        stderr.contains("Written chunk 0"),
+        debug_content.contains("Written chunk 0"),
         "Should write first chunk"
     );
     assert!(
-        stderr.contains("Written chunk 1"),
+        debug_content.contains("Written chunk 1"),
         "Should write second chunk"
     );
 }
