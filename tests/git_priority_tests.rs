@@ -230,17 +230,17 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
     // Read the first chunk to verify order
     let chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
 
-    // src/recent.rs should appear first (highest priority: src/ + recent)
+    // src/recent.rs should appear last (highest priority: src/ + recent)
     assert!(
-        chunk_content.find("src/recent.rs").unwrap()
-            < chunk_content.find("docs/recent.md").unwrap_or(usize::MAX),
-        "src/recent.rs should appear before docs/recent.md"
+        chunk_content.find("docs/recent.md").unwrap()
+            < chunk_content.find("src/recent.rs").unwrap_or(usize::MAX),
+        "docs/recent.md should appear before src/recent.rs since higher priority files come last"
     );
 
-    // recent files should appear before old files
+    // recent files should appear after old files
     assert!(
-        chunk_content.find("recent").unwrap() < chunk_content.find("old").unwrap_or(usize::MAX),
-        "Recent files should appear before old files"
+        chunk_content.find("old").unwrap() < chunk_content.find("recent").unwrap_or(usize::MAX),
+        "Old files should appear before recent files since higher priority files come last"
     );
 
     Ok(())

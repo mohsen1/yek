@@ -21,7 +21,6 @@ patterns = ["^less_important/"]
     create_file(repo.path(), "very_important/one.txt", "high priority");
     create_file(repo.path(), "less_important/two.txt", "lower priority");
 
-    // We'll rely on logs to see if "very_important" is processed first
     let mut cmd = Command::cargo_bin("yek").unwrap();
     let assert = cmd
         .current_dir(repo.path())
@@ -29,7 +28,7 @@ patterns = ["^less_important/"]
         .assert()
         .success();
 
-    // Check that very_important appears before less_important in the output
+    // Check that less_important appears before very_important in the output
     let output = String::from_utf8_lossy(&assert.get_output().stdout);
     let very_pos = output
         .find("very_important")
@@ -38,7 +37,7 @@ patterns = ["^less_important/"]
         .find("less_important")
         .expect("less_important not found");
     assert!(
-        very_pos < less_pos,
-        "very_important should appear before less_important"
+        less_pos < very_pos,
+        "less_important should appear before very_important since higher priority files come last"
     );
 }
