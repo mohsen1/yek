@@ -6,6 +6,7 @@ A simple tool to read text-based files in a repository or directory, chunk them,
 - Infers additional ignore patterns (binary, large, etc.).
 - Splits content into chunks based on either approximate "token" count or byte size.
 - Automatically detects if output is being piped and streams content instead of writing to files.
+- Supports processing multiple directories in a single command.
 
 ## Installation
 
@@ -30,6 +31,32 @@ export PATH=$(pwd)/target/release:$PATH
 ## Usage
 
 `yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. It will serialize all files in the repository into chunks of 10MB by default. The file will be written to the temp directory and file path will be printed to the console.
+
+### Examples
+
+Process current directory:
+
+```bash
+yek
+```
+
+Process specific directories:
+
+```bash
+yek src/ tests/
+```
+
+Process multiple repositories:
+
+```bash
+yek ~/code/project1 ~/code/project2
+```
+
+Pipe output to clipboard:
+
+```bash
+yek src/ | pbcopy
+```
 
 ### Run
 
