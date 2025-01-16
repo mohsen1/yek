@@ -1,12 +1,14 @@
 # `yek`
 
-A simple tool to read text-based files in a repository or directory, chunk them, and serialize them for LLM consumption. By default, the tool:
+A fast Rust based tool to read text-based files in a repository or directory, chunk them, and serialize them for LLM consumption. By default, the tool:
 
 - Uses `.gitignore` rules to skip unwanted files.
+- Uses the Git history to infer what files are important.
 - Infers additional ignore patterns (binary, large, etc.).
 - Splits content into chunks based on either approximate "token" count or byte size.
 - Automatically detects if output is being piped and streams content instead of writing to files.
 - Supports processing multiple directories in a single command.
+- Configurable via a `yek.toml` file.
 
 ## Installation
 
@@ -63,22 +65,20 @@ yek src/ | pbcopy
 ```bash
 yek --help
 
-Serialize repository content for LLM context
+Repository content chunker and serializer for LLM consumption
 
-Usage: yek [OPTIONS] [path]
+Usage: yek [OPTIONS] [directories]...
 
 Arguments:
-  [path]  Path to repository [default: .]
+  [directories]...  Directories to process [default: .]
 
 Options:
-  -x, --max-size <max-size>      Maximum size (e.g. '10MB', '128KB', '1GB') [default: 10MB]
-  -c, --config <config>          Path to config file
-  -o, --output-dir <output-dir>  Directory to write output files (overrides config file)
-  -k, --tokens                   Count in tokens instead of bytes
-  -p, --path-prefix <PREFIX>     Only process files under this path prefix
-  -v, --debug                    Enable debug logging
+      --max-size <max-size>      Maximum size per chunk (e.g. '10MB', '128KB', '1GB') [default: 10MB]
+      --tokens                   Count size in tokens instead of bytes
+      --debug                    Enable debug output
+      --output-dir <output-dir>  Output directory for chunks
   -h, --help                     Print help
-
+  -V, --version                  Print version
 ```
 
 ## Examples
@@ -104,7 +104,13 @@ yek --tokens --max-size 128000
 - Serialize only files under a specific path:
 
 ```bash
-yek --path-prefix src/app
+yek src/app
+```
+
+- Process multiple directories:
+
+```bash
+yek src/app src/lib
 ```
 
 - Stream output to another command:
