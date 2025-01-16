@@ -57,11 +57,13 @@ fn main() -> Result<()> {
     fmt()
         .with_max_level(level)
         .with_target(false)
-        .with_file(true)
-        .with_line_number(true)
+        .with_file(false)
+        .with_line_number(false)
         .with_thread_ids(false)
         .with_thread_names(false)
+        .with_level(false)
         .with_ansi(true)
+        .without_time()
         .init();
 
     // Parse max size

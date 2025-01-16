@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Simplified terminal output handling
 - Added support for processing multiple directories via command line arguments
+- Removed log prefixes for cleaner output
 
 ## [0.5.0] - 2024-01-15
 
