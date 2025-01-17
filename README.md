@@ -15,7 +15,7 @@ A fast Rust based tool to read text-based files in a repository or directory, ch
 ### Via Homebrew (recommended)
 
 ```bash
-brew tap mohsen1/yek https://github.com/mohsen1/yek.git
+brew tap bodo-run/yek https://github.com/bodo-run/yek.git
 brew install yek
 ```
 
