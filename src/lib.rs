@@ -218,7 +218,8 @@ fn build_final_config(cfg: Option<YekConfig>) -> FinalConfig {
                 });
             }
         }
-        merged_priority.sort_by(|a, b| b.score.cmp(&a.score));
+        // Sort priority rules in ascending order so higher scores come last
+        merged_priority.sort_by(|a, b| a.score.cmp(&b.score));
     }
 
     FinalConfig {
@@ -653,7 +654,7 @@ pub fn serialize_repo(
         });
     }
 
-    // Sort files by priority (ascending)
+    // Sort files by priority (ascending) so higher priority files come last
     files.sort_by(|a, b| a.priority.cmp(&b.priority));
 
     // Process files in sorted order
