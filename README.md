@@ -19,6 +19,14 @@ brew tap bodo-run/yek https://github.com/bodo-run/yek.git
 brew install yek
 ```
 
+### Via Install Script
+
+For Unix-like systems (macOS, Linux):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bodo-run/yek/main/scripts/install_yek.sh | bash
+```
+
 ### From Source
 
 1. [Install Rust](https://www.rust-lang.org/tools/install).
