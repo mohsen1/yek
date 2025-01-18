@@ -16,7 +16,16 @@ jobs:
         id: get_linux_install_script
         shell: bash
         run: |
-          script=$(sed -n '/<!-- LINUX_INSTALLATION_BEGIN -->/,/<!-- LINUX_INSTALLATION_END -->/p' README.md | grep -v '^```')
+          script=$(awk '/<!-- LINUX_INSTALLATION_BEGIN -->/{p=1;next}/<!-- LINUX_INSTALLATION_END -->/{p=0}p' README.md | grep -v '^```')
+          # Ensure script is not empty
+          if [ -z "$script" ]; then
+            echo "Error: Could not extract Linux installation script from README.md"
+            exit 1
+          fi
+          # Escape multiline output
+          script="${script//'%'/'%25'}"
+          script="${script//$'\n'/'%0A'}"
+          script="${script//$'\r'/'%0D'}"
           echo "script=$script" >> $GITHUB_OUTPUT
 
       - name: Test installation script
@@ -24,13 +33,30 @@ jobs:
 
       - name: Verify installation
         run: |
-          yek --version
-          # Create a test file
+          # Ensure yek is in PATH
+          which yek || {
+            echo "Error: yek not found in PATH"
+            echo "PATH: $PATH"
+            exit 1
+          }
+          # Test version output
+          yek --version || {
+            echo "Error: yek --version failed"
+            exit 1
+          }
+          # Create test file
           echo "test content" > test.txt
           # Test basic functionality
-          yek test.txt
+          yek test.txt || {
+            echo "Error: yek failed to process test file"
+            exit 1
+          }
           # Verify output exists
-          test -f repo-serialized/chunk-0.txt
+          test -f repo-serialized/chunk-0.txt || {
+            echo "Error: Output file not found"
+            ls -la repo-serialized/ || true
+            exit 1
+          }
 
   test-windows-install:
     name: Test Windows Installation
@@ -42,7 +68,16 @@ jobs:
         id: get_windows_install_script
         shell: bash
         run: |
-          script=$(sed -n '/<!-- WINDOWS_INSTALLATION_BEGIN -->/,/<!-- WINDOWS_INSTALLATION_END -->/p' README.md | grep -v '^```')
+          script=$(awk '/<!-- WINDOWS_INSTALLATION_BEGIN -->/{p=1;next}/<!-- WINDOWS_INSTALLATION_END -->/{p=0}p' README.md | grep -v '^```')
+          # Ensure script is not empty
+          if [ -z "$script" ]; then
+            echo "Error: Could not extract Windows installation script from README.md"
+            exit 1
+          fi
+          # Escape multiline output
+          script="${script//'%'/'%25'}"
+          script="${script//$'\n'/'%0A'}"
+          script="${script//$'\r'/'%0D'}"
           echo "script=$script" >> $GITHUB_OUTPUT
 
       - name: Test installation script
@@ -52,12 +87,30 @@ jobs:
       - name: Verify installation
         shell: powershell
         run: |
-          yek --version
-          # Create a test file
+          # Ensure yek is in PATH
+          if (-not (Get-Command yek -ErrorAction SilentlyContinue)) {
+            Write-Error "yek not found in PATH"
+            Write-Host "PATH: $env:PATH"
+            exit 1
+          }
+          # Test version output
+          $version = yek --version
+          if (-not $?) {
+            Write-Error "yek --version failed"
+            exit 1
+          }
+          Write-Host "Version: $version"
+          # Create test file
           "test content" | Out-File -FilePath test.txt
           # Test basic functionality
           yek test.txt
+          if (-not $?) {
+            Write-Error "yek failed to process test file"
+            exit 1
+          }
           # Verify output exists
           if (-not (Test-Path repo-serialized/chunk-0.txt)) {
-            throw "Output file not found"
+            Write-Error "Output file not found"
+            Get-ChildItem repo-serialized -ErrorAction SilentlyContinue
+            exit 1
           }
