@@ -126,11 +126,23 @@ fn test_git_priority_boost() -> Result<(), Box<dyn std::error::Error>> {
     assert!(result.is_some(), "Should have output directory");
 
     // Read the first chunk to verify order
-    let chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+    let mut chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+
+    // Convert Windows paths to Unix style for consistent comparison
+    #[cfg(windows)]
+    {
+        chunk_content = chunk_content.replace("\\", "/");
+    }
+
+    // Verify file order
+    let old_pos = chunk_content.find("old.txt").expect("Should find old.txt");
+    let recent_pos = chunk_content
+        .find("recent.txt")
+        .expect("Should find recent.txt");
 
     // recent files should appear after old files
     assert!(
-        chunk_content.find("old").unwrap() < chunk_content.find("recent").unwrap_or(usize::MAX),
+        old_pos < recent_pos,
         "Old files should appear before recent files since higher priority files come last"
     );
 
@@ -190,9 +202,6 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap()
         .to_rfc3339();
 
-    fs::create_dir_all(temp.path().join("src"))?;
-    fs::create_dir_all(temp.path().join("docs"))?;
-
     // Create and commit src/recent.rs with newer timestamp
     commit_file(temp.path(), "src/recent.rs", "recent content", &src_date)?;
 
@@ -223,18 +232,37 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
     assert!(result.is_some(), "Should have output directory");
 
     // Read the first chunk to verify order
-    let chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+    let mut chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+
+    // Convert Windows paths to Unix style for consistent comparison
+    #[cfg(windows)]
+    {
+        chunk_content = chunk_content.replace("\\", "/");
+    }
+
+    // Verify file order
+    let docs_pos = chunk_content
+        .find("docs/recent.md")
+        .expect("Should find docs/recent.md");
+    let src_pos = chunk_content
+        .find("src/recent.rs")
+        .expect("Should find src/recent.rs");
+    let old_pos = chunk_content
+        .find("src/old.rs")
+        .expect("Should find src/old.rs");
+    let recent_pos = chunk_content
+        .find("src/recent.rs")
+        .expect("Should find src/recent.rs");
 
     // src/recent.rs should appear last (highest priority: src/ + recent)
     assert!(
-        chunk_content.find("docs/recent.md").unwrap()
-            < chunk_content.find("src/recent.rs").unwrap_or(usize::MAX),
+        docs_pos < src_pos,
         "docs/recent.md should appear before src/recent.rs since higher priority files come last"
     );
 
     // recent files should appear after old files
     assert!(
-        chunk_content.find("old").unwrap() < chunk_content.find("recent").unwrap_or(usize::MAX),
+        old_pos < recent_pos,
         "Old files should appear before recent files since higher priority files come last"
     );
 
@@ -451,21 +479,37 @@ fn test_git_priority_boost_with_path_prefix() -> Result<(), Box<dyn std::error::
     assert!(result.is_some(), "Should have output directory");
 
     // Read the first chunk to verify order
-    let chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+    let mut chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+
+    // Convert Windows paths to Unix style for consistent comparison
+    #[cfg(windows)]
+    {
+        chunk_content = chunk_content.replace("\\", "/");
+    }
+
+    // Verify file order
+    let docs_pos = chunk_content
+        .find("docs/recent.md")
+        .expect("Should find docs/recent.md");
+    let src_pos = chunk_content
+        .find("src/module2/recent.rs")
+        .expect("Should find src/module2/recent.rs");
+    let old_pos = chunk_content
+        .find("src/module1/old.rs")
+        .expect("Should find src/module1/old.rs");
+    let recent_pos = chunk_content
+        .find("src/module2/recent.rs")
+        .expect("Should find src/module2/recent.rs");
 
     // src/recent.rs should appear last (highest priority: src/ + recent)
     assert!(
-        chunk_content.find("docs/recent.md").unwrap()
-            < chunk_content
-                .find("src/module2/recent.rs")
-                .unwrap_or(usize::MAX),
-        "docs/recent.md should appear before src/recent.rs since higher priority files come last"
+        docs_pos < src_pos,
+        "docs/recent.md should appear before src/module2/recent.rs since higher priority files come last"
     );
 
     // src/module1/old.rs should appear before src/module2/recent.rs
     assert!(
-        chunk_content.find("src/module1/old.rs").unwrap()
-            < chunk_content.find("src/module2/recent.rs").unwrap_or(usize::MAX),
+        old_pos < recent_pos,
         "src/module1/old.rs should appear before src/module2/recent.rs since higher priority files come last"
     );
 
