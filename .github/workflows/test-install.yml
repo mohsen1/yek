@@ -81,6 +81,40 @@ jobs:
           script="${script//$'\r'/'%0D'}"
           echo "script=$script" >> $GITHUB_OUTPUT
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build yek
+        shell: powershell
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc --locked
+          # Verify binary exists
+          $binary = "target\x86_64-pc-windows-msvc\release\yek.exe"
+          if (-not (Test-Path $binary)) {
+            Write-Error "Binary not found at: $binary"
+            Get-ChildItem target -Recurse | Where-Object { $_.Name -like "yek.exe" }
+            exit 1
+          }
+          Write-Host "Binary size: $((Get-Item $binary).Length) bytes"
+
+      - name: Setup test environment
+        shell: powershell
+        run: |
+          # Create test directory
+          New-Item -ItemType Directory -Path "$env:USERPROFILE\.local\bin" -Force
+          # Add to PATH
+          $env:Path = "$env:USERPROFILE\.local\bin;" + $env:Path
+          # Copy binary
+          Copy-Item "target\x86_64-pc-windows-msvc\release\yek.exe" "$env:USERPROFILE\.local\bin\yek.exe"
+          # Verify binary is executable
+          if (-not (Get-Command yek -ErrorAction SilentlyContinue)) {
+            Write-Error "yek not found in PATH after manual installation"
+            Write-Host "PATH: $env:Path"
+            exit 1
+          }
+
       - name: Test installation script
         shell: powershell
         run: ${{ steps.get_windows_install_script.outputs.script }}
@@ -102,7 +136,7 @@ jobs:
           }
           Write-Host "Version: $version"
           # Create test file
-          "test content" | Out-File -FilePath test.txt
+          "test content" | Out-File -FilePath test.txt -Encoding utf8
           # Test basic functionality
           yek test.txt
           if (-not $?) {
