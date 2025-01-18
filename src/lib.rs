@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ignore::gitignore::{Gitignore, GitignoreBuilder};
+use ignore::gitignore::GitignoreBuilder;
 use regex::Regex;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
