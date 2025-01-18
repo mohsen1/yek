@@ -12,7 +12,7 @@ A fast Rust based tool to read text-based files in a repository or directory, ch
 
 ## Installation
 
-### Via Homebrew (recommended)
+### Via Homebrew (recommended for macOS)
 
 ```bash
 brew tap bodo-run/yek https://github.com/bodo-run/yek.git
@@ -25,6 +25,12 @@ For Unix-like systems (macOS, Linux):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bodo-run/yek/main/scripts/install_yek.sh | bash
+```
+
+For Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/bodo-run/yek/main/scripts/install_yek.ps1 | iex
 ```
 
 ### From Source
