@@ -38,6 +38,28 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+  test_install:
+    name: Test Installation
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Test Unix installer
+        if: runner.os != 'Windows'
+        run: |
+          bash scripts/install_yek.sh
+          yek --version
+
+      - name: Test Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/install_yek.ps1
+          yek --version
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -105,7 +127,7 @@ jobs:
 
   release:
     name: Release
-    needs: [test, lint, build]
+    needs: [test, test_install, lint, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
