@@ -26,7 +26,7 @@ For Unix-like systems (macOS, Linux):
 <!-- LINUX_INSTALLATION_BEGIN -->
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bodo-run/yek/main/scripts/install_yek.sh | bash
+curl -fsSL https://bodo.run/yek.sh | bash
 ```
 
 <!-- LINUX_INSTALLATION_END -->
@@ -36,7 +36,7 @@ For Windows (PowerShell):
 <!-- WINDOWS_INSTALLATION_BEGIN -->
 
 ```powershell
-irm https://raw.githubusercontent.com/bodo-run/yek/main/scripts/install_yek.ps1 | iex
+irm https://bodo.run/yek.ps1 | iex
 ```
 
 <!-- WINDOWS_INSTALLATION_END -->
