@@ -381,7 +381,18 @@ fn test_git_priority_boost_with_path_prefix() -> Result<(), Box<dyn std::error::
     let temp = TempDir::new()?;
     setup_git_repo(temp.path())?;
 
-    // Create test files with different dates and in different paths
+    // We'll give src/module2/recent.rs a commit date that is 1 second newer
+    // so that it definitely has a higher priority than docs/recent.md.
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    // For docs:
+    let docs_date = chrono::DateTime::from_timestamp((now as i64) - 1, 0)
+        .unwrap()
+        .to_rfc3339();
+    // For src:
+    let src_date = chrono::DateTime::from_timestamp(now as i64, 0)
+        .unwrap()
+        .to_rfc3339();
+
     fs::create_dir_all(temp.path().join("src/module1"))?;
     fs::create_dir_all(temp.path().join("src/module2"))?;
     fs::create_dir_all(temp.path().join("docs"))?;
@@ -394,20 +405,16 @@ fn test_git_priority_boost_with_path_prefix() -> Result<(), Box<dyn std::error::
         "2023-01-01T12:00:00+00:00",
     )?;
 
-    // Create files in src/module2
-    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    let recent_date = chrono::DateTime::from_timestamp(now as i64, 0)
-        .unwrap()
-        .to_rfc3339();
+    // Create files in src/module2 with newer timestamp
     commit_file(
         temp.path(),
         "src/module2/recent.rs",
         "recent content",
-        &recent_date,
+        &src_date,
     )?;
 
-    // Create files in docs
-    commit_file(temp.path(), "docs/recent.md", "recent docs", &recent_date)?;
+    // Create files in docs with slightly older timestamp
+    commit_file(temp.path(), "docs/recent.md", "recent docs", &docs_date)?;
 
     // Create config with priority rules
     let config = YekConfig {
