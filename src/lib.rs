@@ -578,7 +578,9 @@ pub fn serialize_repo(
                 let age = now.saturating_sub(*ts);
                 if age < 60 * 60 * 24 * 7 {
                     // Files modified in last week get priority boost
-                    priority += 100;
+                    // Add boost based on how recent the file is
+                    let boost = 100 + ((60 * 60 * 24 * 7 - age) / (60 * 60)) as i32;
+                    priority += boost;
                 }
             }
         }
