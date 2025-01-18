@@ -2,7 +2,6 @@ use anyhow::Result;
 use ignore::gitignore::GitignoreBuilder;
 use regex::Regex;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufWriter, Read, Write};
@@ -295,58 +294,6 @@ pub fn format_size(size: usize, is_tokens: bool) -> String {
     }
 }
 
-/// Attempt to compute a short hash from git. If not available, fallback to timestamp.
-fn get_repo_checksum(chunk_size: usize) -> String {
-    let out = SysCommand::new("git")
-        .args(["ls-files", "-c", "--exclude-standard"])
-        .stderr(Stdio::null())
-        .output();
-
-    let mut hasher = Sha256::new();
-    match out {
-        Ok(o) => {
-            if !o.status.success() {
-                return fallback_timestamp();
-            }
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            let mut lines: Vec<_> = stdout
-                .split('\n')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .collect();
-            lines.sort();
-
-            for file in lines {
-                let ho = SysCommand::new("git")
-                    .args(["hash-object", file])
-                    .stderr(Stdio::null())
-                    .output();
-                if let Ok(h) = ho {
-                    if h.status.success() {
-                        let fh = String::from_utf8_lossy(&h.stdout).trim().to_string();
-                        let _ = writeln!(hasher, "{}:{}", file, fh);
-                    }
-                }
-            }
-            if chunk_size != 0 {
-                let _ = write!(hasher, "{}", chunk_size);
-            }
-            let digest = hasher.finalize();
-            let hex = format!("{:x}", digest);
-            hex[..8].to_string()
-        }
-        Err(_) => fallback_timestamp(),
-    }
-}
-
-fn fallback_timestamp() -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    format!("{:x}", now)
-}
-
 /// Write chunk to file or stdout
 fn write_chunk(
     files: &[(String, String)],
@@ -410,7 +357,7 @@ pub fn get_file_priority(
     40 // fallback
 }
 
-/// Reads `git log` to find the commit time of the most recent change to each file.
+/// Get the commit time of the most recent change to each file.
 /// Returns a map from file path (relative to the repo root) → last commit Unix time.
 /// If Git or .git folder is missing, returns None instead of erroring.
 pub fn get_recent_commit_times(repo_root: &Path) -> Option<HashMap<String, u64>> {
@@ -442,30 +389,18 @@ pub fn get_recent_commit_times(repo_root: &Path) -> Option<HashMap<String, u64>>
     let mut map: HashMap<String, u64> = HashMap::new();
     let mut current_timestamp = 0_u64;
 
-    // The log output is in blocks:
-    //   <commit_timestamp>
-    //   <file1>
-    //   <file2>
-    //   ...
-    //   <commit_timestamp>
-    //   <file3>
-    //   ...
-    // We store the commit_timestamp in current_timestamp, then apply to each file
     for line in stdout.lines() {
-        if let Ok(ts) = line.parse::<u64>() {
-            current_timestamp = ts;
+        if line.is_empty() {
             continue;
         }
-        // It's a file line
-        let file_line = line.trim();
-        if !file_line.is_empty() {
-            // If multiple commits touch the same file, we only store the *latest* one we see
-            // (first in the log).
-            if !map.contains_key(file_line) {
-                map.insert(file_line.to_string(), current_timestamp);
-            }
+        if let Ok(ts) = line.parse::<u64>() {
+            current_timestamp = ts;
+        } else if !line.contains('\0') {
+            // Skip any binary filenames
+            map.insert(line.to_string(), current_timestamp);
         }
     }
+
     Some(map)
 }
 
