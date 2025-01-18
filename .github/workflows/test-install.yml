@@ -14,12 +14,10 @@ jobs:
 
       - name: Get install script
         id: get_linux_install_script
+        shell: bash
         run: |
-          readme=$(cat README.md)
-          #  the script is between <!-- LINUX_INSTALLATION_BEGIN --> and <!-- LINUX_INSTALLATION_END -->
-          #   we remove lines starting with ```
-          script=$(echo "$readme" | sed -n '/<!-- LINUX_INSTALLATION_BEGIN -->/,/<!-- LINUX_INSTALLATION_END -->/p' | sed '/^```/d')
-          echo "::set-output name=script::$script"
+          script=$(sed -n '/<!-- LINUX_INSTALLATION_BEGIN -->/,/<!-- LINUX_INSTALLATION_END -->/p' README.md | grep -v '^```')
+          echo "script=$script" >> $GITHUB_OUTPUT
 
       - name: Test installation script
         run: ${{ steps.get_linux_install_script.outputs.script }}
@@ -27,8 +25,12 @@ jobs:
       - name: Verify installation
         run: |
           yek --version
+          # Create a test file
+          echo "test content" > test.txt
           # Test basic functionality
-          yek .
+          yek test.txt
+          # Verify output exists
+          test -f repo-serialized/chunk-0.txt
 
   test-windows-install:
     name: Test Windows Installation
@@ -38,12 +40,10 @@ jobs:
 
       - name: Get install script
         id: get_windows_install_script
+        shell: bash
         run: |
-          readme=$(cat README.md)
-          #  the script is between <!-- WINDOWS_INSTALLATION_BEGIN --> and <!-- WINDOWS_INSTALLATION_END -->
-          #   we remove lines starting with ```
-          script=$(echo "$readme" | sed -n '/<!-- WINDOWS_INSTALLATION_BEGIN -->/,/<!-- WINDOWS_INSTALLATION_END -->/p' | sed '/^```/d')
-          echo "::set-output name=script::$script"
+          script=$(sed -n '/<!-- WINDOWS_INSTALLATION_BEGIN -->/,/<!-- WINDOWS_INSTALLATION_END -->/p' README.md | grep -v '^```')
+          echo "script=$script" >> $GITHUB_OUTPUT
 
       - name: Test installation script
         shell: powershell
@@ -53,5 +53,11 @@ jobs:
         shell: powershell
         run: |
           yek --version
+          # Create a test file
+          "test content" | Out-File -FilePath test.txt
           # Test basic functionality
-          yek .
+          yek test.txt
+          # Verify output exists
+          if (-not (Test-Path repo-serialized/chunk-0.txt)) {
+            throw "Output file not found"
+          }
