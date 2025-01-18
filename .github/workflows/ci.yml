@@ -9,6 +9,17 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Build optimizations
+  CARGO_PROFILE_RELEASE_LTO: true
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+  CARGO_PROFILE_RELEASE_PANIC: abort
+  CARGO_PROFILE_RELEASE_OPT_LEVEL: 3
+  CARGO_PROFILE_RELEASE_STRIP: true
+  # Cache settings
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: short
 
 permissions:
   contents: write
@@ -27,6 +38,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Install Node (Windows)
         if: startsWith(matrix.os, 'windows-')
@@ -69,6 +82,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Clippy
         run: cargo clippy -- -D warnings
       - name: Format check
@@ -102,12 +117,29 @@ jobs:
             asset_name: yek-aarch64-pc-windows-msvc.zip
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: ${{ matrix.target }}
+
+      - name: Setup cross-compilation for Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
       - name: Build target
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          cargo build --release --target ${{ matrix.target }} --locked
+          # Print binary size
+          ls -l target/${{ matrix.target }}/release/${{ matrix.artifact_name }}* || true
+
       - name: Package
         shell: bash
         run: |
@@ -119,11 +151,13 @@ jobs:
           else
             tar czf "${{ matrix.asset_name }}" "$staging"
           fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}
+          if-no-files-found: error
 
   release:
     name: Release
