@@ -336,17 +336,12 @@ fn write_chunk(
 }
 
 /// Determine final priority of a file by scanning the priority list
-/// in descending order of score. Return -1 if it's fully ignored.
+/// in descending order of score.
 pub fn get_file_priority(
     rel_str: &str,
-    ignore_pats: &[Regex],
+    _ignore_pats: &[Regex],
     prio_list: &[PriorityPattern],
 ) -> i32 {
-    for pat in ignore_pats {
-        if pat.is_match(rel_str) {
-            return -1;
-        }
-    }
     for prio in prio_list {
         for pat in &prio.patterns {
             if pat.is_match(rel_str) {
