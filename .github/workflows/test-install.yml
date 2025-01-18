@@ -1,9 +1,10 @@
+---
 name: Installation Test
 
 on:
   release:
     types: [published]
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 jobs:
   test-linux-install:
