@@ -7,9 +7,17 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  test-linux-install:
-    name: Test Linux Installation
-    runs-on: ubuntu-latest
+  test-unix-install:
+    name: Test Unix Installation
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
 
@@ -28,6 +36,40 @@ jobs:
           script="${script//$'\n'/'%0A'}"
           script="${script//$'\r'/'%0D'}"
           echo "script=$script" >> $GITHUB_OUTPUT
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build yek
+        shell: bash
+        run: |
+          cargo build --release --target ${{ matrix.target }} --locked
+          # Verify binary exists
+          binary="target/${{ matrix.target }}/release/yek"
+          if [ ! -f "$binary" ]; then
+            echo "Error: Binary not found at: $binary"
+            find target -name "yek" -o -name "yek.exe"
+            exit 1
+          fi
+          ls -l "$binary"
+
+      - name: Setup test environment
+        shell: bash
+        run: |
+          # Create test directory
+          sudo mkdir -p /usr/local/bin
+          # Copy binary
+          sudo cp "target/${{ matrix.target }}/release/yek" /usr/local/bin/
+          # Make executable
+          sudo chmod +x /usr/local/bin/yek
+          # Verify binary is executable
+          if ! which yek; then
+            echo "Error: yek not found in PATH after manual installation"
+            echo "PATH: $PATH"
+            exit 1
+          fi
 
       - name: Test installation script
         run: ${{ steps.get_linux_install_script.outputs.script }}
