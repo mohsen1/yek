@@ -126,13 +126,11 @@ fn test_git_priority_boost() -> Result<(), Box<dyn std::error::Error>> {
     assert!(result.is_some(), "Should have output directory");
 
     // Read the first chunk to verify order
-    let mut chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+    let chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
 
     // Convert Windows paths to Unix style for consistent comparison
     #[cfg(windows)]
-    {
-        chunk_content = chunk_content.replace("\\", "/");
-    }
+    let chunk_content = chunk_content.replace("\\", "/");
 
     // Verify file order
     let old_pos = chunk_content.find("old.txt").expect("Should find old.txt");
@@ -232,13 +230,11 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
     assert!(result.is_some(), "Should have output directory");
 
     // Read the first chunk to verify order
-    let mut chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+    let chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
 
     // Convert Windows paths to Unix style for consistent comparison
     #[cfg(windows)]
-    {
-        chunk_content = chunk_content.replace("\\", "/");
-    }
+    let chunk_content = chunk_content.replace("\\", "/");
 
     // Verify file order
     let docs_pos = chunk_content
@@ -479,13 +475,11 @@ fn test_git_priority_boost_with_path_prefix() -> Result<(), Box<dyn std::error::
     assert!(result.is_some(), "Should have output directory");
 
     // Read the first chunk to verify order
-    let mut chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
+    let chunk_content = fs::read_to_string(output_dir.join("chunk-0.txt"))?;
 
     // Convert Windows paths to Unix style for consistent comparison
     #[cfg(windows)]
-    {
-        chunk_content = chunk_content.replace("\\", "/");
-    }
+    let chunk_content = chunk_content.replace("\\", "/");
 
     // Verify file order
     let docs_pos = chunk_content
