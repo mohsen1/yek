@@ -183,16 +183,21 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
 
     // Recent files in different directories
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-    let recent_date = chrono::DateTime::from_timestamp(now as i64, 0)
+    let docs_date = chrono::DateTime::from_timestamp((now as i64) - 1, 0)
         .unwrap()
         .to_rfc3339();
-    commit_file(temp.path(), "src/recent.rs", "recent content", &recent_date)?;
-    commit_file(
-        temp.path(),
-        "docs/recent.md",
-        "recent content",
-        &recent_date,
-    )?;
+    let src_date = chrono::DateTime::from_timestamp(now as i64, 0)
+        .unwrap()
+        .to_rfc3339();
+
+    fs::create_dir_all(temp.path().join("src"))?;
+    fs::create_dir_all(temp.path().join("docs"))?;
+
+    // Create and commit src/recent.rs with newer timestamp
+    commit_file(temp.path(), "src/recent.rs", "recent content", &src_date)?;
+
+    // Create and commit docs/recent.md with older timestamp
+    commit_file(temp.path(), "docs/recent.md", "recent docs", &docs_date)?;
 
     // Create config that prioritizes src/ files
     let config = YekConfig {
