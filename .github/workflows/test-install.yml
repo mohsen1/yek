@@ -1,0 +1,57 @@
+name: Installation Test
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  test-linux-install:
+    name: Test Linux Installation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get install script
+        id: get_linux_install_script
+        run: |
+          readme=$(cat README.md)
+          #  the script is between <!-- LINUX_INSTALLATION_BEGIN --> and <!-- LINUX_INSTALLATION_END -->
+          #   we remove lines starting with ```
+          script=$(echo "$readme" | sed -n '/<!-- LINUX_INSTALLATION_BEGIN -->/,/<!-- LINUX_INSTALLATION_END -->/p' | sed '/^```/d')
+          echo "::set-output name=script::$script"
+
+      - name: Test installation script
+        run: ${{ steps.get_linux_install_script.outputs.script }}
+
+      - name: Verify installation
+        run: |
+          yek --version
+          # Test basic functionality
+          yek .
+
+  test-windows-install:
+    name: Test Windows Installation
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get install script
+        id: get_windows_install_script
+        run: |
+          readme=$(cat README.md)
+          #  the script is between <!-- WINDOWS_INSTALLATION_BEGIN --> and <!-- WINDOWS_INSTALLATION_END -->
+          #   we remove lines starting with ```
+          script=$(echo "$readme" | sed -n '/<!-- WINDOWS_INSTALLATION_BEGIN -->/,/<!-- WINDOWS_INSTALLATION_END -->/p' | sed '/^```/d')
+          echo "::set-output name=script::$script"
+
+      - name: Test installation script
+        shell: powershell
+        run: ${{ steps.get_windows_install_script.outputs.script }}
+
+      - name: Verify installation
+        shell: powershell
+        run: |
+          yek --version
+          # Test basic functionality
+          yek .
