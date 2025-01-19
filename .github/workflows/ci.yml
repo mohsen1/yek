@@ -220,9 +220,8 @@ jobs:
           COMMIT_SHA=$(git rev-parse HEAD)
           BODO_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
           cd bodo-run.github.io
-          git add public/yek.sh public/yek.ps1
-          # Exit with 0 if no changes
-          if git diff --exit-code; then
+          git add -A
+          if [ -z "$(git status --porcelain)" ]; then
             echo "No changes to commit"
             exit 0
           fi
