@@ -110,6 +110,11 @@ jobs:
         with:
           cache-on-failure: true
           key: ${{ matrix.target }}
+      - name: Install cross-compilation tools
+        if: contains(matrix.target, 'aarch64-unknown-linux')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Build target
         run: cargo build --release --target ${{ matrix.target }} --locked
       - name: Package
