@@ -26,7 +26,11 @@ build-artifacts:
 	@echo "Building for $(CURRENT_PLATFORM)..."
 	cargo build --release
 	mkdir -p "yek-$(CURRENT_PLATFORM)"
-	cp "target/release/yek" "yek-$(CURRENT_PLATFORM)/"
+	if [ "$(OS)" = "Windows_NT" ]; then \
+		cp "target/release/yek.exe" "yek-$(CURRENT_PLATFORM)/"; \
+	else \
+		cp "target/release/yek" "yek-$(CURRENT_PLATFORM)/"; \
+	fi
 	tar -czf "yek-$(CURRENT_PLATFORM).tar.gz" "yek-$(CURRENT_PLATFORM)"
 	rm -rf "yek-$(CURRENT_PLATFORM)"
 
@@ -37,9 +41,6 @@ release: test lint
 major: ;
 
 update-formula:
-	sed -i '' -e "s/version .*/version '$(version)'/" $(FORMULA_PATH)
-
-build-release:
-	cargo build --release
+	sed -i.bak "s/version .*/version '$(version)'/" $(FORMULA_PATH) && rm -f $(FORMULA_PATH).bak
 
  
