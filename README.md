@@ -12,6 +12,33 @@ A fast Rust based tool to read text-based files in a repository or directory, ch
 
 Yek ([يک](https://fa.wikipedia.org/wiki/۱)) means "One" in Farsi/Persian.
 
+Consider having a simple repo like this:
+
+```
+.
+├── README.md
+├── src
+│   ├── main.rs
+│   └── utils.rs
+└── tests
+    └── test.rs
+```
+
+Running `yek` in this directory will produce a single file and write it to the temp directory with the following content:
+
+```txt
+>>>> README.md
+... content of README.md ...
+>>>> tests/test.rs
+... content of tests/test.rs ...
+>>>> src/utils.rs
+... content of src/utils.rs ...
+>>>> src/main.rs
+... rest of the file ...
+```
+
+> `yek` will prioritize more important files to come last in the output. This is useful for LLM consumption.
+
 ## Installation
 
 ### Via Homebrew (recommended for macOS)
