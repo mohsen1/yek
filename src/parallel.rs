@@ -244,13 +244,20 @@ fn collect_files(
 
             // Skip if matched by gitignore
             #[cfg(windows)]
-            let gitignore_path = rel_path
+            let rel_str = rel_path
                 .to_str()
                 .map(|s| s.replace('\\', "/"))
                 .unwrap_or_else(|| rel_str.to_string());
 
             #[cfg(not(windows))]
-            let gitignore_path = rel_str.to_string();
+            let rel_str = rel_str.to_string();
+
+            // Skip if matched by gitignore
+            #[cfg(windows)]
+            let gitignore_path = rel_str.clone();
+
+            #[cfg(not(windows))]
+            let gitignore_path = rel_str.clone();
 
             if gitignore.matched(&path, path.is_dir()).is_ignore() {
                 continue;
