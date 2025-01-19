@@ -1,6 +1,5 @@
 .PHONY: all macos linux clean test lint release major build-artifacts
 
-FORMULA_PATH := $(shell pwd)/Formula/yek.rb
 CURRENT_PLATFORM := $(shell rustc -vV | grep host: | cut -d' ' -f2)
 
 all: macos
@@ -40,7 +39,5 @@ release: test lint
 .PHONY: major
 major: ;
 
-update-formula:
-	sed -i.bak "s/version .*/version '$(version)'/" $(FORMULA_PATH) && rm -f $(FORMULA_PATH).bak
 
  

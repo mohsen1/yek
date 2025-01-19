@@ -210,9 +210,9 @@ jobs:
             exit 1
           }
 
-  test-brew-install:
-    name: Test Homebrew Installation
-    runs-on: macos-latest
+  test-install-script:
+    name: Test Install Script
+    runs-on: ubuntu-latest
     steps:
       - name: Clean existing tags
         shell: bash
@@ -225,14 +225,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get brew install commands
-        id: get_brew_install
+      - name: Get install script
+        id: get_install_script
         shell: bash
         run: |
-          script=$(awk '/<!-- HOMEBREW_INSTALLATION_BEGIN -->/{p=1;next}/<!-- HOMEBREW_INSTALLATION_END -->/{p=0}p' README.md | grep -v '^```')
+          script=$(awk '/<!-- INSTALLATION_SCRIPT_BEGIN -->/{p=1;next}/<!-- INSTALLATION_SCRIPT_END -->/{p=0}p' README.md | grep -v '^```')
           # Ensure script is not empty
           if [ -z "$script" ]; then
-            echo "Error: Could not extract Homebrew installation commands from README.md"
+            echo "Error: Could not extract installation script from README.md"
             exit 1
           fi
           # Escape multiline output
@@ -241,8 +241,42 @@ jobs:
           script="${script//$'\r'/'%0D'}"
           echo "script=$script" >> $GITHUB_OUTPUT
 
-      - name: Install via Homebrew
-        run: ${{ steps.get_brew_install.outputs.script }}
+      - name: Test installation script
+        run: ${{ steps.get_install_script.outputs.script }}
+
+  test-cargo-installation:
+    name: Test Cargo Installation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clean existing tags
+        shell: bash
+        run: |
+          if [ -d ".git/refs/tags" ]; then
+            rm -rf .git/refs/tags/
+          fi
+
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get install script
+        id: get_cargo_install_script
+        shell: bash
+        run: |
+          script=$(awk '/<!-- CARGO_INSTALLATION_BEGIN -->/{p=1;next}/<!-- CARGO_INSTALLATION_END -->/{p=0}p' README.md | grep -v '^```')
+          # Ensure script is not empty
+          if [ -z "$script" ]; then
+            echo "Error: Could not extract Cargo installation script from README.md"
+            exit 1
+          fi
+          # Escape multiline output
+          script="${script//'%'/'%25'}"
+          script="${script//$'\n'/'%0A'}"
+          script="${script//$'\r'/'%0D'}"
+          echo "script=$script" >> $GITHUB_OUTPUT
+
+      - name: Install via Cargo
+        run: ${{ steps.get_cargo_install_script.outputs.script }}
 
       - name: Verify installation
         run: |
