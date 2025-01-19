@@ -48,7 +48,7 @@ NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
 echo "Bumping version to: $NEW_VERSION"
 
 # -- Step 3: Update CHANGELOG.md using git-cliff --
-cargo run --package git-cliff -- --config cliff.toml --tag "v${NEW_VERSION}" --output CHANGELOG.md
+git-cliff --config cliff.toml --tag "v${NEW_VERSION}" --output CHANGELOG.md
 
 # -- Step 4: Update Cargo.toml version --
 sed -i.bak "s/^version *= *\"${CURRENT_VERSION}\"/version = \"${NEW_VERSION}\"/" Cargo.toml
