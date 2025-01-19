@@ -27,9 +27,6 @@ jobs:
             os: windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Clean existing tags
-        run: rm -rf .git/refs/tags/
-
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
@@ -90,9 +87,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Clean existing tags
-        run: rm -rf .git/refs/tags/
-
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
@@ -138,9 +132,3 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Cleanup tags
-        run: |
-          git fetch --prune --prune-tags
-          git tag -l | xargs -r git tag -d
-          git fetch --tags
