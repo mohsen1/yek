@@ -230,4 +230,5 @@ jobs:
             -m "$BODO_COMMIT_MESSAGE" \
             -m "" \
             -m "https://github.com/bodo-run/yek/commit/$COMMIT_SHA"
+          git remote set-url origin https://${{ secrets.PAT_TOKEN }}@github.com/bodo-run/bodo-run.github.io.git
           git push
