@@ -1,6 +1,7 @@
-.PHONY: all macos linux clean test lint update-formula build-release
+.PHONY: all macos linux clean test lint release major build-artifacts
 
 FORMULA_PATH := $(shell pwd)/Formula/yek.rb
+CURRENT_PLATFORM := $(shell rustc -vV | grep host: | cut -d' ' -f2)
 
 all: macos
 
@@ -20,3 +21,25 @@ test:
 lint:
 	cargo clippy -- -D warnings
 	cargo fmt --check 
+
+build-artifacts:
+	@echo "Building for $(CURRENT_PLATFORM)..."
+	cargo build --release
+	mkdir -p "yek-$(CURRENT_PLATFORM)"
+	cp "target/release/yek" "yek-$(CURRENT_PLATFORM)/"
+	tar -czf "yek-$(CURRENT_PLATFORM).tar.gz" "yek-$(CURRENT_PLATFORM)"
+	rm -rf "yek-$(CURRENT_PLATFORM)"
+
+release: test lint
+	@scripts/make-release.sh $(if $(filter major,$(MAKECMDGOALS)),major,patch)
+
+.PHONY: major
+major: ;
+
+update-formula:
+	sed -i '' -e "s/version .*/version '$(version)'/" $(FORMULA_PATH)
+
+build-release:
+	cargo build --release
+
+ 

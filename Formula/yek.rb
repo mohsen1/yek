@@ -1,7 +1,7 @@
 class Yek < Formula
   desc "A tool to chunk and serialize repository content for LLM consumption"
   homepage "https://github.com/bodo-run/yek"
-  version "0.5.0"
+  version "0.7.2"
   head "https://github.com/bodo-run/yek.git", branch: "main"
 
   on_macos do
