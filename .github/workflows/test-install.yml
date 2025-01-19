@@ -19,7 +19,16 @@ jobs:
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Clean existing tags
+        shell: bash
+        run: |
+          if [ -d ".git/refs/tags" ]; then
+            rm -rf .git/refs/tags/
+          fi
+
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Get install script
         id: get_linux_install_script
@@ -105,7 +114,16 @@ jobs:
     name: Test Windows Installation
     runs-on: windows-latest
     steps:
+      - name: Clean existing tags
+        shell: bash
+        run: |
+          if [ -d ".git/refs/tags" ]; then
+            rm -rf .git/refs/tags/
+          fi
+
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Get install script
         id: get_windows_install_script
@@ -196,7 +214,16 @@ jobs:
     name: Test Homebrew Installation
     runs-on: macos-latest
     steps:
+      - name: Clean existing tags
+        shell: bash
+        run: |
+          if [ -d ".git/refs/tags" ]; then
+            rm -rf .git/refs/tags/
+          fi
+
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Get brew install commands
         id: get_brew_install
