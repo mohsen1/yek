@@ -161,7 +161,7 @@ fn test_windows_installer_download() {
         "$InstallDir = \"$HOME\\.local\\bin\"",
         &format!(
             "$InstallDir = \"{}\"",
-            install_dir.to_str().unwrap().replace('\\', "\\\\")
+            install_dir.to_str().unwrap().replace('/', "\\")
         ),
     );
 
@@ -206,7 +206,7 @@ fn modify_windows_script(
         "$InstallDir = \"$HOME\\.local\\bin\"",
         &format!(
             "$InstallDir = \"{}\"",
-            install_dir.to_str().unwrap().replace('\\', "\\\\")
+            install_dir.to_str().unwrap().replace('/', "\\")
         ),
     );
 
@@ -224,7 +224,7 @@ fn modify_windows_script(
             skip_block = true;
             modified_lines.push(format!(
                 "Copy-Item -Path \"{}\" -Destination \"$InstallDir\\yek.exe\" -Force",
-                temp_binary.to_str().unwrap().replace('\\', "\\\\")
+                temp_binary.to_str().unwrap().replace('/', "\\")
             ));
             continue;
         }

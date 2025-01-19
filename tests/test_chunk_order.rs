@@ -2,8 +2,10 @@ mod integration_common;
 use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
 use std::fs;
+use std::path::PathBuf;
 use tracing::Level;
 use tracing_subscriber::fmt;
+use yek::normalize_path;
 
 /// This test ensures that the last-written chunk contains the highest-priority file.
 #[test]
@@ -69,8 +71,7 @@ patterns = ["^high_priority/"]
     let chunk0_content = fs::read_to_string(&chunk0_path).expect("Failed to read chunk-0.txt");
 
     // Convert Windows paths to Unix style for consistent comparison
-    #[cfg(windows)]
-    let chunk0_content = chunk0_content.replace('\\', "/");
+    let chunk0_content = normalize_path(repo.path(), &PathBuf::from(&chunk0_content));
 
     assert!(
         chunk0_content.contains("low_priority/foo.txt"),
@@ -89,8 +90,7 @@ patterns = ["^high_priority/"]
             .unwrap_or_else(|_| panic!("Failed to read {}", path.display()));
 
         // Convert Windows paths to Unix style for consistent comparison
-        #[cfg(windows)]
-        let content = content.replace('\\', "/");
+        let content = normalize_path(repo.path(), &PathBuf::from(&content));
 
         if content.contains("high_priority/foo.txt") {
             found_high_priority = true;

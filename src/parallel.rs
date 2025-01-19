@@ -1,14 +1,15 @@
-use crate::{get_file_priority, is_text_file, PriorityPattern, YekConfig};
-use anyhow::Result;
+use crate::{get_file_priority, is_text_file, normalize_path, PriorityPattern, Result, YekConfig};
 use crossbeam::channel::{bounded, Receiver, Sender};
 use ignore::{gitignore::GitignoreBuilder, WalkBuilder};
 use num_cpus::get;
 use regex::Regex;
-use std::collections::HashMap;
-use std::fs;
-use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::thread;
+use std::{
+    collections::HashMap,
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+    thread,
+};
 use tracing::{debug, info};
 
 /// Represents a chunk of text read from one file
@@ -76,14 +77,10 @@ pub fn process_files_parallel(
                 continue;
             }
 
-            let rel_path = file
-                .path
-                .strip_prefix(base_dir)
-                .unwrap_or(&file.path)
-                .to_string_lossy()
-                .into_owned();
+            let _rel_path = file.path.strip_prefix(base_dir).unwrap_or(&file.path);
+            let rel_str = normalize_path(base_dir, &file.path);
 
-            let chunk_str = format!(">>>> {}\n{}\n\n", rel_path, content);
+            let chunk_str = format!(">>>> {}\n{}\n\n", rel_str, content);
             let chunk_size = chunk_str.len();
 
             // Write chunk if buffer would exceed size
@@ -161,12 +158,11 @@ fn read_and_send_chunks(
     tx: &Sender<FileChunk>,
 ) -> Result<()> {
     let mut file = fs::File::open(&file_entry.path)?;
-    let rel_path = file_entry
+    let _rel_path = file_entry
         .path
         .strip_prefix(base_path)
-        .unwrap_or(&file_entry.path)
-        .to_string_lossy()
-        .into_owned();
+        .unwrap_or(&file_entry.path);
+    let rel_str = normalize_path(base_path, &file_entry.path);
 
     // Read file content in chunks to avoid loading entire file
     let mut total_buf = Vec::new();
@@ -183,7 +179,7 @@ fn read_and_send_chunks(
             priority: file_entry.priority,
             file_index: file_entry.file_index,
             part_index: 0,
-            rel_path,
+            rel_path: rel_str.to_string(),
             content: chunk_content,
         };
         tx.send(fc)?;
@@ -202,7 +198,7 @@ fn read_and_send_chunks(
             priority: file_entry.priority,
             file_index: file_entry.file_index,
             part_index,
-            rel_path: format!("{}:part{}", rel_path, part_index),
+            rel_path: format!("{}:part{}", rel_str, part_index),
             content: chunk_str,
         };
         tx.send(fc)?;
@@ -239,26 +235,10 @@ fn collect_files(
     for entry in builder.build().flatten() {
         if entry.file_type().is_some_and(|ft| ft.is_file()) {
             let path = entry.path().to_path_buf();
-            let rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
-            let rel_str = rel_path.to_string_lossy();
+            let _rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
+            let rel_str = normalize_path(base_dir, &path);
 
             // Skip if matched by gitignore
-            #[cfg(windows)]
-            let rel_str = rel_path
-                .to_str()
-                .map(|s| s.replace('\\', "/"))
-                .unwrap_or_else(|| rel_str.to_string());
-
-            #[cfg(not(windows))]
-            let rel_str = rel_str.to_string();
-
-            // Skip if matched by gitignore
-            #[cfg(windows)]
-            let gitignore_path = rel_str.clone();
-
-            #[cfg(not(windows))]
-            let gitignore_path = rel_str.clone();
-
             if gitignore.matched(&path, path.is_dir()).is_ignore() {
                 continue;
             }
@@ -281,7 +261,7 @@ fn collect_files(
 
             // Apply recentness boost if available
             if let Some(boost_map) = recentness_boost {
-                if let Some(boost) = boost_map.get(&gitignore_path) {
+                if let Some(boost) = boost_map.get(&rel_str) {
                     priority += boost;
                 }
             }

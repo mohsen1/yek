@@ -601,21 +601,10 @@ pub fn serialize_repo(
 
             // Get path relative to base
             let rel_path = path.strip_prefix(base_path).unwrap_or(path);
-            let rel_str_orig = rel_path.to_string_lossy();
-
-            // Normalize path separators to forward slashes (for matching)
-            #[cfg(windows)]
-            let rel_str = rel_str_orig.replace('\\', "/");
-            #[cfg(not(windows))]
-            let rel_str = rel_str_orig.to_string();
+            let rel_str = normalize_path(base_path, path);
 
             // Skip via .gitignore
-            #[cfg(windows)]
-            let gitignore_path = PathBuf::from(rel_str.clone());
-            #[cfg(not(windows))]
-            let gitignore_path = rel_path.to_path_buf();
-
-            if gitignore.matched(&gitignore_path, false).is_ignore() {
+            if gitignore.matched(rel_path, false).is_ignore() {
                 debug!("Skipping {} - matched by gitignore", rel_str);
                 continue;
             }
@@ -862,4 +851,53 @@ fn compute_recentness_boost(
         result.insert((*path).clone(), boost);
     }
     result
+}
+
+/// Returns a relative, normalized path string (forward slashes on all platforms).
+pub fn normalize_path(base: &Path, path: &Path) -> String {
+    let rel = match path.strip_prefix(base) {
+        Ok(rel) => rel,
+        Err(_) => path,
+    };
+    // Convert to a relative path with components joined by "/"
+    let components: Vec<_> = rel
+        .components()
+        .filter(|c| !matches!(c, std::path::Component::RootDir))
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect();
+    if components.is_empty() {
+        return ".".to_string();
+    }
+    // Only add leading slash if it's an absolute path and not under base
+    if path.is_absolute() && path.strip_prefix(base).is_err() {
+        format!("/{}", components.join("/"))
+    } else {
+        components.join("/")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_normalize_path() {
+        let base = PathBuf::from("/base/path");
+        let path = PathBuf::from("/base/path/foo/bar.txt");
+        assert_eq!(normalize_path(&base, &path), "foo/bar.txt");
+
+        // Test with path not under base
+        let other_path = PathBuf::from("/other/path/baz.txt");
+        assert_eq!(normalize_path(&base, &other_path), "/other/path/baz.txt");
+
+        // Test with relative paths
+        let rel_base = PathBuf::from("base");
+        let rel_path = PathBuf::from("base/foo/bar.txt");
+        assert_eq!(normalize_path(&rel_base, &rel_path), "foo/bar.txt");
+
+        // Test with current directory
+        let current = PathBuf::from(".");
+        assert_eq!(normalize_path(&base, &current), ".");
+    }
 }
