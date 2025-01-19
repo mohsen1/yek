@@ -8,7 +8,7 @@ set -euo pipefail
 BUMP_TYPE="${1:-patch}" # default to 'patch' if not set: patch|minor|major
 
 # -- Step 1: Read current version from Cargo.toml --
-CURRENT_VERSION="$(grep '^version[[:space:]]*=[[:space:]]*"' Cargo.toml | head -1 | sed 's/^version[[:space:]]*=[[:space:]]*"//; s/"$//')"
+CURRENT_VERSION="$(cargo pkgid | cut -d# -f2 | cut -d: -f2)"
 echo "Current Cargo version: $CURRENT_VERSION"
 
 # Validate version format
