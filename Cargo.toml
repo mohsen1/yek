@@ -7,8 +7,10 @@ edition = "2021"
 anyhow = "1.0"
 byte-unit = "4.0"
 clap = "4.4"
+crossbeam = "0.8"
 ignore = "0.4"
 indicatif = "0.17"
+num_cpus = "1.15"
 regex = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10"
@@ -23,6 +25,11 @@ assert_cmd = "2.0"
 chrono = "0.4"
 predicates = "3.0"
 tempfile = "3.9"
+criterion = "0.5"
+
+[[bench]]
+name = "serialization"
+harness = false
 
 [profile.release]
 opt-level = 3

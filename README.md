@@ -10,6 +10,8 @@ A fast Rust based tool to read text-based files in a repository or directory, ch
 - Supports processing multiple directories in a single command.
 - Configurable via a `yek.toml` file.
 
+Yek ([يک](https://fa.wikipedia.org/wiki/۱)) means "One" in Farsi/Persian.
+
 ## Installation
 
 ### Via Homebrew (recommended for macOS)
@@ -58,13 +60,31 @@ export PATH=$(pwd)/target/release:$PATH
 
 ### Examples
 
-Process current directory:
+Process current directory and write to temp directory:
 
 ```bash
 yek
 ```
 
-Process specific directories:
+Pipe output to clipboard (macOS):
+
+```bash
+yek src/ | pbcopy
+```
+
+Cap the max size to 128K tokens and only process the `src` directory:
+
+```bash
+yek --max-size 128000 --tokens src/
+```
+
+Cap the max size to 100KB and only process the `src` directory, writing to a specific directory:
+
+```bash
+yek --max-size 100KB --output-dir /tmp/yek src/
+```
+
+Process multiple directories:
 
 ```bash
 yek src/ tests/
@@ -76,13 +96,7 @@ Process multiple repositories:
 yek ~/code/project1 ~/code/project2
 ```
 
-Pipe output to clipboard:
-
-```bash
-yek src/ | pbcopy
-```
-
-### Run
+### Help
 
 ```bash
 yek --help
@@ -103,44 +117,6 @@ Options:
   -V, --version                  Print version
 ```
 
-## Examples
-
-- Serialize entire repository into chunks of 10MB (default):
-
-```bash
-yek
-```
-
-- Split repository into chunks of 128MB:
-
-```bash
-yek --max-size 128MB
-```
-
-- Split into chunks by token count instead of bytes:
-
-```bash
-yek --tokens --max-size 128000
-```
-
-- Serialize only files under a specific path:
-
-```bash
-yek src/app
-```
-
-- Process multiple directories:
-
-```bash
-yek src/app src/lib
-```
-
-- Stream output to another command:
-
-```bash
-yek | pbcopy
-```
-
 ## Configuration File
 
 You can place a file called `yek.toml` at your project root or pass a custom path via `--config`. The configuration file allows you to:
@@ -150,7 +126,9 @@ You can place a file called `yek.toml` at your project root or pass a custom pat
 3. Add additional binary file extensions to ignore (extends the built-in list)
 4. Configure Git-based priority boost
 
-Example configuration:
+### Example `yek.toml`
+
+This is optional, you can configure the `yek.toml` file at the root of your project.
 
 ```toml
 # Add patterns to ignore (in addition to .gitignore)
