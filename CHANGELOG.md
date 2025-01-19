@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.7.4] - 2025-01-19
+
+### Features
+
+
+### Bug Fixes
+
+- fix: include all files in release commit
+
+### Other Changes
+
+- chore: update Cargo.lock and gitignore
+
+
+## [0.7.3] - 2025-01-19
+
+### Features
+
+- feat: implement tag-based release workflow
+
+### Bug Fixes
+
+- fix: improve version parsing and changelog handling
+- fix: cross-platform SHA256 computation and artifact handling
+- fix: pr feedback
+
+### Other Changes
+
+- test: use HTML comments for installation script extraction
+- refactor: improve Makefile cross-platform support and remove redundant target
+- ci: remove automatic script path updating
+
+
+## [0.7.2] - 2025-01-19
+
+### Features
+
+- feat: implement tag-based release workflow
+
+### Bug Fixes
+
+### Other Changes
+
+- ci: remove automatic script path updating
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

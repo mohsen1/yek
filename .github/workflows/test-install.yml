@@ -19,7 +19,16 @@ jobs:
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Clean existing tags
+        shell: bash
+        run: |
+          if [ -d ".git/refs/tags" ]; then
+            rm -rf .git/refs/tags/
+          fi
+
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Get install script
         id: get_linux_install_script
@@ -105,7 +114,16 @@ jobs:
     name: Test Windows Installation
     runs-on: windows-latest
     steps:
+      - name: Clean existing tags
+        shell: bash
+        run: |
+          if [ -d ".git/refs/tags" ]; then
+            rm -rf .git/refs/tags/
+          fi
+
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Get install script
         id: get_windows_install_script
@@ -189,5 +207,66 @@ jobs:
           if (-not (Test-Path repo-serialized/chunk-0.txt)) {
             Write-Error "Output file not found"
             Get-ChildItem repo-serialized -ErrorAction SilentlyContinue
+            exit 1
+          }
+
+  test-brew-install:
+    name: Test Homebrew Installation
+    runs-on: macos-latest
+    steps:
+      - name: Clean existing tags
+        shell: bash
+        run: |
+          if [ -d ".git/refs/tags" ]; then
+            rm -rf .git/refs/tags/
+          fi
+
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get brew install commands
+        id: get_brew_install
+        shell: bash
+        run: |
+          script=$(awk '/<!-- HOMEBREW_INSTALLATION_BEGIN -->/{p=1;next}/<!-- HOMEBREW_INSTALLATION_END -->/{p=0}p' README.md | grep -v '^```')
+          # Ensure script is not empty
+          if [ -z "$script" ]; then
+            echo "Error: Could not extract Homebrew installation commands from README.md"
+            exit 1
+          fi
+          # Escape multiline output
+          script="${script//'%'/'%25'}"
+          script="${script//$'\n'/'%0A'}"
+          script="${script//$'\r'/'%0D'}"
+          echo "script=$script" >> $GITHUB_OUTPUT
+
+      - name: Install via Homebrew
+        run: ${{ steps.get_brew_install.outputs.script }}
+
+      - name: Verify installation
+        run: |
+          # Ensure yek is in PATH
+          which yek || {
+            echo "Error: yek not found in PATH"
+            echo "PATH: $PATH"
+            exit 1
+          }
+          # Test version output
+          yek --version || {
+            echo "Error: yek --version failed"
+            exit 1
+          }
+          # Create test file
+          echo "test content" > test.txt
+          # Test basic functionality
+          yek test.txt || {
+            echo "Error: yek failed to process test file"
+            exit 1
+          }
+          # Verify output exists
+          test -f repo-serialized/chunk-0.txt || {
+            echo "Error: Output file not found"
+            ls -la repo-serialized/ || true
             exit 1
           }
