@@ -43,16 +43,16 @@ patterns = ["^high_priority/"]
 
     // Create a bigger file in high_priority that will definitely be split
     // Using chunk size of 1KB, we need more than that to force splitting
-    let chunk_size_bytes = 1024;
-    let min_content_size = chunk_size_bytes * 2; // At least 2 chunks
+    let chunk_size_bytes: usize = 1024;
+    let min_content_size: usize = chunk_size_bytes * 2; // At least 2 chunks
     let line = "HIGH PRIORITY\n";
-    let repeat_count = (min_content_size + line.len() - 1) / line.len();
+    let repeat_count = min_content_size.div_ceil(line.len());
     let big_content = line.repeat(repeat_count);
     create_file(repo.path(), "high_priority/foo.txt", &big_content);
 
     // We'll force extremely small max-size to ensure multiple chunks.
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    let assert = cmd
+    let _assert = cmd
         .current_dir(repo.path())
         .arg("--max-size")
         .arg("1KB") // force chunking
@@ -80,8 +80,8 @@ patterns = ["^high_priority/"]
         if path.file_name().unwrap().to_string_lossy() == "chunk-0.txt" {
             continue;
         }
-        let content =
-            fs::read_to_string(&path).expect(&format!("Failed to read {}", path.display()));
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("Failed to read {}", path.display()));
         if content.contains("high_priority/foo.txt") {
             found_high_priority = true;
             break;

@@ -329,14 +329,17 @@ fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf, max_size: usize
     let mut current_chunk = String::new();
     let mut current_chunk_size = 0;
     let mut current_chunk_index = 0;
+    let mut current_priority = None;
 
     // Process chunks in sorted order
     for chunk in all_chunks {
         let chunk_str = format!(">>>> {}\n{}\n\n", chunk.rel_path, chunk.content);
         let chunk_size = chunk_str.len();
 
-        // If adding this chunk would exceed max_size, write current chunk
-        if current_chunk_size + chunk_size > max_size {
+        let should_start_new_chunk = current_chunk_size + chunk_size > max_size
+            || (current_priority.is_some() && current_priority.unwrap() != chunk.priority);
+
+        if should_start_new_chunk && !current_chunk.is_empty() {
             write_chunk_to_file(&output_dir, current_chunk_index, &current_chunk)?;
             current_chunk.clear();
             current_chunk_size = 0;
@@ -345,6 +348,7 @@ fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf, max_size: usize
 
         current_chunk.push_str(&chunk_str);
         current_chunk_size += chunk_size;
+        current_priority = Some(chunk.priority);
     }
 
     // Write final chunk if any content remains
