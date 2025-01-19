@@ -143,7 +143,8 @@ jobs:
   benchmark:
     name: Benchmark
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-16-core
+
     steps:
       - uses: actions/checkout@v3
         with:
@@ -163,7 +164,7 @@ jobs:
           cargo bench --bench serialization --no-run
 
       - name: Run benchmark on target branch
-        run: cargo bench --bench serialization -- --save-baseline main
+        run: cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }}
 
       - name: Build benchmarks on PR branch
         run: |
@@ -171,13 +172,18 @@ jobs:
           cargo bench --bench serialization --no-run
 
       - name: Compare benchmarks
-        run: cargo bench --bench serialization -- --baseline main --noise-threshold 2
+        run: |
+          cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 > benchmark_results.md
+          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v3
         with:
           name: criterion-results
-          path: target/criterion/
+          path: |
+            target/criterion/
+            benchmark_results.md
           if-no-files-found: error
 
   release:
