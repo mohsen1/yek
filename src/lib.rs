@@ -542,7 +542,16 @@ pub fn serialize_repo(
         let rel_str = rel_str.replace('\\', "/");
 
         // Skip if matched by gitignore
-        if gitignore.matched(rel_path, false).is_ignore() {
+        #[cfg(windows)]
+        let gitignore_path = rel_path
+            .to_str()
+            .map(|s| s.replace('\\', "/"))
+            .map(PathBuf::from)
+            .unwrap_or(rel_path.to_path_buf());
+        #[cfg(not(windows))]
+        let gitignore_path = rel_path.to_path_buf();
+
+        if gitignore.matched(&gitignore_path, false).is_ignore() {
             debug!("Skipping {} - matched by gitignore", rel_str);
             continue;
         }
