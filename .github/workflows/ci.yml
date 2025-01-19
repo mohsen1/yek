@@ -119,6 +119,46 @@ jobs:
           path: ${{ matrix.asset_name }}
           if-no-files-found: error
 
+  benchmark:
+    name: Benchmark
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build benchmarks on target branch
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git checkout ${{ github.base_ref }}
+          cargo bench --bench serialization --no-run
+
+      - name: Run benchmark on target branch
+        run: cargo bench --bench serialization -- --save-baseline main
+
+      - name: Build benchmarks on PR branch
+        run: |
+          git checkout ${{ github.head_ref }}
+          cargo bench --bench serialization --no-run
+
+      - name: Compare benchmarks
+        run: cargo bench --bench serialization -- --baseline main --significance-threshold 5
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v3
+        with:
+          name: criterion-results
+          path: target/criterion/
+          if-no-files-found: error
+
   release:
     name: Release
     needs: [test, lint, build]
