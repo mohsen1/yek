@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.4] - 2025-01-19
+
+### Features
+
+
+### Bug Fixes
+
+- fix: include all files in release commit
+
+### Other Changes
+
+- chore: update Cargo.lock and gitignore
+
+
 ## [0.7.3] - 2025-01-19
 
 ### Features
