@@ -28,63 +28,6 @@ fn parse_size_input(input: &str, is_tokens: bool) -> std::result::Result<usize, 
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_size_input_bytes() {
-        // Using byte_unit::Byte to calculate expected values
-        assert_eq!(
-            parse_size_input("10MB", false).unwrap(),
-            Byte::from_str("10MB").unwrap().get_bytes() as usize
-        );
-        assert_eq!(
-            parse_size_input("128KB", false).unwrap(),
-            Byte::from_str("128KB").unwrap().get_bytes() as usize
-        );
-        assert_eq!(
-            parse_size_input("1GB", false).unwrap(),
-            Byte::from_str("1GB").unwrap().get_bytes() as usize
-        );
-        assert!(parse_size_input("invalid", false).is_err());
-    }
-
-    #[test]
-    fn test_parse_size_input_tokens() {
-        // Test K suffix variations
-        assert_eq!(parse_size_input("100K", true).unwrap(), 100_000);
-        assert_eq!(parse_size_input("100k", true).unwrap(), 100_000);
-        assert_eq!(parse_size_input("0K", true).unwrap(), 0);
-        assert_eq!(parse_size_input("1K", true).unwrap(), 1_000);
-        assert_eq!(parse_size_input("1k", true).unwrap(), 1_000);
-
-        // Test without K suffix
-        assert_eq!(parse_size_input("100", true).unwrap(), 100);
-        assert_eq!(parse_size_input("1000", true).unwrap(), 1000);
-        assert_eq!(parse_size_input("0", true).unwrap(), 0);
-
-        // Test invalid inputs
-        assert!(parse_size_input("K", true).is_err());
-        assert!(parse_size_input("-1K", true).is_err());
-        assert!(parse_size_input("-100", true).is_err());
-        assert!(parse_size_input("100KB", true).is_err());
-        assert!(parse_size_input("invalid", true).is_err());
-        assert!(parse_size_input("", true).is_err());
-        assert!(parse_size_input(" ", true).is_err());
-        assert!(parse_size_input("100K100", true).is_err());
-        assert!(parse_size_input("100.5K", true).is_err());
-    }
-
-    #[test]
-    fn test_parse_size_input_whitespace() {
-        // Test whitespace handling
-        assert_eq!(parse_size_input(" 100K ", true).unwrap(), 100_000);
-        assert_eq!(parse_size_input("\t100k\n", true).unwrap(), 100_000);
-        assert_eq!(parse_size_input(" 100 ", true).unwrap(), 100);
-    }
-}
-
 fn main() -> Result<()> {
     let matches = Command::new("yek")
         .version(env!("CARGO_PKG_VERSION"))
@@ -176,4 +119,61 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_size_input_bytes() {
+        // Using byte_unit::Byte to calculate expected values
+        assert_eq!(
+            parse_size_input("10MB", false).unwrap(),
+            Byte::from_str("10MB").unwrap().get_bytes() as usize
+        );
+        assert_eq!(
+            parse_size_input("128KB", false).unwrap(),
+            Byte::from_str("128KB").unwrap().get_bytes() as usize
+        );
+        assert_eq!(
+            parse_size_input("1GB", false).unwrap(),
+            Byte::from_str("1GB").unwrap().get_bytes() as usize
+        );
+        assert!(parse_size_input("invalid", false).is_err());
+    }
+
+    #[test]
+    fn test_parse_size_input_tokens() {
+        // Test K suffix variations
+        assert_eq!(parse_size_input("100K", true).unwrap(), 100_000);
+        assert_eq!(parse_size_input("100k", true).unwrap(), 100_000);
+        assert_eq!(parse_size_input("0K", true).unwrap(), 0);
+        assert_eq!(parse_size_input("1K", true).unwrap(), 1_000);
+        assert_eq!(parse_size_input("1k", true).unwrap(), 1_000);
+
+        // Test without K suffix
+        assert_eq!(parse_size_input("100", true).unwrap(), 100);
+        assert_eq!(parse_size_input("1000", true).unwrap(), 1000);
+        assert_eq!(parse_size_input("0", true).unwrap(), 0);
+
+        // Test invalid inputs
+        assert!(parse_size_input("K", true).is_err());
+        assert!(parse_size_input("-1K", true).is_err());
+        assert!(parse_size_input("-100", true).is_err());
+        assert!(parse_size_input("100KB", true).is_err());
+        assert!(parse_size_input("invalid", true).is_err());
+        assert!(parse_size_input("", true).is_err());
+        assert!(parse_size_input(" ", true).is_err());
+        assert!(parse_size_input("100K100", true).is_err());
+        assert!(parse_size_input("100.5K", true).is_err());
+    }
+
+    #[test]
+    fn test_parse_size_input_whitespace() {
+        // Test whitespace handling
+        assert_eq!(parse_size_input(" 100K ", true).unwrap(), 100_000);
+        assert_eq!(parse_size_input("\t100k\n", true).unwrap(), 100_000);
+        assert_eq!(parse_size_input(" 100 ", true).unwrap(), 100);
+    }
 }
