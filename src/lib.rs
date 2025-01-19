@@ -9,8 +9,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command as SysCommand, Stdio};
 use tracing::{debug, info};
 use walkdir::WalkDir;
-mod parallel;
-use parallel::process_files_parallel;
 
 /// Helper macro to write debug statements both to standard debug log and to debug file if set.
 #[macro_export]
@@ -194,11 +192,7 @@ fn build_final_config(cfg: Option<YekConfig>) -> FinalConfig {
                 merged_ignore.push(reg);
             }
         }
-        // Clear default priority rules if user provides their own
-        if !user_cfg.priority_rules.is_empty() {
-            merged_priority.clear();
-        }
-        // Add user priority rules
+        // Merge or add new priority rules
         for user_rule in user_cfg.priority_rules {
             if user_rule.patterns.is_empty() {
                 continue;
@@ -354,15 +348,14 @@ pub fn get_file_priority(
     _ignore_pats: &[Regex],
     prio_list: &[PriorityPattern],
 ) -> i32 {
-    // Loop from highest score → lowest
-    for prio in prio_list.iter().rev() {
+    for prio in prio_list {
         for pat in &prio.patterns {
             if pat.is_match(rel_str) {
                 return prio.score;
             }
         }
     }
-    0 // fallback if nothing matches - lower than any user-defined priority
+    40 // fallback
 }
 
 /// Get the commit time of the most recent change to each file.
@@ -538,188 +531,165 @@ pub fn serialize_repo(
         None
     };
 
-    if stream {
-        // For streaming, we still use the old single-threaded approach
-        let mut files: Vec<FileEntry> = Vec::new();
-        let mut total_size = 0;
-        let mut current_chunk = 0;
-        let mut current_chunk_files = Vec::new();
+    // Collect files with their priorities
+    let mut files: Vec<FileEntry> = Vec::new();
+    let mut total_size = 0;
+    let mut current_chunk = 0;
+    let mut current_chunk_files = Vec::new();
 
-        // Walk directory tree
-        for entry in WalkDir::new(base_path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-
-            // Get path relative to base
-            let rel_path = path.strip_prefix(base_path).unwrap_or(path);
-            let rel_str = rel_path.to_string_lossy();
-
-            // Normalize path separators to forward slashes for consistent pattern matching
-            #[cfg(windows)]
-            let rel_str = rel_str.replace('\\', "/");
-
-            // Skip if matched by gitignore
-            #[cfg(windows)]
-            let gitignore_path = rel_path
-                .to_str()
-                .map(|s| s.replace('\\', "/"))
-                .map(PathBuf::from)
-                .unwrap_or(rel_path.to_path_buf());
-            #[cfg(not(windows))]
-            let gitignore_path = rel_path.to_path_buf();
-
-            if gitignore.matched(&gitignore_path, false).is_ignore() {
-                debug!("Skipping {} - matched by gitignore", rel_str);
-                continue;
-            }
-
-            // Skip if matched by our ignore patterns
-            let mut skip = false;
-            #[cfg(windows)]
-            let pattern_path = rel_str.replace('\\', "/");
-            #[cfg(not(windows))]
-            let pattern_path = rel_str.to_string();
-
-            for pat in &final_config.ignore_patterns {
-                if pat.is_match(&pattern_path) {
-                    debug!("Skipping {} - matched ignore pattern", rel_str);
-                    skip = true;
-                    break;
-                }
-            }
-            if skip {
-                continue;
-            }
-
-            // Calculate priority score
-            let mut priority = get_file_priority(
-                &pattern_path,
-                &final_config.ignore_patterns,
-                &final_config.priority_list,
-            );
-
-            // Apply rank-based boost if available
-            if let Some(ref boost_map) = recentness_boost {
-                if let Some(boost) = boost_map.get(&pattern_path) {
-                    priority += *boost;
-                }
-            }
-
-            files.push(FileEntry {
-                path: path.to_path_buf(),
-                priority,
-            });
+    // Walk directory tree
+    for entry in WalkDir::new(base_path)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
         }
 
-        // Sort files by priority (ascending) so higher priority files come last
-        files.sort_by(|a, b| a.priority.cmp(&b.priority));
+        // Get path relative to base
+        let rel_path = path.strip_prefix(base_path).unwrap_or(path);
+        let rel_str = rel_path.to_string_lossy();
 
-        // Process files in sorted order
-        for file in files {
-            let path = file.path;
-            let rel_path = path.strip_prefix(base_path).unwrap_or(&path);
-            let rel_str = rel_path.to_string_lossy();
+        // Normalize path separators to forward slashes for consistent pattern matching
+        #[cfg(windows)]
+        let rel_str = rel_str.replace('\\', "/");
 
-            // Skip binary files
-            if let Some(ref cfg) = config {
-                if !is_text_file(&path, &cfg.binary_extensions) {
-                    debug!("Skipping binary file: {}", rel_str);
-                    continue;
-                }
-            } else if !is_text_file(&path, &[]) {
+        // Skip if matched by gitignore
+        #[cfg(windows)]
+        let gitignore_path = rel_path
+            .to_str()
+            .map(|s| s.replace('\\', "/"))
+            .map(PathBuf::from)
+            .unwrap_or(rel_path.to_path_buf());
+        #[cfg(not(windows))]
+        let gitignore_path = rel_path.to_path_buf();
+
+        if gitignore.matched(&gitignore_path, false).is_ignore() {
+            debug!("Skipping {} - matched by gitignore", rel_str);
+            continue;
+        }
+
+        // Skip if matched by our ignore patterns
+        let mut skip = false;
+        #[cfg(windows)]
+        let pattern_path = rel_str.replace('\\', "/");
+        #[cfg(not(windows))]
+        let pattern_path = rel_str.to_string();
+
+        for pat in &final_config.ignore_patterns {
+            if pat.is_match(&pattern_path) {
+                debug!("Skipping {} - matched ignore pattern", rel_str);
+                skip = true;
+                break;
+            }
+        }
+        if skip {
+            continue;
+        }
+
+        // Calculate priority score
+        let mut priority = get_file_priority(
+            &pattern_path,
+            &final_config.ignore_patterns,
+            &final_config.priority_list,
+        );
+
+        // Apply rank-based boost if available
+        if let Some(ref boost_map) = recentness_boost {
+            if let Some(boost) = boost_map.get(&pattern_path) {
+                priority += *boost;
+            }
+        }
+
+        files.push(FileEntry {
+            path: path.to_path_buf(),
+            priority,
+        });
+    }
+
+    // Sort files by priority (ascending) so higher priority files come last
+    files.sort_by(|a, b| a.priority.cmp(&b.priority));
+
+    // Process files in sorted order
+    for file in files {
+        let path = file.path;
+        let rel_path = path.strip_prefix(base_path).unwrap_or(&path);
+        let rel_str = rel_path.to_string_lossy();
+
+        // Skip binary files
+        if let Some(ref cfg) = config {
+            if !is_text_file(&path, &cfg.binary_extensions) {
                 debug!("Skipping binary file: {}", rel_str);
                 continue;
             }
+        } else if !is_text_file(&path, &[]) {
+            debug!("Skipping binary file: {}", rel_str);
+            continue;
+        }
 
-            // Read file content
-            let content = match fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(e) => {
-                    debug!("Failed to read {}: {}", rel_str, e);
-                    continue;
-                }
-            };
-
-            let size = count_size(&content, count_tokens);
-            if size == 0 {
-                debug!("Skipping empty file: {}", rel_str);
+        // Read file content
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                debug!("Failed to read {}: {}", rel_str, e);
                 continue;
             }
+        };
 
-            // If a single file is larger than max_size, split it into multiple chunks
-            if size > max_size {
-                debug_file!("File exceeds chunk size, splitting into multiple chunks");
-                let mut remaining = content.as_str();
-                let mut part = 0;
+        let size = count_size(&content, count_tokens);
+        if size == 0 {
+            debug!("Skipping empty file: {}", rel_str);
+            continue;
+        }
 
-                while !remaining.is_empty() {
-                    let mut chunk_size = if count_tokens {
-                        // In token mode, count words until we hit max_size
-                        let mut chars = 0;
-                        for (tokens, word) in remaining.split_whitespace().enumerate() {
-                            if tokens + 1 > max_size {
-                                break;
-                            }
-                            chars += word.len() + 1; // +1 for space
+        // If a single file is larger than max_size, split it into multiple chunks
+        if size > max_size {
+            debug_file!("File exceeds chunk size, splitting into multiple chunks");
+            let mut remaining = content.as_str();
+            let mut part = 0;
+
+            while !remaining.is_empty() {
+                let mut chunk_size = if count_tokens {
+                    // In token mode, count words until we hit max_size
+                    let mut chars = 0;
+                    for (tokens, word) in remaining.split_whitespace().enumerate() {
+                        if tokens + 1 > max_size {
+                            break;
                         }
-                        chars
-                    } else {
-                        max_size
-                    };
-
-                    // Ensure we make progress even if no word boundary found
-                    if chunk_size == 0 {
-                        chunk_size = std::cmp::min(max_size, remaining.len());
+                        chars += word.len() + 1; // +1 for space
                     }
+                    chars
+                } else {
+                    max_size
+                };
 
-                    let (chunk, rest) =
-                        remaining.split_at(std::cmp::min(chunk_size, remaining.len()));
-                    remaining = rest.trim_start();
-
-                    let chunk_files =
-                        vec![(format!("{}:part{}", rel_str, part), chunk.to_string())];
-                    debug_file!("Written chunk {}", part);
-                    write_chunk(
-                        &chunk_files,
-                        part,
-                        output_dir.as_deref(),
-                        stream,
-                        count_tokens,
-                    )?;
-                    part += 1;
+                // Ensure we make progress even if no word boundary found
+                if chunk_size == 0 {
+                    chunk_size = std::cmp::min(max_size, remaining.len());
                 }
-                continue;
-            }
 
-            // Check if adding this file would exceed chunk size
-            if total_size + size > max_size && !current_chunk_files.is_empty() {
-                // Write current chunk
+                let (chunk, rest) = remaining.split_at(std::cmp::min(chunk_size, remaining.len()));
+                remaining = rest.trim_start();
+
+                let chunk_files = vec![(format!("{}:part{}", rel_str, part), chunk.to_string())];
+                debug_file!("Written chunk {}", part);
                 write_chunk(
-                    &current_chunk_files,
-                    current_chunk,
+                    &chunk_files,
+                    part,
                     output_dir.as_deref(),
                     stream,
                     count_tokens,
                 )?;
-                debug_file!("Written chunk {}", current_chunk);
-                current_chunk += 1;
-                current_chunk_files.clear();
-                total_size = 0;
+                part += 1;
             }
-
-            // Add file to current chunk
-            current_chunk_files.push((rel_str.to_string(), content));
-            total_size += size;
+            continue;
         }
 
-        // Write final chunk if any files remain
-        if !current_chunk_files.is_empty() {
+        // Check if adding this file would exceed chunk size
+        if total_size + size > max_size && !current_chunk_files.is_empty() {
+            // Write current chunk
             write_chunk(
                 &current_chunk_files,
                 current_chunk,
@@ -728,23 +698,32 @@ pub fn serialize_repo(
                 count_tokens,
             )?;
             debug_file!("Written chunk {}", current_chunk);
+            current_chunk += 1;
+            current_chunk_files.clear();
+            total_size = 0;
         }
 
-        Ok(None)
-    } else if let Some(out_dir) = output_dir {
-        // Use parallel processing for non-streaming mode
-        process_files_parallel(
-            base_path,
-            max_size,
-            &out_dir,
-            config.as_ref(),
-            &final_config.ignore_patterns,
-            &final_config.priority_list,
-            recentness_boost.as_ref(),
+        // Add file to current chunk
+        current_chunk_files.push((rel_str.to_string(), content));
+        total_size += size;
+    }
+
+    // Write final chunk if any files remain
+    if !current_chunk_files.is_empty() {
+        write_chunk(
+            &current_chunk_files,
+            current_chunk,
+            output_dir.as_deref(),
+            stream,
+            count_tokens,
         )?;
-        Ok(Some(out_dir))
-    } else {
+        debug_file!("Written chunk {}", current_chunk);
+    }
+
+    if stream {
         Ok(None)
+    } else {
+        Ok(output_dir)
     }
 }
 
@@ -823,7 +802,7 @@ fn compute_recentness_boost(
         return HashMap::new();
     }
 
-    // Sort by ascending commit time => first is oldest
+    // Sort by ascending commit time
     let mut sorted: Vec<(&String, &u64)> = commit_times.iter().collect();
     sorted.sort_by_key(|(_, t)| **t);
 
@@ -840,8 +819,8 @@ fn compute_recentness_boost(
 
     let mut result = HashMap::new();
     for (i, (path, _time)) in sorted.iter().enumerate() {
-        let rank = i as f64 / last_index; // 0.0..1.0 (older files get lower rank)
-        let boost = (rank * max_boost as f64).round() as i32; // Newer files get higher boost
+        let rank = i as f64 / last_index; // 0.0..1.0
+        let boost = (rank * max_boost as f64).round() as i32;
         result.insert((*path).clone(), boost);
     }
     result
