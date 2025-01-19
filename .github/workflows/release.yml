@@ -51,31 +51,40 @@ jobs:
           mkdir -p "yek-${{ matrix.target }}"
           if [[ "${{ matrix.target }}" == *"windows"* ]]; then
             cp "target/${{ matrix.target }}/release/yek.exe" "yek-${{ matrix.target }}/"
+            7z a "yek-${{ matrix.target }}.tar" "yek-${{ matrix.target }}"
+            7z a "yek-${{ matrix.target }}.tar.gz" "yek-${{ matrix.target }}.tar"
+            rm "yek-${{ matrix.target }}.tar"
           else
             cp "target/${{ matrix.target }}/release/yek" "yek-${{ matrix.target }}/"
+            tar -czf "yek-${{ matrix.target }}.tar.gz" "yek-${{ matrix.target }}"
           fi
-          tar -czf "yek-${{ matrix.target }}.tar.gz" "yek-${{ matrix.target }}"
         shell: bash
 
       - name: Compute SHA256
         id: sha
         run: |
-          echo "sha256=$(shasum -a 256 yek-${{ matrix.target }}.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "sha256=$(certutil -hashfile yek-${{ matrix.target }}.tar.gz SHA256 | grep -v 'hash' | tr -d ' \r\n')" >> $GITHUB_OUTPUT
+          else
+            echo "sha256=$(shasum -a 256 yek-${{ matrix.target }}.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+      - name: Create SHA file
+        run: echo "${{ steps.sha.outputs.sha256 }}" > sha-${{ matrix.target }}.txt
         shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
           name: yek-${{ matrix.target }}
-          path: |
-            yek-${{ matrix.target }}.tar.gz
+          path: yek-${{ matrix.target }}.tar.gz
 
       - name: Upload SHA
         uses: actions/upload-artifact@v3
         with:
           name: sha-${{ matrix.target }}
-          path: |
-            echo "${{ steps.sha.outputs.sha256 }}" > sha-${{ matrix.target }}.txt
+          path: sha-${{ matrix.target }}.txt
 
   release:
     needs: build
