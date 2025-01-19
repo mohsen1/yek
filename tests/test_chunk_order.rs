@@ -8,8 +8,8 @@ use tracing_subscriber::fmt;
 /// This test ensures that the last-written chunk contains the highest-priority file.
 #[test]
 fn chunk_order_reflects_priority() {
-    // Setup logging - fail fast if logging setup fails
-    fmt()
+    // Setup logging - ignore if already initialized
+    let _ = fmt()
         .with_max_level(Level::DEBUG)
         .with_target(false)
         .with_file(true)
@@ -17,8 +17,7 @@ fn chunk_order_reflects_priority() {
         .with_thread_ids(false)
         .with_thread_names(false)
         .with_ansi(true)
-        .try_init()
-        .expect("Failed to initialize logging");
+        .try_init();
 
     let repo = setup_temp_repo();
     let output_dir = repo.path().join("yek-output");
