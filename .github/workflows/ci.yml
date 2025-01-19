@@ -143,7 +143,21 @@ jobs:
   benchmark:
     name: Benchmark
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest-16-core
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        benchmark_group:
+          [
+            "SingleFile_ByteMode",
+            "SingleFile_ByteMode_Large",
+            "SingleFile_TokenMode_Large",
+            "MultipleFiles_Small",
+            "MultipleFiles_Medium",
+            "MultipleFiles_Large",
+            "MultipleFiles_TokenMode",
+            "CustomConfig",
+          ]
+      fail-fast: false
 
     steps:
       - uses: actions/checkout@v3
@@ -164,7 +178,7 @@ jobs:
           cargo bench --bench serialization --no-run
 
       - name: Run benchmark on target branch
-        run: cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }}
+        run: cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }} '${{ matrix.benchmark_group }}/'
 
       - name: Build benchmarks on PR branch
         run: |
@@ -173,16 +187,16 @@ jobs:
 
       - name: Compare benchmarks
         run: |
-          cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 > benchmark_results.md
-          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 '${{ matrix.benchmark_group }}/' > benchmark_results.md
+          echo "## Benchmark Results for ${{ matrix.benchmark_group }}" >> $GITHUB_STEP_SUMMARY
           cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v3
         with:
-          name: criterion-results
+          name: criterion-${{ matrix.benchmark_group }}-results
           path: |
-            target/criterion/
+            target/criterion/${{ matrix.benchmark_group }}/
             benchmark_results.md
           if-no-files-found: error
 
