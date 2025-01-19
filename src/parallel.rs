@@ -15,6 +15,11 @@ use std::{
 };
 use tracing::{debug, info};
 
+/// Default chunk size in bytes
+pub const CHUNK_SIZE_BYTES: usize = 1024;
+/// Minimum content size that triggers chunking
+pub const MIN_CONTENT_SIZE: usize = CHUNK_SIZE_BYTES * 2;
+
 /// Represents a chunk of text read from one file
 #[derive(Debug)]
 pub struct FileChunk {
@@ -155,7 +160,7 @@ pub fn process_files_parallel(
 fn read_and_send_chunks(
     base_path: &Path,
     file_entry: FileEntry,
-    max_size: usize,
+    _max_size: usize,
     tx: &Sender<FileChunk>,
 ) -> Result<()> {
     let mut file = fs::File::open(&file_entry.path)?;
@@ -170,7 +175,7 @@ fn read_and_send_chunks(
     }
 
     // If total size <= max_size, send it as single chunk
-    if total_buf.len() <= max_size {
+    if total_buf.len() <= MIN_CONTENT_SIZE {
         let chunk_content = String::from_utf8_lossy(&total_buf).to_string();
         let fc = FileChunk {
             priority: file_entry.priority,
@@ -183,11 +188,11 @@ fn read_and_send_chunks(
         return Ok(());
     }
 
-    // Otherwise break into multiple parts
+    // Otherwise break into multiple parts using CHUNK_SIZE_BYTES
     let mut start = 0;
     let mut part_index = 0;
     while start < total_buf.len() {
-        let end = (start + max_size).min(total_buf.len());
+        let end = (start + CHUNK_SIZE_BYTES).min(total_buf.len());
         let slice = &total_buf[start..end];
         let chunk_str = String::from_utf8_lossy(slice).to_string();
 
