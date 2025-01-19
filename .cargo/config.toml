@@ -14,6 +14,7 @@ rustflags = ["-C", "target-cpu=x86-64-v2"]
 rustflags = ["-C", "target-cpu=generic"]
 
 [target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
 rustflags = ["-C", "target-cpu=generic"]
 
 [target.aarch64-unknown-linux-musl]
