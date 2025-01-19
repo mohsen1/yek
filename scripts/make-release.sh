@@ -112,7 +112,7 @@ sed -i.bak "/url \".*yek-${CURRENT_PLATFORM}.tar.gz\"/{n;s/sha256 \".*\"/sha256 
 rm -f Formula/yek.rb.bak
 
 # -- Step 8: Stage all changes --
-git add Cargo.toml Formula/yek.rb CHANGELOG.md
+git add Cargo.toml Cargo.lock Formula/yek.rb CHANGELOG.md .gitignore
 
 # -- Step 9: Amend the last commit with version bump changes --
 if git log -1 --pretty=%B | grep -q "^release: v"; then
