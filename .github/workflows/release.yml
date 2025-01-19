@@ -98,33 +98,6 @@ jobs:
         run: |
           mv */yek-*.tar.gz ./
 
-      - name: Update Formula
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Get version from tag
-          VERSION=${GITHUB_REF#refs/tags/v}
-
-          # Update version in Formula
-          sed -i "s/^  version \".*\"/  version \"${VERSION}\"/" Formula/yek.rb
-
-          # Update each SHA256
-          for sha_file in sha-*/sha-*.txt; do
-            target=$(echo $sha_file | cut -d/ -f1 | sed 's/sha-//')
-            sha=$(cat $sha_file)
-            sed -i "/url \".*yek-${target}.tar.gz\"/{n;s/sha256 \".*\"/sha256 \"${sha}\"/;}" Formula/yek.rb
-          done
-
-          # Configure git with token-based auth
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
-
-          # Commit and push changes
-          git add Formula/yek.rb
-          git commit -m 'chore: update formula for release ${VERSION}'
-          git push origin HEAD:main
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
