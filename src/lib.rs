@@ -558,8 +558,13 @@ pub fn serialize_repo(
 
         // Skip if matched by our ignore patterns
         let mut skip = false;
+        #[cfg(windows)]
+        let pattern_path = rel_str.replace('\\', "/");
+        #[cfg(not(windows))]
+        let pattern_path = rel_str.to_string();
+
         for pat in &final_config.ignore_patterns {
-            if pat.is_match(&rel_str) {
+            if pat.is_match(&pattern_path) {
                 debug!("Skipping {} - matched ignore pattern", rel_str);
                 skip = true;
                 break;
@@ -571,14 +576,14 @@ pub fn serialize_repo(
 
         // Calculate priority score
         let mut priority = get_file_priority(
-            &rel_str,
+            &pattern_path,
             &final_config.ignore_patterns,
             &final_config.priority_list,
         );
 
         // Boost priority for recently modified files
         if let Some(ref times) = commit_times {
-            if let Some(ts) = times.get(&rel_str.to_string()) {
+            if let Some(ts) = times.get(&pattern_path) {
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_else(|_| Duration::from_secs(0))
