@@ -87,8 +87,7 @@ pub fn process_files_parallel(
             let chunk_size = chunk_str.len();
 
             // Write chunk if buffer would exceed size
-            if current_chunk_size + chunk_size > 1024 * 1024 * 10 {
-                // 10MB buffer
+            if current_chunk_size + chunk_size > max_size {
                 write_chunk_to_file(output_dir, current_chunk_index, &current_chunk)?;
                 current_chunk.clear();
                 current_chunk_size = 0;
@@ -119,7 +118,7 @@ pub fn process_files_parallel(
 
     // Spawn aggregator thread
     let output_dir = output_dir.to_path_buf();
-    let aggregator_handle = thread::spawn(move || aggregator_loop(rx, output_dir));
+    let aggregator_handle = thread::spawn(move || aggregator_loop(rx, output_dir, max_size));
 
     // Spawn worker threads - use fewer threads for smaller workloads
     let num_threads = if files.len() < 4 { 1 } else { get() };
@@ -312,7 +311,7 @@ fn collect_files(
 }
 
 /// Receives chunks from workers and writes them to files
-fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
+fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf, max_size: usize) -> Result<()> {
     // Collect chunks first to maintain priority order
     let mut all_chunks = Vec::new();
     while let Ok(chunk) = rx.recv() {
@@ -336,9 +335,8 @@ fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
         let chunk_str = format!(">>>> {}\n{}\n\n", chunk.rel_path, chunk.content);
         let chunk_size = chunk_str.len();
 
-        // If adding this chunk would exceed reasonable buffer size, write current chunk
-        if current_chunk_size + chunk_size > 1024 * 1024 * 10 {
-            // 10MB buffer
+        // If adding this chunk would exceed max_size, write current chunk
+        if current_chunk_size + chunk_size > max_size {
             write_chunk_to_file(&output_dir, current_chunk_index, &current_chunk)?;
             current_chunk.clear();
             current_chunk_size = 0;
