@@ -148,6 +148,7 @@ You can place a file called `yek.toml` at your project root or pass a custom pat
 1. Add custom ignore patterns
 2. Define file priority rules for processing order
 3. Add additional binary file extensions to ignore (extends the built-in list)
+4. Configure Git-based priority boost
 
 Example configuration:
 
@@ -159,6 +160,9 @@ patterns = [
   "\\.next/",
   "my_custom_folder/"
 ]
+
+# Configure Git-based priority boost (optional)
+git_boost_max = 50  # Maximum score boost based on Git history (default: 100)
 
 # Define priority rules for processing order
 # Higher scores are processed first
@@ -188,6 +192,7 @@ All configuration keys are optional. By default:
 
 - No extra ignore patterns
 - All files have equal priority (score: 1)
+- Git-based priority boost maximum is 100
 - Common binary file extensions are ignored (.jpg, .png, .exe, etc. - see source for full list)
 
 ## Planned Features

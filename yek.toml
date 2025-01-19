@@ -1,0 +1,20 @@
+output_dir = "./repo-serialized"
+
+[ignore_patterns]
+patterns = [
+    "^repo-serialized/"
+]
+
+[[priority_rules]]
+score = 100
+patterns = ["^src/"]
+
+[[priority_rules]]
+score = 70
+patterns = ["^src/lib/", "^test/"]
+
+[[priority_rules]]
+score = 30
+patterns = ["^scripts/"]
+
+output_dir = "./repo-serialized" 

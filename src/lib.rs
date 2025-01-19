@@ -7,7 +7,6 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as SysCommand, Stdio};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info};
 use walkdir::WalkDir;
 
@@ -47,6 +46,8 @@ pub struct YekConfig {
     pub binary_extensions: Vec<String>,
     #[serde(default)]
     pub output_dir: Option<String>,
+    #[serde(default)]
+    pub git_boost_max: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -88,6 +89,7 @@ impl Default for YekConfig {
             ],
             binary_extensions: Vec::new(), // User extensions only, we'll combine with BINARY_FILE_EXTENSIONS
             output_dir: None,
+            git_boost_max: None,
         }
     }
 }
@@ -115,6 +117,7 @@ fn default_priority_list() -> Vec<PriorityPattern> {
 /// Default sets of ignore patterns (separate from .gitignore)
 fn default_ignore_patterns() -> Vec<Regex> {
     let raw = vec![
+        r"^LICENSE$",
         r"^\.git/",
         r"^\.next/",
         r"^node_modules/",
@@ -485,6 +488,15 @@ pub fn serialize_repo(
     // Get git commit times if available
     let commit_times = get_recent_commit_times(base_path);
 
+    // If we have commit times, compute a "recentness" map
+    // that ranks all files from oldest to newest.
+    let recentness_boost = if let Some(ref times) = commit_times {
+        let max_boost = config.as_ref().and_then(|c| c.git_boost_max).unwrap_or(100);
+        Some(compute_recentness_boost(times, max_boost))
+    } else {
+        None
+    };
+
     // Build gitignore matcher
     let mut builder = GitignoreBuilder::new(base_path);
     let gitignore_path = base_path.join(".gitignore");
@@ -584,20 +596,10 @@ pub fn serialize_repo(
             &final_config.priority_list,
         );
 
-        // Boost priority for recently modified files
-        if let Some(ref times) = commit_times {
-            if let Some(ts) = times.get(&pattern_path) {
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_else(|_| Duration::from_secs(0))
-                    .as_secs();
-                let age = now.saturating_sub(*ts);
-                if age < 60 * 60 * 24 * 7 {
-                    // Files modified in last week get priority boost
-                    // Add boost based on how recent the file is
-                    let boost = 100 + ((60 * 60 * 24 * 7 - age) / (60 * 60)) as i32;
-                    priority += boost;
-                }
+        // Apply rank-based boost if available
+        if let Some(ref boost_map) = recentness_boost {
+            if let Some(boost) = boost_map.get(&pattern_path) {
+                priority += *boost;
             }
         }
 
@@ -788,4 +790,38 @@ pub fn load_config_file(path: &Path) -> Option<YekConfig> {
             None
         }
     }
+}
+
+/// Rank-based approach to compute how "recent" each file is (0=oldest, 1=newest).
+/// Then scale it to a user-defined or default max boost.
+fn compute_recentness_boost(
+    commit_times: &HashMap<String, u64>,
+    max_boost: i32,
+) -> HashMap<String, i32> {
+    if commit_times.is_empty() {
+        return HashMap::new();
+    }
+
+    // Sort by ascending commit time
+    let mut sorted: Vec<(&String, &u64)> = commit_times.iter().collect();
+    sorted.sort_by_key(|(_, t)| **t);
+
+    // oldest file => rank=0, newest => rank=1
+    let last_index = sorted.len().saturating_sub(1) as f64;
+    if last_index < 1.0 {
+        // If there's only one file, or zero, no boosts make sense
+        let mut single = HashMap::new();
+        for file in commit_times.keys() {
+            single.insert(file.clone(), 0);
+        }
+        return single;
+    }
+
+    let mut result = HashMap::new();
+    for (i, (path, _time)) in sorted.iter().enumerate() {
+        let rank = i as f64 / last_index; // 0.0..1.0
+        let boost = (rank * max_boost as f64).round() as i32;
+        result.insert((*path).clone(), boost);
+    }
+    result
 }
