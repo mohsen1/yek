@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::Path;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use yek::serialize_repo;

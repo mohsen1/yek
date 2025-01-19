@@ -68,15 +68,98 @@ pub struct PriorityRule {
 
 /// BINARY file checks by extension
 const BINARY_FILE_EXTENSIONS: &[&str] = &[
-    ".jpg", ".pdf", ".mid", ".blend", ".p12", ".rco", ".tgz", ".jpeg", ".mp4", ".midi", ".crt",
-    ".p7b", ".ovl", ".bz2", ".png", ".webm", ".aac", ".key", ".gbr", ".mo", ".xz", ".gif", ".mov",
-    ".flac", ".pem", ".pcb", ".nib", ".dat", ".ico", ".mp3", ".bmp", ".der", ".icns", ".xap",
-    ".lib", ".webp", ".wav", ".psd", ".png2", ".xdf", ".psf", ".jar", ".ttf", ".exe", ".ai",
-    ".jp2", ".zip", ".pak", ".vhd", ".woff", ".dll", ".eps", ".swc", ".rar", ".img3", ".gho",
-    ".woff2", ".bin", ".raw", ".mso", ".7z", ".img4", ".efi", ".eot", ".iso", ".tif", ".class",
-    ".gz", ".msi", ".ocx", ".sys", ".img", ".tiff", ".apk", ".tar", ".cab", ".scr", ".so", ".dmg",
-    ".3ds", ".com", ".elf", ".o", ".max", ".obj", ".drv", ".rom", ".a", ".vhdx", ".fbx", ".bpl",
-    ".cpl",
+    "jpg", "jpeg", "png", "gif", "exe", "dll", "so", "dylib", "pdf", "mp4", "mov", "webm", "zip",
+    "tar", "gz", "bz2", "7z", "rar", "class", "jar", "psd", "blend", "fbx", "max", "obj", "lib",
+    "a", "iso", "ico", "ttf", "woff", "woff2", "ps", "eps", "doc", "docx", "xls", "xlsx", "ppt",
+    "pptx", "psd", "apk", "msi", "sys", "o", "obj", "pdb", "nib", "ogg", "wav", "flac", "mp3",
+    "mpg", "mpeg", "avi", "dll", "pem", "crt", "mid", "p12", "rco", "tgz", "aac", "key", "gbr",
+    "mo", "xz", "pcb", "dat", "xap", "webp", "png2", "xdf", "psf", "ai", "jp2", "pak", "vhd",
+    "swc", "img3", "gho", "bin", "raw", "mso", "img4", "efi", "eot", "tif", "ocx", "img", "tiff",
+    "cab", "scr", "dmg", "3ds", "com", "elf", "drv", "rom", "vhdx", "bpl", "cpl",
+];
+
+/// Known text file extensions that can skip binary checks
+const TEXT_FILE_EXTENSIONS: &[&str] = &[
+    "rs",
+    "toml",
+    "md",
+    "txt",
+    "json",
+    "yaml",
+    "yml",
+    "js",
+    "ts",
+    "jsx",
+    "tsx",
+    "html",
+    "css",
+    "scss",
+    "sh",
+    "c",
+    "h",
+    "cpp",
+    "hpp",
+    "py",
+    "java",
+    "go",
+    "rb",
+    "php",
+    "sql",
+    "xml",
+    "ini",
+    "conf",
+    "cfg",
+    "properties",
+    "gitignore",
+    "env",
+    "lock",
+    "gradle",
+    "pom",
+    "sbt",
+    "scala",
+    "kt",
+    "kts",
+    "dart",
+    "swift",
+    "m",
+    "mm",
+    "r",
+    "pl",
+    "pm",
+    "t",
+    "psgi",
+    "rake",
+    "gemspec",
+    "podspec",
+    "cs",
+    "fs",
+    "fsx",
+    "fsi",
+    "fsscript",
+    "gradle",
+    "groovy",
+    "haml",
+    "hbs",
+    "jade",
+    "jsx",
+    "less",
+    "lua",
+    "markdown",
+    "coffee",
+    "elm",
+    "erl",
+    "ex",
+    "exs",
+    "fish",
+    "vue",
+    "svelte",
+    "tf",
+    "tfvars",
+    "proto",
+    "graphql",
+    "prisma",
+    "dhall",
+    "zig",
 ];
 
 /// We'll define a minimal default config. The user can override parts of it from a TOML file.
@@ -238,9 +321,11 @@ pub fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool
 
     // First check extension - fast path
     if let Some(ext) = file_path.extension().and_then(|s| s.to_str()) {
-        let dot_ext = format!(".{}", ext.to_lowercase());
-        if BINARY_FILE_EXTENSIONS.contains(&dot_ext.as_str())
-            || user_binary_extensions.contains(&dot_ext)
+        let ext_lc = ext.to_lowercase();
+        if BINARY_FILE_EXTENSIONS.contains(&ext_lc.as_str())
+            || user_binary_extensions
+                .iter()
+                .any(|e| e.trim_start_matches('.') == ext_lc)
         {
             debug!(
                 "File {} identified as binary by extension",
@@ -250,42 +335,7 @@ pub fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool
         }
 
         // Known text extensions - skip content check
-        if matches!(
-            dot_ext.as_str(),
-            ".txt"
-                | ".md"
-                | ".rs"
-                | ".toml"
-                | ".yml"
-                | ".yaml"
-                | ".json"
-                | ".js"
-                | ".ts"
-                | ".html"
-                | ".css"
-                | ".sh"
-                | ".py"
-                | ".rb"
-                | ".pl"
-                | ".php"
-                | ".java"
-                | ".c"
-                | ".cpp"
-                | ".h"
-                | ".hpp"
-                | ".go"
-                | ".swift"
-                | ".kt"
-                | ".scala"
-                | ".r"
-                | ".m"
-                | ".sql"
-                | ".xml"
-                | ".ini"
-                | ".conf"
-                | ".cfg"
-                | ".properties"
-        ) {
+        if TEXT_FILE_EXTENSIONS.contains(&ext_lc.as_str()) {
             return true;
         }
     }

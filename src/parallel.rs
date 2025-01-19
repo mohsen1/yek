@@ -1,5 +1,4 @@
-use crate::is_text_file;
-use crate::{get_file_priority, PriorityPattern, YekConfig};
+use crate::{get_file_priority, is_text_file, PriorityPattern, YekConfig};
 use anyhow::Result;
 use crossbeam::channel::{bounded, Receiver, Sender};
 use ignore::{gitignore::GitignoreBuilder, WalkBuilder};
@@ -7,7 +6,7 @@ use num_cpus::get;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::thread;
 use tracing::{debug, info};
@@ -30,82 +29,8 @@ struct FileEntry {
     file_index: usize,
 }
 
-/// Reads a file and determines if it's likely binary by checking for null bytes
-fn is_likely_binary(path: &Path) -> Result<bool> {
-    let f = fs::File::open(path)?;
-    let mut reader = BufReader::new(f);
-    let mut buf = [0; 4096];
-    let n = reader.read(&mut buf)?;
-    Ok(buf[..n].contains(&0))
-}
-
-/// Reads and chunks a single file, sending chunks through the channel
-fn read_and_send_chunks(
-    file_entry: FileEntry,
-    base_path: &Path,
-    tx: &Sender<FileChunk>,
-    max_size: usize,
-) -> Result<()> {
-    // Skip if binary
-    if is_likely_binary(&file_entry.path)? {
-        return Ok(());
-    }
-
-    // Read file content
-    let content = fs::read_to_string(&file_entry.path)?;
-    if content.is_empty() {
-        return Ok(());
-    }
-
-    // Get relative path for display
-    let rel_path = file_entry
-        .path
-        .strip_prefix(base_path)
-        .unwrap_or(&file_entry.path)
-        .to_string_lossy()
-        .into_owned();
-
-    // If smaller than max_size, send as single chunk
-    if content.len() <= max_size {
-        let chunk = FileChunk {
-            priority: file_entry.priority,
-            file_index: file_entry.file_index,
-            part_index: 0,
-            rel_path,
-            content,
-        };
-        tx.send(chunk)?;
-        return Ok(());
-    }
-
-    // Otherwise split into chunks
-    let mut start = 0;
-    let mut part_index = 0;
-    let bytes = content.as_bytes();
-
-    while start < bytes.len() {
-        let end = (start + max_size).min(bytes.len());
-        let slice = &bytes[start..end];
-        let chunk_str = String::from_utf8_lossy(slice).into_owned();
-
-        let chunk = FileChunk {
-            priority: file_entry.priority,
-            file_index: file_entry.file_index,
-            part_index,
-            rel_path: rel_path.clone(),
-            content: chunk_str,
-        };
-
-        tx.send(chunk)?;
-        start = end;
-        part_index += 1;
-    }
-
-    Ok(())
-}
-
 /// Main parallel processing function that coordinates workers and aggregator
-pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024; // Increased from 256
+pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024;
 pub const PARALLEL_THRESHOLD: usize = 10; // Only parallelize if more than 10 files
 
 pub fn process_files_parallel(
@@ -117,10 +42,8 @@ pub fn process_files_parallel(
     priority_list: &[PriorityPattern],
     recentness_boost: Option<&HashMap<String, i32>>,
 ) -> Result<()> {
-    // Create output directory
     fs::create_dir_all(output_dir)?;
 
-    // Collect and sort files
     let files = collect_files(
         base_dir,
         config,
@@ -128,6 +51,10 @@ pub fn process_files_parallel(
         priority_list,
         recentness_boost,
     )?;
+
+    if files.is_empty() {
+        return Ok(());
+    }
 
     // For small sets of files, process sequentially
     if files.len() <= PARALLEL_THRESHOLD {
@@ -183,19 +110,6 @@ pub fn process_files_parallel(
     // For larger sets, process in parallel
     debug!("Processing {} files in parallel", files.len());
 
-    // Collect and sort files by priority
-    let files = collect_files(
-        base_dir,
-        config,
-        ignore_patterns,
-        priority_list,
-        recentness_boost,
-    )?;
-    if files.is_empty() {
-        return Ok(());
-    }
-
-    // Get channel capacity from config or use default
     let channel_capacity = config
         .and_then(|c| c.channel_capacity)
         .unwrap_or(DEFAULT_CHANNEL_CAPACITY);
@@ -207,8 +121,8 @@ pub fn process_files_parallel(
     let output_dir = output_dir.to_path_buf();
     let aggregator_handle = thread::spawn(move || aggregator_loop(rx, output_dir));
 
-    // Spawn worker threads
-    let num_threads = get();
+    // Spawn worker threads - use fewer threads for smaller workloads
+    let num_threads = if files.len() < 4 { 1 } else { get() };
     let chunk_size = files.len().div_ceil(num_threads);
     let mut handles = Vec::new();
 
@@ -219,7 +133,7 @@ pub fn process_files_parallel(
 
         let handle = thread::spawn(move || -> Result<()> {
             for file_entry in chunk_files {
-                read_and_send_chunks(file_entry, &base_path, &sender, max_size)?;
+                read_and_send_chunks(&base_path, file_entry, max_size, &sender)?;
             }
             Ok(())
         });
@@ -237,6 +151,65 @@ pub fn process_files_parallel(
     // Wait for aggregator
     aggregator_handle.join().unwrap()?;
 
+    Ok(())
+}
+
+/// Reads and chunks a single file, sending chunks through the channel
+fn read_and_send_chunks(
+    base_path: &Path,
+    file_entry: FileEntry,
+    max_size: usize,
+    tx: &Sender<FileChunk>,
+) -> Result<()> {
+    let mut file = fs::File::open(&file_entry.path)?;
+    let rel_path = file_entry
+        .path
+        .strip_prefix(base_path)
+        .unwrap_or(&file_entry.path)
+        .to_string_lossy()
+        .into_owned();
+
+    // Read file content in chunks to avoid loading entire file
+    let mut total_buf = Vec::new();
+    file.read_to_end(&mut total_buf)?;
+
+    if total_buf.is_empty() {
+        return Ok(());
+    }
+
+    // If total size <= max_size, send it as single chunk
+    if total_buf.len() <= max_size {
+        let chunk_content = String::from_utf8_lossy(&total_buf).to_string();
+        let fc = FileChunk {
+            priority: file_entry.priority,
+            file_index: file_entry.file_index,
+            part_index: 0,
+            rel_path,
+            content: chunk_content,
+        };
+        tx.send(fc)?;
+        return Ok(());
+    }
+
+    // Otherwise break into multiple parts
+    let mut start = 0;
+    let mut part_index = 0;
+    while start < total_buf.len() {
+        let end = (start + max_size).min(total_buf.len());
+        let slice = &total_buf[start..end];
+        let chunk_str = String::from_utf8_lossy(slice).to_string();
+
+        let fc = FileChunk {
+            priority: file_entry.priority,
+            file_index: file_entry.file_index,
+            part_index,
+            rel_path: format!("{}:part{}", rel_path, part_index),
+            content: chunk_str,
+        };
+        tx.send(fc)?;
+        start = end;
+        part_index += 1;
+    }
     Ok(())
 }
 
@@ -358,15 +331,10 @@ fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
 
     // Sort chunks by priority, file index, and part index
     all_chunks.sort_by(|a, b| {
-        let p = a.priority.cmp(&b.priority);
-        if p != std::cmp::Ordering::Equal {
-            return p;
-        }
-        let f = a.file_index.cmp(&b.file_index);
-        if f != std::cmp::Ordering::Equal {
-            return f;
-        }
-        a.part_index.cmp(&b.part_index)
+        a.priority
+            .cmp(&b.priority)
+            .then(a.file_index.cmp(&b.file_index))
+            .then(a.part_index.cmp(&b.part_index))
     });
 
     let mut current_chunk = String::new();
