@@ -37,7 +37,8 @@ Running `yek` in this directory will produce a single file and write it to the t
 ... rest of the file ...
 ```
 
-> [!NOTE] > `yek` will prioritize more important files to come last in the output. This is useful for LLM consumption.
+> [!NOTE]
+> `yek` will prioritize more important files to come last in the output. This is useful for LLM consumption.
 
 ## Installation
 
