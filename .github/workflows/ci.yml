@@ -81,6 +81,14 @@ jobs:
             target: x86_64-unknown-linux-musl
             artifact_name: yek
             asset_name: yek-x86_64-unknown-linux-musl.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: yek
+            asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact_name: yek
+            asset_name: yek-aarch64-unknown-linux-musl.tar.gz
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: yek
