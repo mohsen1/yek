@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.5] - 2025-01-19
+
+### Features
+
+
+### Bug Fixes
+
+- fix: manually update Formula version
+
+### Other Changes
+
+- perf show
+
+
 ## [0.7.4] - 2025-01-19
 
 ### Features
