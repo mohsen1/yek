@@ -1,4 +1,7 @@
-use crate::{get_file_priority, is_text_file, normalize_path, PriorityPattern, Result, YekConfig};
+use crate::{
+    debug_file, get_file_priority, is_text_file, normalize_path, write_debug_to_file,
+    PriorityPattern, Result, YekConfig,
+};
 use crossbeam::channel::{bounded, Receiver, Sender};
 use ignore::{gitignore::GitignoreBuilder, WalkBuilder};
 use num_cpus::get;
@@ -315,10 +318,26 @@ fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf, max_size: usize
         let chunk_str = format!(">>>> {}\n{}\n\n", chunk.rel_path, chunk.content);
         let chunk_size = chunk_str.len();
 
-        let should_start_new_chunk = current_chunk_size + chunk_size > max_size
-            || (current_priority.is_some() && current_priority.unwrap() != chunk.priority);
+        // Check priority first to avoid unnecessary size checks
+        let should_start_new_chunk = (current_priority.is_some()
+            && current_priority.unwrap() != chunk.priority)
+            || current_chunk_size + chunk_size > max_size;
 
-        if should_start_new_chunk && !current_chunk.is_empty() {
+        if should_start_new_chunk {
+            if current_priority.is_some() && current_priority.unwrap() != chunk.priority {
+                debug_file!(
+                    "Starting new chunk due to priority change: {} -> {}",
+                    current_priority.unwrap(),
+                    chunk.priority
+                );
+            } else {
+                debug_file!(
+                    "Starting new chunk due to size limit: {} + {} > {}",
+                    current_chunk_size,
+                    chunk_size,
+                    max_size
+                );
+            }
             write_chunk_to_file(&output_dir, current_chunk_index, &current_chunk)?;
             current_chunk.clear();
             current_chunk_size = 0;

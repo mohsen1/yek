@@ -11,6 +11,7 @@ crossbeam = "0.8"
 ignore = "0.4"
 indicatif = "0.17"
 num_cpus = "1.15"
+rayon = "1.8"
 regex = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10"
