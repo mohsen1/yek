@@ -463,6 +463,10 @@ pub fn get_recent_commit_times(repo_root: &Path) -> Option<HashMap<String, u64>>
 struct FileEntry {
     path: PathBuf,
     priority: i32,
+    // Used in parallel mode to maintain file order within priority groups
+    // This field is used by the aggregator to sort chunks from the same file
+    // See src/parallel.rs:aggregator_loop for usage
+    #[allow(dead_code)]
     file_index: usize,
 }
 
