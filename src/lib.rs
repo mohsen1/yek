@@ -569,7 +569,7 @@ pub fn serialize_repo(
 
         // Boost priority for recently modified files
         if let Some(ref times) = commit_times {
-            if let Some(ts) = times.get(rel_str.as_ref()) {
+            if let Some(ts) = times.get(&rel_str.to_string()) {
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_else(|_| Duration::from_secs(0))
