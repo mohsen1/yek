@@ -148,6 +148,7 @@ You can place a file called `yek.toml` at your project root or pass a custom pat
 1. Add custom ignore patterns
 2. Define file priority rules for processing order
 3. Add additional binary file extensions to ignore (extends the built-in list)
+4. Configure Git-based priority boost
 
 Example configuration:
 
