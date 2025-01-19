@@ -8,25 +8,9 @@
 
 ### Bug Fixes
 
-
 ### Other Changes
 
 - ci: remove automatic script path updating
-
-
-## [0.7.1] - 2025-01-19
-
-### Features
-
-- feat: implement tag-based release workflow
-
-### Bug Fixes
-
-
-### Other Changes
-
-- ci: remove automatic script path updating
-
 
 All notable changes to this project will be documented in this file.
 

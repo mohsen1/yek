@@ -4,6 +4,10 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     strategy:
@@ -23,6 +27,9 @@ jobs:
             os: windows-latest
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Clean existing tags
+        run: rm -rf .git/refs/tags/
+
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
@@ -74,6 +81,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Clean existing tags
+        run: rm -rf .git/refs/tags/
+
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
@@ -86,6 +96,8 @@ jobs:
           mv */yek-*.tar.gz ./
 
       - name: Update Formula
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get version from tag
           VERSION=${GITHUB_REF#refs/tags/v}
@@ -100,19 +112,26 @@ jobs:
             sed -i "/url \".*yek-${target}.tar.gz\"/{n;s/sha256 \".*\"/sha256 \"${sha}\"/;}" Formula/yek.rb
           done
 
-          # Configure git
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
+          # Configure git with token-based auth
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
 
-          # Commit and push Formula updates
+          # Commit and push changes
           git add Formula/yek.rb
-          git commit -m "chore: update formula for v${VERSION}"
-          git push origin HEAD
+          git commit -m 'chore: update formula for release ${VERSION}'
+          git push origin HEAD:main
 
-      - name: Create GitHub Release
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            yek-*.tar.gz
+          files: yek-*.tar.gz
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup tags
+        run: |
+          git fetch --prune --prune-tags
+          git tag -l | xargs -r git tag -d
+          git fetch --tags
