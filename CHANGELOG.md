@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.13.1] - 2025-01-19
+
+### Features
+
+
+### Bug Fixes
+
+
+### Other Changes
+
+- chore(release): bump version to 0.13.1
+
+
+## [0.7.5] - 2025-01-19
+
+### Features
+
+
+### Bug Fixes
+
+- fix: manually update Formula version
+
+### Other Changes
+
+- perf show
+
+
 ## [0.7.4] - 2025-01-19
 
 ### Features
