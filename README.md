@@ -1,6 +1,6 @@
 # `yek`
 
-A fast Rust based tool to read text-based files in a repository or directory, chunk them, and serialize them for LLM consumption. By default, the tool:
+A [fast](#performance) Rust based tool to read text-based files in a repository or directory, chunk them, and serialize them for LLM consumption. By default, the tool:
 
 - Uses `.gitignore` rules to skip unwanted files.
 - Uses the Git history to infer what files are important.
@@ -203,6 +203,28 @@ All configuration keys are optional. By default:
 - All files have equal priority (score: 1)
 - Git-based priority boost maximum is 100
 - Common binary file extensions are ignored (.jpg, .png, .exe, etc. - see source for full list)
+
+## Performance
+
+`yek` is fast. It's written in Rust and does many things in parallel to speed up processing.
+
+Here is a benchmark comparing it to [Repomix](https://github.com/jxnl/repomix) serializing the [Next.js](https://github.com/vercel/next.js) project:
+
+```bash
+time yek
+Executed in    5.19 secs    fish           external
+   usr time    2.85 secs   54.00 micros    2.85 secs
+   sys time    6.31 secs  629.00 micros    6.31 secs
+```
+
+```bash
+time repomix
+Executed in   22.24 mins    fish           external
+   usr time   21.99 mins    0.18 millis   21.99 mins
+   sys time    0.23 mins    1.72 millis    0.23 mins
+```
+
+`yek` is **230x faster** than `repomix`.
 
 ## Planned Features
 
