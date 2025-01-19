@@ -8,7 +8,7 @@ use tracing_subscriber::fmt;
 /// This test ensures that the last-written chunk contains the highest-priority file.
 #[test]
 fn chunk_order_reflects_priority() {
-    // Setup logging
+    // Setup logging - fail fast if logging setup fails
     fmt()
         .with_max_level(Level::DEBUG)
         .with_target(false)
@@ -18,11 +18,11 @@ fn chunk_order_reflects_priority() {
         .with_thread_names(false)
         .with_ansi(true)
         .try_init()
-        .ok();
+        .expect("Failed to initialize logging");
 
     let repo = setup_temp_repo();
     let output_dir = repo.path().join("yek-output");
-    fs::create_dir_all(&output_dir).unwrap();
+    fs::create_dir_all(&output_dir).expect("Failed to create output directory");
 
     // Create a Yek config that makes `high_priority/` have a very high score
     create_file(
@@ -42,10 +42,13 @@ patterns = ["^high_priority/"]
     // Create a small file in low_priority
     create_file(repo.path(), "low_priority/foo.txt", "low priority content");
 
-    // Create a bigger file in high_priority so that
-    // it definitely splits or at least goes into a later chunk.
-    //  We'll just create multiple lines to push the chunk size.
-    let big_content = "HIGH PRIORITY\n".repeat(1000);
+    // Create a bigger file in high_priority that will definitely be split
+    // Using chunk size of 1KB, we need more than that to force splitting
+    let chunk_size_bytes = 1024;
+    let min_content_size = chunk_size_bytes * 2; // At least 2 chunks
+    let line = "HIGH PRIORITY\n";
+    let repeat_count = (min_content_size + line.len() - 1) / line.len();
+    let big_content = line.repeat(repeat_count);
     create_file(repo.path(), "high_priority/foo.txt", &big_content);
 
     // We'll force extremely small max-size to ensure multiple chunks.
@@ -64,7 +67,7 @@ patterns = ["^high_priority/"]
     // Read chunk-0.txt to verify it contains the low priority file
     let chunk0_path = output_dir.join("chunk-0.txt");
     assert!(chunk0_path.exists(), "chunk-0.txt should exist");
-    let chunk0_content = fs::read_to_string(chunk0_path).unwrap();
+    let chunk0_content = fs::read_to_string(&chunk0_path).expect("Failed to read chunk-0.txt");
     assert!(
         chunk0_content.contains("low_priority/foo.txt"),
         "Low priority file should be in chunk 0"
@@ -72,13 +75,14 @@ patterns = ["^high_priority/"]
 
     // Verify that high priority file appears in later chunks
     let mut found_high_priority = false;
-    for entry in fs::read_dir(&output_dir).unwrap() {
-        let entry = entry.unwrap();
+    for entry in fs::read_dir(&output_dir).expect("Failed to read output directory") {
+        let entry = entry.expect("Failed to read directory entry");
         let path = entry.path();
         if path.file_name().unwrap().to_string_lossy() == "chunk-0.txt" {
             continue;
         }
-        let content = fs::read_to_string(path).unwrap();
+        let content =
+            fs::read_to_string(&path).expect(&format!("Failed to read {}", path.display()));
         if content.contains("high_priority/foo.txt") {
             found_high_priority = true;
             break;
