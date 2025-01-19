@@ -67,8 +67,8 @@ pub fn process_files_parallel(
         for file in files {
             let content = match fs::read_to_string(&file.path) {
                 Ok(c) => c,
-                Err(e) => {
-                    debug!("Failed to read {}: {}", file.path.display(), e);
+                Err(_e) => {
+                    debug!("Failed to read {}", normalize_path(base_dir, &file.path));
                     continue;
                 }
             };
@@ -77,9 +77,7 @@ pub fn process_files_parallel(
                 continue;
             }
 
-            let _rel_path = file.path.strip_prefix(base_dir).unwrap_or(&file.path);
             let rel_str = normalize_path(base_dir, &file.path);
-
             let chunk_str = format!(">>>> {}\n{}\n\n", rel_str, content);
             let chunk_size = chunk_str.len();
 
@@ -158,10 +156,6 @@ fn read_and_send_chunks(
     tx: &Sender<FileChunk>,
 ) -> Result<()> {
     let mut file = fs::File::open(&file_entry.path)?;
-    let _rel_path = file_entry
-        .path
-        .strip_prefix(base_path)
-        .unwrap_or(&file_entry.path);
     let rel_str = normalize_path(base_path, &file_entry.path);
 
     // Read file content in chunks to avoid loading entire file
@@ -227,7 +221,11 @@ fn collect_files(
         .unwrap_or_else(|_| GitignoreBuilder::new(base_dir).build().unwrap());
 
     let mut builder = WalkBuilder::new(base_dir);
-    builder.follow_links(false).standard_filters(true);
+    builder
+        .follow_links(false)
+        .standard_filters(true)
+        .add_custom_ignore_filename(".gitignore")
+        .require_git(false);
 
     let mut results = Vec::new();
     let mut file_index = 0;
@@ -235,40 +233,34 @@ fn collect_files(
     for entry in builder.build().flatten() {
         if entry.file_type().is_some_and(|ft| ft.is_file()) {
             let path = entry.path().to_path_buf();
-            let _rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
             let rel_str = normalize_path(base_dir, &path);
+            let rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
 
-            // Skip if matched by gitignore
-            if gitignore.matched(&path, path.is_dir()).is_ignore() {
+            // Skip via .gitignore
+            if gitignore.matched(rel_path, false).is_ignore() {
+                debug!("Skipping {} - matched by gitignore", rel_str);
                 continue;
             }
 
-            // Skip if matched by custom ignore patterns
+            // Skip via our ignore regexes
             if ignore_patterns.iter().any(|p| p.is_match(&rel_str)) {
+                debug!("Skipping {} - matched ignore pattern", rel_str);
                 continue;
             }
 
-            // Skip binary files
-            if !is_text_file(
-                &path,
-                config.map(|c| &c.binary_extensions[..]).unwrap_or(&[]),
-            ) {
+            // Check if text or binary
+            let user_bin_exts = config
+                .as_ref()
+                .map(|c| c.binary_extensions.as_slice())
+                .unwrap_or(&[]);
+            if !is_text_file(&path, user_bin_exts) {
+                debug!("Skipping binary file: {}", rel_str);
                 continue;
-            }
-
-            // Calculate priority
-            let mut priority = get_file_priority(&rel_str, ignore_patterns, priority_list);
-
-            // Apply recentness boost if available
-            if let Some(boost_map) = recentness_boost {
-                if let Some(boost) = boost_map.get(&rel_str) {
-                    priority += boost;
-                }
             }
 
             results.push(FileEntry {
                 path,
-                priority,
+                priority: get_file_priority(&rel_str, ignore_patterns, priority_list),
                 file_index,
             });
             file_index += 1;
@@ -285,10 +277,10 @@ fn collect_files(
         // If priorities are equal, sort by Git boost (ascending)
         if let Some(boost_map) = recentness_boost {
             let a_boost = boost_map
-                .get(&a.path.to_string_lossy().to_string())
+                .get(&normalize_path(base_dir, &a.path))
                 .unwrap_or(&0);
             let b_boost = boost_map
-                .get(&b.path.to_string_lossy().to_string())
+                .get(&normalize_path(base_dir, &b.path))
                 .unwrap_or(&0);
             return a_boost.cmp(b_boost); // Lower boost (older files) come first
         }

@@ -11,6 +11,7 @@ use tracing::debug;
 use walkdir::WalkDir;
 mod parallel;
 use parallel::process_files_parallel;
+use path_slash::PathExt;
 
 /// Helper macro to write debug statements both to standard debug log and to debug file if set.
 #[macro_export]
@@ -462,6 +463,7 @@ pub fn get_recent_commit_times(repo_root: &Path) -> Option<HashMap<String, u64>>
 struct FileEntry {
     path: PathBuf,
     priority: i32,
+    file_index: usize,
 }
 
 /// Validate the config object, returning any errors found
@@ -600,11 +602,13 @@ pub fn serialize_repo(
             }
 
             // Get path relative to base
-            let rel_path = path.strip_prefix(base_path).unwrap_or(path);
             let rel_str = normalize_path(base_path, path);
 
             // Skip via .gitignore
-            if gitignore.matched(rel_path, false).is_ignore() {
+            if gitignore
+                .matched(path.strip_prefix(base_path).unwrap_or(path), false)
+                .is_ignore()
+            {
                 debug!("Skipping {} - matched by gitignore", rel_str);
                 continue;
             }
@@ -619,18 +623,6 @@ pub fn serialize_repo(
                 continue;
             }
 
-            // Determine priority
-            let mut priority = get_file_priority(
-                &rel_str,
-                &final_config.ignore_patterns,
-                &final_config.priority_list,
-            );
-            if let Some(boost_map) = &recentness_boost {
-                if let Some(boost) = boost_map.get(&rel_str) {
-                    priority += *boost;
-                }
-            }
-
             // Check if text or binary
             let user_bin_exts = config
                 .as_ref()
@@ -641,9 +633,24 @@ pub fn serialize_repo(
                 continue;
             }
 
+            // Calculate priority with recentness boost
+            let mut priority = get_file_priority(
+                &rel_str,
+                &final_config.ignore_patterns,
+                &final_config.priority_list,
+            );
+
+            // Apply recentness boost if available
+            if let Some(boost_map) = recentness_boost.as_ref() {
+                if let Some(boost) = boost_map.get(&rel_str) {
+                    priority += *boost;
+                }
+            }
+
             files.push(FileEntry {
                 path: path.to_path_buf(),
                 priority,
+                file_index: files.len(),
             });
         }
 
@@ -657,8 +664,7 @@ pub fn serialize_repo(
         // We go from the back (highest priority) to the front (lowest)
         for file_entry in files.iter().rev() {
             let path = &file_entry.path;
-            let rel_path = path.strip_prefix(base_path).unwrap_or(path);
-            let rel_str = rel_path.to_string_lossy();
+            let rel_str = normalize_path(base_path, path);
 
             // Read the content
             let content = match fs::read_to_string(path) {
@@ -877,30 +883,45 @@ pub fn normalize_path(base: &Path, path: &Path) -> String {
         Err(_) => path,
     };
 
-    // Special handling for Windows UNC paths
+    // Special handling for Windows UNC paths and drive letters
     #[cfg(target_family = "windows")]
     if let Some(s) = path.to_str() {
-        if s.starts_with("\\\\") {
-            let normalized = s.replace('\\', "/");
-            return normalized;
+        // Handle UNC paths
+        if s.starts_with("\\\\")
+            || s.starts_with("//")
+            || s.starts_with("\\/")
+            || s.starts_with("/\\")
+        {
+            return format!("//{}", s.replace('\\', "/").trim_start_matches('/'));
+        }
+
+        // Handle Windows drive letters
+        if let Some(drive_path) = s
+            .strip_prefix(|c| matches!(c, 'A'..='Z' | 'a'..='z'))
+            .and_then(|s| s.strip_prefix(":\\"))
+        {
+            let drive_letter = s.chars().next().unwrap();
+            return format!("/{drive_letter}:/{}", drive_path.replace('\\', "/"));
         }
     }
 
     // Convert to a relative path with components joined by "/"
-    let components: Vec<_> = rel
+    let path_buf: PathBuf = rel
         .components()
         .filter(|c| !matches!(c, std::path::Component::RootDir))
-        .map(|c| c.as_os_str().to_string_lossy())
         .collect();
-    if components.is_empty() {
+
+    if path_buf.as_os_str().is_empty() {
         return ".".to_string();
     }
-    // Only add leading slash if we consider `path` "absolute" but it is not under `base`.
-    // On Windows, this now also catches "/other/path/..." or "\other\path\..."
+
+    let slash_path = path_buf.to_slash_lossy().into_owned();
+
+    // Only add leading slash if we consider `path` "absolute" but it is not under `base`
     if is_effectively_absolute(path) && path.strip_prefix(base).is_err() {
-        format!("/{}", components.join("/"))
+        format!("/{}", slash_path)
     } else {
-        components.join("/")
+        slash_path
     }
 }
 
@@ -941,6 +962,13 @@ mod tests {
             let win_unc_fwd = PathBuf::from("//server/share/file.txt");
             assert_eq!(
                 normalize_path(&base, &win_unc_fwd),
+                "//server/share/file.txt"
+            );
+
+            // Test with mixed slashes in UNC path
+            let win_unc_mixed = PathBuf::from("\\/server\\share/file.txt");
+            assert_eq!(
+                normalize_path(&base, &win_unc_mixed),
                 "//server/share/file.txt"
             );
         }

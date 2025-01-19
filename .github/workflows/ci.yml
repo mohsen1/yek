@@ -31,6 +31,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v3
 
@@ -49,7 +50,7 @@ jobs:
         run: node --version || echo "No Node"
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --verbose -- --test-threads=1
 
   lint:
     name: Lint

@@ -19,6 +19,7 @@ toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["time", "local-time"] }
 walkdir = "2.4"
+path-slash = "0.2.1"
 
 [dev-dependencies]
 assert_cmd = "2.0"
