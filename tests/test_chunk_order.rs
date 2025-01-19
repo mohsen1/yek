@@ -60,18 +60,30 @@ patterns = ["^high_priority/"]
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     println!("STDOUT:\n{}", stdout);
 
-    // Verify that low priority file appears in chunk 0
+    // Instead of comparing positions, we'll check the order of chunks
+    let mut found_low_priority = false;
+    let mut found_high_priority = false;
+
+    for line in stdout.lines() {
+        if line.contains("low_priority/foo.txt") {
+            found_low_priority = true;
+        } else if line.contains("high_priority/foo.txt") {
+            found_high_priority = true;
+            // Once we find high priority, low priority should have been found already
+            assert!(
+                found_low_priority,
+                "Low priority file should appear before high priority file"
+            );
+        }
+    }
+
+    // Verify both files were found
     assert!(
-        stdout.contains("low_priority/foo.txt"),
+        found_low_priority,
         "Low priority file should be in the output"
     );
-
-    // Verify that the low priority file appears before any high priority file parts
-    let low_priority_pos = stdout.find("low_priority/foo.txt").unwrap();
-    let high_priority_pos = stdout.find("high_priority/foo.txt").unwrap();
-
     assert!(
-        low_priority_pos < high_priority_pos,
-        "Low priority file should appear before high priority file"
+        found_high_priority,
+        "High priority file should be in the output"
     );
 }
