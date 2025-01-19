@@ -1,16 +1,15 @@
 use crate::is_text_file;
-use crate::{get_file_priority, get_recent_commit_times, PriorityPattern, YekConfig};
+use crate::{get_file_priority, PriorityPattern, YekConfig};
 use anyhow::Result;
 use crossbeam::channel::{bounded, Receiver, Sender};
 use ignore::{gitignore::GitignoreBuilder, WalkBuilder};
-use num_cpus;
+use num_cpus::get;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::SystemTime;
 use tracing::{debug, info};
 
 /// Represents a chunk of text read from one file
@@ -138,8 +137,8 @@ pub fn process_files_parallel(
     let aggregator_handle = thread::spawn(move || aggregator_loop(rx, output_dir));
 
     // Spawn worker threads
-    let num_threads = num_cpus::get();
-    let chunk_size = (files.len() + num_threads - 1) / num_threads;
+    let num_threads = get();
+    let chunk_size = files.len().div_ceil(num_threads);
     let mut handles = Vec::new();
 
     for chunk in files.chunks(chunk_size) {
@@ -194,69 +193,67 @@ fn collect_files(
     let mut results = Vec::new();
     let mut file_index = 0;
 
-    for entry in builder.build() {
-        if let Ok(entry) = entry {
-            if entry.file_type().map_or(false, |ft| ft.is_file()) {
-                let path = entry.path().to_path_buf();
-                let rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
-                let rel_str = rel_path.to_string_lossy();
+    for entry in builder.build().flatten() {
+        if entry.file_type().is_some_and(|ft| ft.is_file()) {
+            let path = entry.path().to_path_buf();
+            let rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
+            let rel_str = rel_path.to_string_lossy();
 
-                // Skip if matched by gitignore
-                #[cfg(windows)]
-                let gitignore_path = rel_path
-                    .to_str()
-                    .map(|s| s.replace('\\', "/"))
-                    .map(PathBuf::from)
-                    .unwrap_or(rel_path.to_path_buf());
-                #[cfg(not(windows))]
-                let gitignore_path = rel_path.to_path_buf();
+            // Skip if matched by gitignore
+            #[cfg(windows)]
+            let gitignore_path = rel_path
+                .to_str()
+                .map(|s| s.replace('\\', "/"))
+                .map(PathBuf::from)
+                .unwrap_or(rel_path.to_path_buf());
+            #[cfg(not(windows))]
+            let gitignore_path = rel_path.to_path_buf();
 
-                if gitignore.matched(&gitignore_path, false).is_ignore() {
-                    debug!("Skipping {} - matched by gitignore", rel_str);
-                    continue;
+            if gitignore.matched(&gitignore_path, false).is_ignore() {
+                debug!("Skipping {} - matched by gitignore", rel_str);
+                continue;
+            }
+
+            // Skip if matched by our ignore patterns
+            let mut skip = false;
+            for pat in ignore_patterns {
+                if pat.is_match(&rel_str) {
+                    debug!("Skipping {} - matched ignore pattern", rel_str);
+                    skip = true;
+                    break;
                 }
+            }
+            if skip {
+                continue;
+            }
 
-                // Skip if matched by our ignore patterns
-                let mut skip = false;
-                for pat in ignore_patterns {
-                    if pat.is_match(&rel_str) {
-                        debug!("Skipping {} - matched ignore pattern", rel_str);
-                        skip = true;
-                        break;
-                    }
-                }
-                if skip {
-                    continue;
-                }
-
-                // Skip binary files
-                if let Some(ref cfg) = config {
-                    if !is_text_file(&path, &cfg.binary_extensions) {
-                        debug!("Skipping binary file: {}", rel_str);
-                        continue;
-                    }
-                } else if !is_text_file(&path, &[]) {
+            // Skip binary files
+            if let Some(cfg) = config {
+                if !is_text_file(&path, &cfg.binary_extensions) {
                     debug!("Skipping binary file: {}", rel_str);
                     continue;
                 }
-
-                // Calculate priority score
-                let mut priority = get_file_priority(&rel_str, ignore_patterns, priority_list);
-
-                // Apply git recentness boost
-                if let Some(boost_map) = recentness_boost {
-                    if let Some(boost) = boost_map.get(&rel_str.to_string()) {
-                        priority += *boost;
-                    }
-                }
-
-                results.push(FileEntry {
-                    path,
-                    priority,
-                    file_index,
-                });
-                file_index += 1;
+            } else if !is_text_file(&path, &[]) {
+                debug!("Skipping binary file: {}", rel_str);
+                continue;
             }
+
+            // Calculate priority score
+            let mut priority = get_file_priority(&rel_str, ignore_patterns, priority_list);
+
+            // Apply git recentness boost
+            if let Some(boost_map) = recentness_boost {
+                if let Some(boost) = boost_map.get(&rel_str.to_string()) {
+                    priority += *boost;
+                }
+            }
+
+            results.push(FileEntry {
+                path,
+                priority,
+                file_index,
+            });
+            file_index += 1;
         }
     }
 
@@ -284,45 +281,36 @@ fn collect_files(
 
 /// Receives chunks from workers and writes them to files
 fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
-    // Create output directory
     fs::create_dir_all(&output_dir)?;
 
-    // Collect all chunks
     let mut all_chunks = Vec::new();
     while let Ok(chunk) = rx.recv() {
         all_chunks.push(chunk);
     }
 
-    // Sort chunks by priority (ascending), then file_index, then part_index
-    // so that higher priority files come last
     all_chunks.sort_by(|a, b| {
         let p = a.priority.cmp(&b.priority);
         if p != std::cmp::Ordering::Equal {
             return p;
         }
-        // Then sort by file_index
         let f = a.file_index.cmp(&b.file_index);
         if f != std::cmp::Ordering::Equal {
             return f;
         }
-        // Finally sort by part_index
         a.part_index.cmp(&b.part_index)
     });
 
-    // Write sorted chunks
     let mut current_chunk = String::new();
-    let mut current_chunk_index = 0;
+    let current_chunk_index = 0;
 
     for chunk in all_chunks {
         let mut content = String::new();
         content.push_str(&format!(">>>> {}\n", chunk.rel_path));
         content.push_str(&chunk.content);
         content.push_str("\n\n");
-
         current_chunk.push_str(&content);
     }
 
-    // Write the final chunk
     if !current_chunk.is_empty() {
         let out_path = output_dir.join(format!("chunk-{}.txt", current_chunk_index));
         fs::write(&out_path, &current_chunk)?;
