@@ -211,10 +211,12 @@ jobs:
             *.zip
       - name: Copy installation script to bodo.run
         if: steps.semantic.outputs.new_release_published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git clone https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/bodo-run/bodo-run.github.io.git
+          git clone https://x-access-token:${GH_TOKEN}@github.com/bodo-run/bodo-run.github.io.git
           cp scripts/install_yek.sh bodo-run.github.io/public/yek.sh
           cp scripts/install_yek.ps1 bodo-run.github.io/public/yek.ps1
           COMMIT_SHA=$(git rev-parse HEAD)
@@ -230,5 +232,5 @@ jobs:
             -m "$BODO_COMMIT_MESSAGE" \
             -m "" \
             -m "https://github.com/bodo-run/yek/commit/$COMMIT_SHA"
-          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/bodo-run/bodo-run.github.io.git
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/bodo-run/bodo-run.github.io.git
           git push
