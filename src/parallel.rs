@@ -248,45 +248,35 @@ fn collect_files(
             let gitignore_path = rel_path
                 .to_str()
                 .map(|s| s.replace('\\', "/"))
-                .map(PathBuf::from)
-                .unwrap_or(rel_path.to_path_buf());
+                .unwrap_or_else(|| rel_str.to_string());
+
             #[cfg(not(windows))]
-            let gitignore_path = rel_path.to_path_buf();
+            let gitignore_path = rel_str.to_string();
 
-            if gitignore.matched(&gitignore_path, false).is_ignore() {
-                debug!("Skipping {} - matched by gitignore", rel_str);
+            if gitignore.matched(&path, path.is_dir()).is_ignore() {
                 continue;
             }
 
-            // Skip if matched by our ignore patterns
-            let mut skip = false;
-            for pat in ignore_patterns {
-                if pat.is_match(&rel_str) {
-                    debug!("Skipping {} - matched ignore pattern", rel_str);
-                    skip = true;
-                    break;
-                }
-            }
-            if skip {
+            // Skip if matched by custom ignore patterns
+            if ignore_patterns.iter().any(|p| p.is_match(&rel_str)) {
                 continue;
             }
 
-            // Skip binary files - do this check early to avoid double reads later
-            let binary_extensions = config
-                .map(|c| c.binary_extensions.as_slice())
-                .unwrap_or(&[]);
-            if !is_text_file(&path, binary_extensions) {
-                debug!("Skipping binary file: {}", rel_str);
+            // Skip binary files
+            if !is_text_file(
+                &path,
+                config.map(|c| &c.binary_extensions[..]).unwrap_or(&[]),
+            ) {
                 continue;
             }
 
-            // Calculate priority score
+            // Calculate priority
             let mut priority = get_file_priority(&rel_str, ignore_patterns, priority_list);
 
-            // Apply git recentness boost
+            // Apply recentness boost if available
             if let Some(boost_map) = recentness_boost {
-                if let Some(boost) = boost_map.get(&rel_str.to_string()) {
-                    priority += *boost;
+                if let Some(boost) = boost_map.get(&gitignore_path) {
+                    priority += boost;
                 }
             }
 
