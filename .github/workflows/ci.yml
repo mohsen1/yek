@@ -183,29 +183,22 @@ jobs:
     name: Release
     needs: [test, lint, build]
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@v4
-        id: semantic
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v3
-        if: steps.semantic.outputs.new_release_published == 'true'
         with:
           path: artifacts
       - name: Move artifacts
-        if: steps.semantic.outputs.new_release_published == 'true'
         run: |
           mv artifacts/*/*.tar.gz ./
           mv artifacts/*/*.zip ./
-      - name: Update Release with Artifacts
-        if: steps.semantic.outputs.new_release_published == 'true'
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.semantic.outputs.new_release_version }}
           files: |
             *.tar.gz
             *.zip
+          generate_release_notes: true
