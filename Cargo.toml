@@ -26,6 +26,7 @@ chrono = "0.4"
 predicates = "3.0"
 tempfile = "3.9"
 criterion = "0.5"
+rand = "0.8"
 
 [[bench]]
 name = "serialization"
