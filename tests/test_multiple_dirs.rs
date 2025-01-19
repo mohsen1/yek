@@ -1,7 +1,6 @@
 mod integration_common;
 use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
-use predicates;
 
 #[test]
 fn multiple_directories_test() {

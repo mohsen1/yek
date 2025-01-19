@@ -1,6 +1,4 @@
-use criterion::{
-    black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use rand::{distributions::Alphanumeric, Rng};
 use std::fs::{self, File};
 use std::io::Write;

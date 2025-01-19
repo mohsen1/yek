@@ -150,7 +150,7 @@ jobs:
           cargo bench --bench serialization --no-run
 
       - name: Compare benchmarks
-        run: cargo bench --bench serialization -- --baseline main --significance-threshold 5
+        run: cargo bench --bench serialization -- --baseline main --noise-threshold 2
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v3

@@ -30,13 +30,13 @@ impl PerfStats {
 }
 
 #[test]
-fn test_serialization_performance() {
+fn test_serialization_performance() -> Result<(), Box<dyn std::error::Error>> {
     const WARMUP_RUNS: usize = 2;
     const BENCH_RUNS: usize = 5;
 
-    // Create temporary test directory that will be automatically cleaned up
-    let test_dir = TempDir::new().unwrap();
-    let output_dir = TempDir::new().unwrap();
+    // Create test data directory using tempfile
+    let test_dir = TempDir::new()?;
+    let output_dir = TempDir::new()?;
 
     // Create test files of different sizes
     let sizes = vec![1024, 1024 * 1024, 10 * 1024 * 1024]; // 1KB, 1MB, 10MB
@@ -47,7 +47,7 @@ fn test_serialization_performance() {
     for size in sizes {
         let filename = test_dir.path().join(format!("file_{}_bytes.txt", size));
         let data = vec![b'a'; size];
-        fs::write(&filename, &data).unwrap();
+        fs::write(&filename, &data)?;
 
         // Warmup runs
         println!("\nFile size: {}B", size);
@@ -61,10 +61,14 @@ fn test_serialization_performance() {
                 None,
                 Some(output_dir.path()),
                 None,
-            )
-            .unwrap();
-            fs::remove_dir_all(output_dir.path()).unwrap();
-            fs::create_dir_all(output_dir.path()).unwrap();
+            )?;
+            // Clean output directory between runs
+            for entry in fs::read_dir(output_dir.path())? {
+                let entry = entry?;
+                if entry.file_type()?.is_file() {
+                    fs::remove_file(entry.path())?;
+                }
+            }
         }
 
         // Benchmark runs
@@ -81,21 +85,25 @@ fn test_serialization_performance() {
                 None,
                 Some(output_dir.path()),
                 None,
-            )
-            .unwrap();
+            )?;
             let duration = start.elapsed();
             stats.update(duration);
 
             println!("  Run {}: {:?}", run, duration);
-            fs::remove_dir_all(output_dir.path()).unwrap();
-            fs::create_dir_all(output_dir.path()).unwrap();
+            // Clean output directory between runs
+            for entry in fs::read_dir(output_dir.path())? {
+                let entry = entry?;
+                if entry.file_type()?.is_file() {
+                    fs::remove_file(entry.path())?;
+                }
+            }
         }
 
-        println!("\nStats for {}B:", size);
+        println!("\nResults for {}B files:", size);
         println!("  Min: {:?}", stats.min);
         println!("  Max: {:?}", stats.max);
         println!("  Avg: {:?}", stats.avg);
     }
 
-    // TempDir will automatically clean up when dropped
+    Ok(())
 }
