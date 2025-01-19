@@ -8,11 +8,21 @@ set -euo pipefail
 BUMP_TYPE="${1:-patch}" # default to 'patch' if not set: patch|minor|major
 
 # -- Step 1: Read current version from Cargo.toml --
-CURRENT_VERSION="$(grep '^version' Cargo.toml | head -1 | sed 's/version *= *"//; s/"//')"
+CURRENT_VERSION="$(grep '^version[[:space:]]*=[[:space:]]*"' Cargo.toml | head -1 | sed 's/^version[[:space:]]*=[[:space:]]*"//; s/"$//')"
 echo "Current Cargo version: $CURRENT_VERSION"
 
-# Split into semver parts
+# Validate version format
+if ! echo "$CURRENT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "Error: Invalid version format in Cargo.toml. Expected format: X.Y.Z"
+    exit 1
+fi
+
+# Split into semver parts and validate
 IFS='.' read -r MAJOR MINOR PATCH <<<"$CURRENT_VERSION"
+if ! [[ "$MAJOR" =~ ^[0-9]+$ ]] || ! [[ "$MINOR" =~ ^[0-9]+$ ]] || ! [[ "$PATCH" =~ ^[0-9]+$ ]]; then
+    echo "Error: Version components must be valid numbers"
+    exit 1
+fi
 
 # -- Step 2: Bump version accordingly --
 case "$BUMP_TYPE" in
@@ -72,7 +82,12 @@ COMMITS=$(git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 2>/dev
 
 # Append existing changelog if it exists
 if [ -f CHANGELOG.md ]; then
-    tail -n +2 CHANGELOG.md >>"$TEMP_CHANGELOG"
+    # Skip the first line if it's "# Changelog"
+    if grep -q "^# Changelog" CHANGELOG.md; then
+        tail -n +2 CHANGELOG.md >>"$TEMP_CHANGELOG"
+    else
+        cat CHANGELOG.md >>"$TEMP_CHANGELOG"
+    fi
 fi
 
 mv "$TEMP_CHANGELOG" CHANGELOG.md
