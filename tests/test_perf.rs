@@ -1,6 +1,6 @@
 use std::fs;
-use std::path::Path;
 use std::time::{Duration, Instant};
+use tempfile::TempDir;
 use yek::serialize_repo;
 
 struct PerfStats {
@@ -34,9 +34,9 @@ fn test_serialization_performance() {
     const WARMUP_RUNS: usize = 2;
     const BENCH_RUNS: usize = 5;
 
-    // Create test data directory
-    let test_dir = "test_perf_data";
-    fs::create_dir_all(test_dir).unwrap();
+    // Create temporary test directory that will be automatically cleaned up
+    let test_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().unwrap();
 
     // Create test files of different sizes
     let sizes = vec![1024, 1024 * 1024, 10 * 1024 * 1024]; // 1KB, 1MB, 10MB
@@ -45,7 +45,7 @@ fn test_serialization_performance() {
     println!("------------------------------");
 
     for size in sizes {
-        let filename = format!("{}/file_{}_bytes.txt", test_dir, size);
+        let filename = test_dir.path().join(format!("file_{}_bytes.txt", size));
         let data = vec![b'a'; size];
         fs::write(&filename, &data).unwrap();
 
@@ -55,15 +55,16 @@ fn test_serialization_performance() {
         for _ in 0..WARMUP_RUNS {
             serialize_repo(
                 size,
-                Some(Path::new(test_dir)),
+                Some(test_dir.path()),
                 false,
                 false,
                 None,
-                Some(Path::new("perf_output")),
+                Some(output_dir.path()),
                 None,
             )
             .unwrap();
-            fs::remove_dir_all("perf_output").unwrap();
+            fs::remove_dir_all(output_dir.path()).unwrap();
+            fs::create_dir_all(output_dir.path()).unwrap();
         }
 
         // Benchmark runs
@@ -74,11 +75,11 @@ fn test_serialization_performance() {
             let start = Instant::now();
             serialize_repo(
                 size,
-                Some(Path::new(test_dir)),
+                Some(test_dir.path()),
                 false,
                 false,
                 None,
-                Some(Path::new("perf_output")),
+                Some(output_dir.path()),
                 None,
             )
             .unwrap();
@@ -86,7 +87,8 @@ fn test_serialization_performance() {
             stats.update(duration);
 
             println!("  Run {}: {:?}", run, duration);
-            fs::remove_dir_all("perf_output").unwrap();
+            fs::remove_dir_all(output_dir.path()).unwrap();
+            fs::create_dir_all(output_dir.path()).unwrap();
         }
 
         println!("\nStats for {}B:", size);
@@ -95,6 +97,5 @@ fn test_serialization_performance() {
         println!("  Avg: {:?}", stats.avg);
     }
 
-    // Final cleanup
-    fs::remove_dir_all(test_dir).unwrap();
+    // TempDir will automatically clean up when dropped
 }
