@@ -853,6 +853,23 @@ fn compute_recentness_boost(
     result
 }
 
+#[cfg(target_family = "windows")]
+fn is_effectively_absolute(path: &std::path::Path) -> bool {
+    if path.is_absolute() {
+        return true;
+    }
+    // Also treat a leading slash/backslash as absolute
+    match path.to_str() {
+        Some(s) => s.starts_with('/') || s.starts_with('\\'),
+        None => false,
+    }
+}
+
+#[cfg(not(target_family = "windows"))]
+fn is_effectively_absolute(path: &std::path::Path) -> bool {
+    path.is_absolute()
+}
+
 /// Returns a relative, normalized path string (forward slashes on all platforms).
 pub fn normalize_path(base: &Path, path: &Path) -> String {
     let rel = match path.strip_prefix(base) {
@@ -868,8 +885,9 @@ pub fn normalize_path(base: &Path, path: &Path) -> String {
     if components.is_empty() {
         return ".".to_string();
     }
-    // Only add leading slash if it's an absolute path and not under base
-    if path.is_absolute() && path.strip_prefix(base).is_err() {
+    // Only add leading slash if we consider `path` "absolute" but it is not under `base`.
+    // On Windows, this now also catches "/other/path/..." or "\other\path\..."
+    if is_effectively_absolute(path) && path.strip_prefix(base).is_err() {
         format!("/{}", components.join("/"))
     } else {
         components.join("/")
@@ -899,5 +917,15 @@ mod tests {
         // Test with current directory
         let current = PathBuf::from(".");
         assert_eq!(normalize_path(&base, &current), ".");
+
+        // Test with Windows-style absolute path
+        #[cfg(target_family = "windows")]
+        {
+            let win_path = PathBuf::from("C:\\other\\path\\baz.txt");
+            assert_eq!(normalize_path(&base, &win_path), "/C:/other/path/baz.txt");
+
+            let win_unc = PathBuf::from("\\\\server\\share\\file.txt");
+            assert_eq!(normalize_path(&base, &win_unc), "//server/share/file.txt");
+        }
     }
 }
