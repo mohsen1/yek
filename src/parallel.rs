@@ -191,28 +191,19 @@ fn read_and_send_chunks(
         return Ok(());
     }
 
-    // Otherwise break into multiple parts, with increasing priority for later parts
+    // Otherwise break into multiple parts
     let mut start = 0;
     let mut part_index = 0;
-    let total_parts = total_buf.len().div_ceil(max_size);
-
     while start < total_buf.len() {
         let end = (start + max_size).min(total_buf.len());
         let slice = &total_buf[start..end];
         let chunk_str = String::from_utf8_lossy(slice).to_string();
 
-        // Increase priority for later parts to ensure they come last in streaming
-        let priority_boost = (part_index as i32) * 100;
-
         let fc = FileChunk {
-            priority: file_entry.priority + priority_boost,
+            priority: file_entry.priority,
             file_index: file_entry.file_index,
             part_index,
-            rel_path: if total_parts > 1 {
-                format!("{}:part{}", rel_path, part_index)
-            } else {
-                rel_path.clone()
-            },
+            rel_path: format!("{}:part{}", rel_path, part_index),
             content: chunk_str,
         };
         tx.send(fc)?;
@@ -332,24 +323,45 @@ fn collect_files(
 
 /// Receives chunks from workers and writes them to files
 fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
-    let mut chunks = Vec::new();
-
-    for chunk in rx {
-        chunks.push(chunk);
+    // Collect chunks first to maintain priority order
+    let mut all_chunks = Vec::new();
+    while let Ok(chunk) = rx.recv() {
+        all_chunks.push(chunk);
     }
 
-    // Sort chunks by priority (higher priority last) when streaming
-    if output_dir.to_str().unwrap_or("").is_empty() {
-        chunks.sort_by_key(|c| (c.priority, c.file_index, c.part_index));
-    }
+    // Sort chunks by priority, file index, and part index
+    all_chunks.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then(a.file_index.cmp(&b.file_index))
+            .then(a.part_index.cmp(&b.part_index))
+    });
 
-    for (i, chunk) in chunks.into_iter().enumerate() {
-        let content = format!(">>>> {}\n{}\n\n", chunk.rel_path, chunk.content);
-        if output_dir.to_str().unwrap_or("").is_empty() {
-            print!("{}", content);
-        } else {
-            write_chunk_to_file(&output_dir, i, &content)?;
+    let mut current_chunk = String::new();
+    let mut current_chunk_size = 0;
+    let mut current_chunk_index = 0;
+
+    // Process chunks in sorted order
+    for chunk in all_chunks {
+        let chunk_str = format!(">>>> {}\n{}\n\n", chunk.rel_path, chunk.content);
+        let chunk_size = chunk_str.len();
+
+        // If adding this chunk would exceed reasonable buffer size, write current chunk
+        if current_chunk_size + chunk_size > 1024 * 1024 * 10 {
+            // 10MB buffer
+            write_chunk_to_file(&output_dir, current_chunk_index, &current_chunk)?;
+            current_chunk.clear();
+            current_chunk_size = 0;
+            current_chunk_index += 1;
         }
+
+        current_chunk.push_str(&chunk_str);
+        current_chunk_size += chunk_size;
+    }
+
+    // Write final chunk if any content remains
+    if !current_chunk.is_empty() {
+        write_chunk_to_file(&output_dir, current_chunk_index, &current_chunk)?;
     }
 
     Ok(())
