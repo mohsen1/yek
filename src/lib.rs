@@ -834,7 +834,7 @@ pub fn serialize_repo(
         )?;
         Ok(Some(out_dir))
     } else {
-        Ok(None)
+        Ok(output_dir)
     }
 }
 
