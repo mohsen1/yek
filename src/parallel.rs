@@ -74,7 +74,7 @@ fn read_and_send_chunks(
             rel_path,
             content,
         };
-        tx.send(chunk).ok();
+        tx.send(chunk)?;
         return Ok(());
     }
 
@@ -96,7 +96,7 @@ fn read_and_send_chunks(
             content: chunk_str,
         };
 
-        tx.send(chunk).ok();
+        tx.send(chunk)?;
         start = end;
         part_index += 1;
     }
@@ -105,6 +105,8 @@ fn read_and_send_chunks(
 }
 
 /// Main parallel processing function that coordinates workers and aggregator
+pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024; // Increased from 256
+
 pub fn process_files_parallel(
     base_dir: &Path,
     max_size: usize,
@@ -129,8 +131,13 @@ pub fn process_files_parallel(
         return Ok(());
     }
 
+    // Get channel capacity from config or use default
+    let channel_capacity = config
+        .and_then(|c| c.channel_capacity)
+        .unwrap_or(DEFAULT_CHANNEL_CAPACITY);
+
     // Create channels for worker→aggregator communication
-    let (tx, rx) = bounded(256);
+    let (tx, rx) = bounded(channel_capacity);
 
     // Spawn aggregator thread
     let output_dir = output_dir.to_path_buf();
@@ -281,13 +288,13 @@ fn collect_files(
 
 /// Receives chunks from workers and writes them to files
 fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
-    fs::create_dir_all(&output_dir)?;
-
+    // Collect chunks first to maintain priority order
     let mut all_chunks = Vec::new();
     while let Ok(chunk) = rx.recv() {
         all_chunks.push(chunk);
     }
 
+    // Sort chunks by priority, file index, and part index
     all_chunks.sort_by(|a, b| {
         let p = a.priority.cmp(&b.priority);
         if p != std::cmp::Ordering::Equal {
@@ -301,25 +308,42 @@ fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
     });
 
     let mut current_chunk = String::new();
-    let current_chunk_index = 0;
+    let mut current_chunk_size = 0;
+    let mut current_chunk_index = 0;
 
+    // Process chunks in sorted order
     for chunk in all_chunks {
-        let mut content = String::new();
-        content.push_str(&format!(">>>> {}\n", chunk.rel_path));
-        content.push_str(&chunk.content);
-        content.push_str("\n\n");
-        current_chunk.push_str(&content);
+        let chunk_str = format!(">>>> {}\n{}\n\n", chunk.rel_path, chunk.content);
+        let chunk_size = chunk_str.len();
+
+        // If adding this chunk would exceed reasonable buffer size, write current chunk
+        if current_chunk_size + chunk_size > 1024 * 1024 * 10 {
+            // 10MB buffer
+            write_chunk_to_file(&output_dir, current_chunk_index, &current_chunk)?;
+            current_chunk.clear();
+            current_chunk_size = 0;
+            current_chunk_index += 1;
+        }
+
+        current_chunk.push_str(&chunk_str);
+        current_chunk_size += chunk_size;
     }
 
+    // Write final chunk if any content remains
     if !current_chunk.is_empty() {
-        let out_path = output_dir.join(format!("chunk-{}.txt", current_chunk_index));
-        fs::write(&out_path, &current_chunk)?;
-        info!(
-            "Written chunk {} with {} lines.",
-            current_chunk_index,
-            current_chunk.lines().count()
-        );
+        write_chunk_to_file(&output_dir, current_chunk_index, &current_chunk)?;
     }
 
+    Ok(())
+}
+
+fn write_chunk_to_file(output_dir: &Path, index: usize, content: &str) -> Result<()> {
+    let chunk_path = output_dir.join(format!("chunk-{}.txt", index));
+    fs::write(&chunk_path, content)?;
+    info!(
+        "Written chunk {} with {} lines.",
+        index,
+        content.lines().count()
+    );
     Ok(())
 }

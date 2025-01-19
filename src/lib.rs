@@ -50,6 +50,8 @@ pub struct YekConfig {
     pub output_dir: Option<String>,
     #[serde(default)]
     pub git_boost_max: Option<i32>,
+    #[serde(default)]
+    pub channel_capacity: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -92,6 +94,7 @@ impl Default for YekConfig {
             binary_extensions: Vec::new(), // User extensions only, we'll combine with BINARY_FILE_EXTENSIONS
             output_dir: None,
             git_boost_max: None,
+            channel_capacity: None,
         }
     }
 }
@@ -110,10 +113,7 @@ pub struct PriorityPattern {
 
 /// Default sets of priority patterns
 fn default_priority_list() -> Vec<PriorityPattern> {
-    vec![PriorityPattern {
-        score: 50,
-        patterns: vec![Regex::new(r"^src/").unwrap()],
-    }]
+    Vec::new() // Return empty list - no default priorities
 }
 
 /// Default sets of ignore patterns (separate from .gitignore)
@@ -194,11 +194,7 @@ fn build_final_config(cfg: Option<YekConfig>) -> FinalConfig {
                 merged_ignore.push(reg);
             }
         }
-        // Clear default priority rules if user provides their own
-        if !user_cfg.priority_rules.is_empty() {
-            merged_priority.clear();
-        }
-        // Add user priority rules
+        // Add user priority rules without clearing defaults
         for user_rule in user_cfg.priority_rules {
             if user_rule.patterns.is_empty() {
                 continue;
