@@ -12,7 +12,7 @@ A fast Rust based tool to read text-based files in a repository or directory, ch
 
 Yek ([يک](https://fa.wikipedia.org/wiki/۱)) means "One" in Farsi/Persian.
 
-Consider have a simple repo like this:
+Consider having a simple repo like this:
 
 ```
 .
@@ -37,7 +37,7 @@ Running `yek` in this directory will produce a single file and write it to the t
 ... rest of the file ...
 ```
 
-> `yek` will priotize more important files to come last in the output. This is useful for LLM consumption.
+> `yek` will prioritize more important files to come last in the output. This is useful for LLM consumption.
 
 ## Installation
 
