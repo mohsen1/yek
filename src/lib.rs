@@ -876,6 +876,16 @@ pub fn normalize_path(base: &Path, path: &Path) -> String {
         Ok(rel) => rel,
         Err(_) => path,
     };
+
+    // Special handling for Windows UNC paths
+    #[cfg(target_family = "windows")]
+    if let Some(s) = path.to_str() {
+        if s.starts_with("\\\\") {
+            let normalized = s.replace('\\', "/");
+            return normalized;
+        }
+    }
+
     // Convert to a relative path with components joined by "/"
     let components: Vec<_> = rel
         .components()
@@ -926,6 +936,13 @@ mod tests {
 
             let win_unc = PathBuf::from("\\\\server\\share\\file.txt");
             assert_eq!(normalize_path(&base, &win_unc), "//server/share/file.txt");
+
+            // Test with forward slashes in UNC path
+            let win_unc_fwd = PathBuf::from("//server/share/file.txt");
+            assert_eq!(
+                normalize_path(&base, &win_unc_fwd),
+                "//server/share/file.txt"
+            );
         }
     }
 }
