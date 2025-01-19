@@ -102,7 +102,7 @@ yek src/ | pbcopy
 Cap the max size to 128K tokens and only process the `src` directory:
 
 ```bash
-yek --max-size 128000 --tokens src/
+yek --max-size 128K --tokens src/
 ```
 
 Cap the max size to 100KB and only process the `src` directory, writing to a specific directory:
