@@ -1,6 +1,6 @@
 [package]
 name = "yek"
-version = "0.13.5"
+version = "0.13.7"
 edition = "2021"
 
 [dependencies]

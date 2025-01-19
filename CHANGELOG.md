@@ -5,6 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.7] - 2025-01-19
+[0.13.7]: https://github.com/bodo-run/yek/compare/v0.13.5...v0.13.7
+### Bug Fixes
+
+- Ensure most important chunks are output last when streaming
+- Handle Windows paths correctly in gitignore matching
+- Make chunk order test platform-independent
+- Make chunk order test more robust across platforms
+- Improve test robustness and error handling
+- Handle logging initialization gracefully in tests
+- Manually update Formula version
+- Handle Windows paths correctly in gitignore matching
+- Update Formula version to match project version
+- Get version using cargo pkgid
+- Add aarch64-linux-gnu linker configuration
+- Use configured max_size in aggregator instead of hardcoded value
+- Ensure files with different priorities are in separate chunks
+- Normalize Windows paths for priority calculation
+- Standardize path handling using PathBuf and normalize_path
+- Handle Windows path normalization correctly
+- Handle Windows UNC paths correctly
+- Normalize paths consistently in gitignore matching and priority sorting
+- Add --no-verify flag to cargo publish
+
+### Documentation
+
+- Add roadmap
+- Make chunking clear in README
+- Fix note formatting
+- Update changelog for v0.13.2
+- Improve readme
+- Add documentation for file_index field
+
+### Features
+
+- Prioritize high-priority files in streaming mode
+- Integrate git-cliff for changelog generation
+
+### Miscellaneous Tasks
+
+- Bump version to 0.13.1
+- Remove semantic release and sync versions
+
+### Performance
+
+- Improve benchmark configuration and accuracy
+
+### Refactor
+
+- Remove duplicate formula update from release workflow
+- Optimize chunk priority check and improve debug logging
+- Use consistent chunk size constants
+
+### Testing
+
+- Add test to verify chunk ordering behavior
+- Normalize Windows paths in chunk order test
+
+### Ci
+
+- Publish to crates.io
+- Improve benchmark job configuration
+- Parallelize benchmark groups in serialization tests
+
+### Release
+
+- V0.13.5
+- V0.7.5
+- V0.13.1
+- V0.13.3
+- V0.13.4
+- V0.13.5
+- V0.13.5
+- V0.13.6
+
 ## [0.13.5] - 2025-01-19
 [0.13.5]: https://github.com/bodo-run/yek/compare/v0.13.4...v0.13.5
 ### Bug Fixes
@@ -14,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 
 - Integrate git-cliff for changelog generation
+
+### Release
+
+- V0.13.5
 
 ## [0.13.4] - 2025-01-19
 [0.13.4]: https://github.com/bodo-run/yek/compare/v0.13.3...v0.13.4
