@@ -1,6 +1,7 @@
 target/
 *.log
 *.tmp
+*.tar.gz
 .DS_Store
 yek.toml
 repo-serialized/
