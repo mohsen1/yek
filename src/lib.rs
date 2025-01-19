@@ -235,6 +235,8 @@ fn build_final_config(cfg: Option<YekConfig>) -> FinalConfig {
 /// Check if file is text by extension or scanning first chunk for null bytes.
 pub fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool {
     debug!("Checking if file is text: {}", file_path.display());
+
+    // First check extension - fast path
     if let Some(ext) = file_path.extension().and_then(|s| s.to_str()) {
         let dot_ext = format!(".{}", ext.to_lowercase());
         if BINARY_FILE_EXTENSIONS.contains(&dot_ext.as_str())
@@ -246,7 +248,49 @@ pub fn is_text_file(file_path: &Path, user_binary_extensions: &[String]) -> bool
             );
             return false;
         }
+
+        // Known text extensions - skip content check
+        if matches!(
+            dot_ext.as_str(),
+            ".txt"
+                | ".md"
+                | ".rs"
+                | ".toml"
+                | ".yml"
+                | ".yaml"
+                | ".json"
+                | ".js"
+                | ".ts"
+                | ".html"
+                | ".css"
+                | ".sh"
+                | ".py"
+                | ".rb"
+                | ".pl"
+                | ".php"
+                | ".java"
+                | ".c"
+                | ".cpp"
+                | ".h"
+                | ".hpp"
+                | ".go"
+                | ".swift"
+                | ".kt"
+                | ".scala"
+                | ".r"
+                | ".m"
+                | ".sql"
+                | ".xml"
+                | ".ini"
+                | ".conf"
+                | ".cfg"
+                | ".properties"
+        ) {
+            return true;
+        }
     }
+
+    // Only do content check for unknown extensions
     let mut f = match File::open(file_path) {
         Ok(f) => f,
         Err(e) => {

@@ -106,6 +106,7 @@ fn read_and_send_chunks(
 
 /// Main parallel processing function that coordinates workers and aggregator
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024; // Increased from 256
+pub const PARALLEL_THRESHOLD: usize = 10; // Only parallelize if more than 10 files
 
 pub fn process_files_parallel(
     base_dir: &Path,
@@ -118,6 +119,69 @@ pub fn process_files_parallel(
 ) -> Result<()> {
     // Create output directory
     fs::create_dir_all(output_dir)?;
+
+    // Collect and sort files
+    let files = collect_files(
+        base_dir,
+        config,
+        ignore_patterns,
+        priority_list,
+        recentness_boost,
+    )?;
+
+    // For small sets of files, process sequentially
+    if files.len() <= PARALLEL_THRESHOLD {
+        debug!("Processing {} files sequentially", files.len());
+        let mut current_chunk = String::new();
+        let mut current_chunk_size = 0;
+        let mut current_chunk_index = 0;
+
+        for file in files {
+            let content = match fs::read_to_string(&file.path) {
+                Ok(c) => c,
+                Err(e) => {
+                    debug!("Failed to read {}: {}", file.path.display(), e);
+                    continue;
+                }
+            };
+
+            if content.is_empty() {
+                continue;
+            }
+
+            let rel_path = file
+                .path
+                .strip_prefix(base_dir)
+                .unwrap_or(&file.path)
+                .to_string_lossy()
+                .into_owned();
+
+            let chunk_str = format!(">>>> {}\n{}\n\n", rel_path, content);
+            let chunk_size = chunk_str.len();
+
+            // Write chunk if buffer would exceed size
+            if current_chunk_size + chunk_size > 1024 * 1024 * 10 {
+                // 10MB buffer
+                write_chunk_to_file(output_dir, current_chunk_index, &current_chunk)?;
+                current_chunk.clear();
+                current_chunk_size = 0;
+                current_chunk_index += 1;
+            }
+
+            current_chunk.push_str(&chunk_str);
+            current_chunk_size += chunk_size;
+        }
+
+        // Write final chunk if any content remains
+        if !current_chunk.is_empty() {
+            write_chunk_to_file(output_dir, current_chunk_index, &current_chunk)?;
+        }
+
+        return Ok(());
+    }
+
+    // For larger sets, process in parallel
+    debug!("Processing {} files in parallel", files.len());
 
     // Collect and sort files by priority
     let files = collect_files(
@@ -234,13 +298,11 @@ fn collect_files(
                 continue;
             }
 
-            // Skip binary files
-            if let Some(cfg) = config {
-                if !is_text_file(&path, &cfg.binary_extensions) {
-                    debug!("Skipping binary file: {}", rel_str);
-                    continue;
-                }
-            } else if !is_text_file(&path, &[]) {
+            // Skip binary files - do this check early to avoid double reads later
+            let binary_extensions = config
+                .map(|c| c.binary_extensions.as_slice())
+                .unwrap_or(&[]);
+            if !is_text_file(&path, binary_extensions) {
                 debug!("Skipping binary file: {}", rel_str);
                 continue;
             }
