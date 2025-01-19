@@ -1,6 +1,7 @@
 mod integration_common;
 use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
+use std::fs;
 use tracing::Level;
 use tracing_subscriber::fmt;
 
@@ -20,6 +21,8 @@ fn chunk_order_reflects_priority() {
         .ok();
 
     let repo = setup_temp_repo();
+    let output_dir = repo.path().join("yek-output");
+    fs::create_dir_all(&output_dir).unwrap();
 
     // Create a Yek config that makes `high_priority/` have a very high score
     create_file(
@@ -51,39 +54,38 @@ patterns = ["^high_priority/"]
         .current_dir(repo.path())
         .arg("--max-size")
         .arg("1KB") // force chunking
+        .arg("--output-dir")
+        .arg(&output_dir)
         .arg("--debug")
         .env("TERM", "xterm-256color")
         .assert()
         .success();
 
-    // Run the command and capture output
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    println!("STDOUT:\n{}", stdout);
+    // Read chunk-0.txt to verify it contains the low priority file
+    let chunk0_path = output_dir.join("chunk-0.txt");
+    assert!(chunk0_path.exists(), "chunk-0.txt should exist");
+    let chunk0_content = fs::read_to_string(chunk0_path).unwrap();
+    assert!(
+        chunk0_content.contains("low_priority/foo.txt"),
+        "Low priority file should be in chunk 0"
+    );
 
-    // Instead of comparing positions, we'll check the order of chunks
-    let mut found_low_priority = false;
+    // Verify that high priority file appears in later chunks
     let mut found_high_priority = false;
-
-    for line in stdout.lines() {
-        if line.contains("low_priority/foo.txt") {
-            found_low_priority = true;
-        } else if line.contains("high_priority/foo.txt") {
+    for entry in fs::read_dir(&output_dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.file_name().unwrap().to_string_lossy() == "chunk-0.txt" {
+            continue;
+        }
+        let content = fs::read_to_string(path).unwrap();
+        if content.contains("high_priority/foo.txt") {
             found_high_priority = true;
-            // Once we find high priority, low priority should have been found already
-            assert!(
-                found_low_priority,
-                "Low priority file should appear before high priority file"
-            );
+            break;
         }
     }
-
-    // Verify both files were found
-    assert!(
-        found_low_priority,
-        "Low priority file should be in the output"
-    );
     assert!(
         found_high_priority,
-        "High priority file should be in the output"
+        "High priority file should be in a later chunk"
     );
 }
