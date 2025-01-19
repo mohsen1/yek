@@ -214,7 +214,7 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git clone https://${{ secrets.PAT_TOKEN }}@github.com/bodo-run/bodo-run.github.io.git
+          git clone https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/bodo-run/bodo-run.github.io.git
           cp scripts/install_yek.sh bodo-run.github.io/public/yek.sh
           cp scripts/install_yek.ps1 bodo-run.github.io/public/yek.ps1
           COMMIT_SHA=$(git rev-parse HEAD)
@@ -230,5 +230,5 @@ jobs:
             -m "$BODO_COMMIT_MESSAGE" \
             -m "" \
             -m "https://github.com/bodo-run/yek/commit/$COMMIT_SHA"
-          git remote set-url origin https://${{ secrets.PAT_TOKEN }}@github.com/bodo-run/bodo-run.github.io.git
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/bodo-run/bodo-run.github.io.git
           git push
