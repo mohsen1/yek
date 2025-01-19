@@ -195,7 +195,7 @@ All configuration keys are optional. By default:
 
 `yek` is fast. It's written in Rust and does many things in parallel to speed up processing.
 
-Here is a benchmark comparing it to [Repomix](https://github.com/jxnl/repomix) serializing the [Next.js](https://github.com/vercel/next.js) project:
+Here is a benchmark comparing it to [Repomix](https://github.com/yamadashy/repomix) serializing the [Next.js](https://github.com/vercel/next.js) project:
 
 ```bash
 time yek
