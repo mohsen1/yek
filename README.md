@@ -37,7 +37,7 @@ Running `yek` in this directory will produce a single file and write it to the t
 ... rest of the file ...
 ```
 
-> `yek` will prioritize more important files to come last in the output. This is useful for LLM consumption.
+> [!NOTE] > `yek` will prioritize more important files to come last in the output. This is useful for LLM consumption.
 
 ## Installation
 
@@ -108,6 +108,9 @@ Cap the max size to 128K tokens and only process the `src` directory:
 ```bash
 yek --max-size 128K --tokens src/
 ```
+
+> [!NOTE]
+> When multiple chunks are written, the last chunk will contain the highest-priority files.
 
 Cap the max size to 100KB and only process the `src` directory, writing to a specific directory:
 
