@@ -40,7 +40,22 @@ ARCH=$(uname -m)
 
 case "${OS}_${ARCH}" in
 Linux_x86_64)
-    TARGET="x86_64-unknown-linux-gnu"
+    # Check glibc version
+    GLIBC_VERSION=$(ldd --version 2>&1 | head -n1 | grep -oP 'GLIBC \K[\d.]+' || echo "")
+    if [ -z "$GLIBC_VERSION" ] || [ "$(printf '%s\n' "2.31" "$GLIBC_VERSION" | sort -V | head -n1)" = "$GLIBC_VERSION" ]; then
+        TARGET="x86_64-unknown-linux-musl"
+    else
+        TARGET="x86_64-unknown-linux-gnu"
+    fi
+    ;;
+Linux_aarch64)
+    # Check glibc version for ARM64
+    GLIBC_VERSION=$(ldd --version 2>&1 | head -n1 | grep -oP 'GLIBC \K[\d.]+' || echo "")
+    if [ -z "$GLIBC_VERSION" ] || [ "$(printf '%s\n' "2.31" "$GLIBC_VERSION" | sort -V | head -n1)" = "$GLIBC_VERSION" ]; then
+        TARGET="aarch64-unknown-linux-musl"
+    else
+        TARGET="aarch64-unknown-linux-gnu"
+    fi
     ;;
 Darwin_x86_64)
     TARGET="x86_64-apple-darwin"

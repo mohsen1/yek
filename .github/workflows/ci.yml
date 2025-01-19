@@ -77,6 +77,18 @@ jobs:
             target: x86_64-unknown-linux-gnu
             artifact_name: yek
             asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact_name: yek
+            asset_name: yek-x86_64-unknown-linux-musl.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: yek
+            asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact_name: yek
+            asset_name: yek-aarch64-unknown-linux-musl.tar.gz
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: yek
@@ -98,7 +110,15 @@ jobs:
         with:
           cache-on-failure: true
           key: ${{ matrix.target }}
+      - name: Install cross-compilation tools
+        if: contains(matrix.target, 'aarch64-unknown-linux')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
       - name: Build target
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
         run: cargo build --release --target ${{ matrix.target }} --locked
       - name: Package
         shell: bash
