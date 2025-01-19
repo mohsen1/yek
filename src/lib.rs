@@ -537,6 +537,10 @@ pub fn serialize_repo(
         let rel_path = path.strip_prefix(base_path).unwrap_or(path);
         let rel_str = rel_path.to_string_lossy();
 
+        // Normalize path separators to forward slashes for consistent pattern matching
+        #[cfg(windows)]
+        let rel_str = rel_str.replace('\\', "/");
+
         // Skip if matched by gitignore
         if gitignore.matched(rel_path, false).is_ignore() {
             debug!("Skipping {} - matched by gitignore", rel_str);
