@@ -1,22 +1,20 @@
 # Changelog
 
-## [0.13.1] - 2025-01-19
+## [0.13.2] - 2025-01-19
 
 ### Features
 
-
 ### Bug Fixes
 
+- fix: update Formula version to match project version
 
 ### Other Changes
 
-- chore(release): bump version to 0.13.1
-
+- chore(release): bump version to 0.13.2
 
 ## [0.7.5] - 2025-01-19
 
 ### Features
-
 
 ### Bug Fixes
 
@@ -26,11 +24,9 @@
 
 - perf show
 
-
 ## [0.7.4] - 2025-01-19
 
 ### Features
-
 
 ### Bug Fixes
 
@@ -39,7 +35,6 @@
 ### Other Changes
 
 - chore: update Cargo.lock and gitignore
-
 
 ## [0.7.3] - 2025-01-19
 
@@ -58,7 +53,6 @@
 - test: use HTML comments for installation script extraction
 - refactor: improve Makefile cross-platform support and remove redundant target
 - ci: remove automatic script path updating
-
 
 ## [0.7.2] - 2025-01-19
 
