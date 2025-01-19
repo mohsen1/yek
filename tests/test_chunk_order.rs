@@ -67,6 +67,11 @@ patterns = ["^high_priority/"]
     let chunk0_path = output_dir.join("chunk-0.txt");
     assert!(chunk0_path.exists(), "chunk-0.txt should exist");
     let chunk0_content = fs::read_to_string(&chunk0_path).expect("Failed to read chunk-0.txt");
+
+    // Convert Windows paths to Unix style for consistent comparison
+    #[cfg(windows)]
+    let chunk0_content = chunk0_content.replace('\\', "/");
+
     assert!(
         chunk0_content.contains("low_priority/foo.txt"),
         "Low priority file should be in chunk 0"
@@ -82,6 +87,11 @@ patterns = ["^high_priority/"]
         }
         let content = fs::read_to_string(&path)
             .unwrap_or_else(|_| panic!("Failed to read {}", path.display()));
+
+        // Convert Windows paths to Unix style for consistent comparison
+        #[cfg(windows)]
+        let content = content.replace('\\', "/");
+
         if content.contains("high_priority/foo.txt") {
             found_high_priority = true;
             break;
