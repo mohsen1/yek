@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.3] - 2025-01-19
+
+### Features
+
+
+### Bug Fixes
+
+- fix: get version using cargo pkgid
+
+### Other Changes
+
+- refactor: remove duplicate formula update from release workflow
+- chore: remove semantic release and sync versions
+
+
 ## [0.13.2] - 2025-01-19
 
 ### Features
