@@ -2,13 +2,24 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
+  # Build optimizations
+  CARGO_PROFILE_RELEASE_LTO: true
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+  CARGO_PROFILE_RELEASE_PANIC: abort
+  CARGO_PROFILE_RELEASE_OPT_LEVEL: 3
+  CARGO_PROFILE_RELEASE_STRIP: true
+  # Cache settings
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: short
 
 permissions:
   contents: write
@@ -16,13 +27,29 @@ permissions:
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install Node (Windows)
+        if: startsWith(matrix.os, 'windows-')
+        run: choco install nodejs-lts --no-progress
+
+      - name: Show Node version
+        run: node --version || echo "No Node"
+
       - name: Run tests
-        run: cargo test
+        run: cargo test --verbose
 
   lint:
     name: Lint
@@ -33,6 +60,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Clippy
         run: cargo clippy -- -D warnings
       - name: Format check
@@ -56,43 +85,90 @@ jobs:
             target: aarch64-apple-darwin
             artifact_name: yek
             asset_name: yek-aarch64-apple-darwin.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: yek.exe
+            asset_name: yek-x86_64-pc-windows-msvc.zip
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          key: ${{ matrix.target }}
       - name: Build target
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} --locked
       - name: Package
         shell: bash
         run: |
           staging="yek-${{ matrix.target }}"
           mkdir -p "$staging"
-          cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
-          tar czf "${{ matrix.asset_name }}" "$staging"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
+            7z a "${{ matrix.asset_name }}" "$staging"
+          else
+            cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
+            tar czf "${{ matrix.asset_name }}" "$staging"
+          fi
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}
-          
+          if-no-files-found: error
+
   release:
     name: Release
     needs: [test, lint, build]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Semantic Release
+        uses: cycjimmy/semantic-release-action@v4
+        id: semantic
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v3
+        if: steps.semantic.outputs.new_release_published == 'true'
         with:
           path: artifacts
-      - name: List artifacts
-        run: ls -R artifacts
       - name: Move artifacts
+        if: steps.semantic.outputs.new_release_published == 'true'
         run: |
           mv artifacts/*/*.tar.gz ./
-      - name: Create Release
+          mv artifacts/*/*.zip ./
+      - name: Update Release with Artifacts
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: v${{ steps.semantic.outputs.new_release_version }}
           files: |
-            *.tar.gz 
+            *.tar.gz
+            *.zip
+      - name: Copy installation script to bodo.run
+        if: steps.semantic.outputs.new_release_published == 'true'
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git clone https://${{ secrets.PAT_TOKEN }}@github.com/bodo-run/bodo-run.github.io.git
+          cp scripts/install_yek.sh bodo-run.github.io/public/yek.sh
+          cp scripts/install_yek.ps1 bodo-run.github.io/public/yek.ps1
+          COMMIT_SHA=$(git rev-parse HEAD)
+          BODO_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          cd bodo-run.github.io
+          git add public/yek.sh public/yek.ps1
+          # Exit with 0 if no changes
+          if git diff --exit-code; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Update yek installation scripts" \
+            -m "" \
+            -m "$BODO_COMMIT_MESSAGE" \
+            -m "" \
+            -m "https://github.com/bodo-run/yek/commit/$COMMIT_SHA"
+          git push

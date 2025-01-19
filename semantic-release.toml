@@ -1,0 +1,2 @@
+[release]
+auto_increment = "patch"  # if no commits match, increment patch by default 

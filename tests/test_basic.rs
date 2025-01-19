@@ -91,4 +91,3 @@ fn basic_pipe_test() {
         "Should contain file content"
     );
 }
-use predicates;
