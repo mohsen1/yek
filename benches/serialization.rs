@@ -3,6 +3,7 @@ use rand::{distributions::Alphanumeric, Rng};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
+use std::time::Duration;
 use tempfile::TempDir;
 use yek::{serialize_repo, YekConfig};
 
@@ -129,8 +130,6 @@ fn single_large_file_token_mode(c: &mut Criterion) {
 
 fn multiple_small_files(c: &mut Criterion) {
     let mut group = c.benchmark_group("MultipleFiles_Small");
-    group.sample_size(10); // we can tune the sample size as needed
-
     group.bench_function("multiple_small_files", |b| {
         b.iter_batched(
             || {
@@ -162,7 +161,6 @@ fn multiple_small_files(c: &mut Criterion) {
 
 fn multiple_medium_files(c: &mut Criterion) {
     let mut group = c.benchmark_group("MultipleFiles_Medium");
-
     group.bench_function("multiple_medium_files", |b| {
         b.iter_batched(
             || {
@@ -197,7 +195,6 @@ fn multiple_medium_files(c: &mut Criterion) {
 
 fn multiple_large_files(c: &mut Criterion) {
     let mut group = c.benchmark_group("MultipleFiles_Large");
-
     group.bench_function("multiple_large_files", |b| {
         b.iter_batched(
             || {
@@ -229,7 +226,6 @@ fn multiple_large_files(c: &mut Criterion) {
 
 fn multiple_token_files(c: &mut Criterion) {
     let mut group = c.benchmark_group("MultipleFiles_TokenMode");
-
     group.bench_function("multiple_token_files", |b| {
         b.iter_batched(
             || {
@@ -263,31 +259,27 @@ fn multiple_token_files(c: &mut Criterion) {
 fn custom_config_test(c: &mut Criterion) {
     let mut group = c.benchmark_group("CustomConfig");
     let mut config = YekConfig::default();
-    // Add a silly priority rule for *.foo
     config.priority_rules.push(yek::PriorityRule {
         score: 500,
-        patterns: vec!["\\.foo$".into()],
+        patterns: vec!["*.rs".into()],
     });
+    config.ignore_patterns = yek::IgnoreConfig {
+        patterns: vec!["*.txt".into()],
+    };
 
     group.bench_function("custom_config_test", |b| {
         b.iter_batched(
             || {
                 let temp_dir = TempDir::new().unwrap();
-                // Create several files, some .foo, some .bar
-                let files = &[
-                    (50_000, "file1.foo"),
-                    (70_000, "file2.bar"),
-                    (90_000, "file3.foo"),
-                ];
-                for &(size, name) in files {
-                    create_test_data_bytes(temp_dir.path(), size, name);
-                }
+                // Create mixed files
+                create_test_data_bytes(temp_dir.path(), 1024, "test.txt");
+                create_test_data_bytes(temp_dir.path(), 1024, "test.rs");
                 let output_dir = temp_dir.path().join("output");
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
                 serialize_repo(
-                    black_box(128_000),
+                    black_box(1024),
                     Some(temp_dir.path()),
                     false,
                     false,
@@ -304,15 +296,22 @@ fn custom_config_test(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(
-    benches,
-    single_small_file_byte_mode,
-    single_large_file_byte_mode,
-    single_large_file_token_mode,
-    multiple_small_files,
-    multiple_medium_files,
-    multiple_large_files,
-    multiple_token_files,
-    custom_config_test,
-);
+criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .measurement_time(Duration::from_secs(20))
+        .warm_up_time(Duration::from_secs(5))
+        .sample_size(150)
+        .nresamples(100_000)
+        .with_plots();
+    targets = single_small_file_byte_mode,
+             single_large_file_byte_mode,
+             single_large_file_token_mode,
+             multiple_small_files,
+             multiple_medium_files,
+             multiple_large_files,
+             multiple_token_files,
+             custom_config_test
+}
+
 criterion_main!(benches);

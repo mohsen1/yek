@@ -1,15 +1,24 @@
-use crate::{get_file_priority, is_text_file, PriorityPattern, YekConfig};
-use anyhow::Result;
+use crate::{
+    debug_file, get_file_priority, is_text_file, normalize_path, write_debug_to_file,
+    PriorityPattern, Result, YekConfig,
+};
 use crossbeam::channel::{bounded, Receiver, Sender};
 use ignore::{gitignore::GitignoreBuilder, WalkBuilder};
 use num_cpus::get;
 use regex::Regex;
-use std::collections::HashMap;
-use std::fs;
-use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::thread;
+use std::{
+    collections::HashMap,
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+    thread,
+};
 use tracing::{debug, info};
+
+/// Default chunk size in bytes
+pub const CHUNK_SIZE_BYTES: usize = 1024;
+/// Minimum content size that triggers chunking
+pub const MIN_CONTENT_SIZE: usize = CHUNK_SIZE_BYTES * 2;
 
 /// Represents a chunk of text read from one file
 #[derive(Debug)]
@@ -66,8 +75,8 @@ pub fn process_files_parallel(
         for file in files {
             let content = match fs::read_to_string(&file.path) {
                 Ok(c) => c,
-                Err(e) => {
-                    debug!("Failed to read {}: {}", file.path.display(), e);
+                Err(_e) => {
+                    debug!("Failed to read {}", normalize_path(base_dir, &file.path));
                     continue;
                 }
             };
@@ -76,19 +85,12 @@ pub fn process_files_parallel(
                 continue;
             }
 
-            let rel_path = file
-                .path
-                .strip_prefix(base_dir)
-                .unwrap_or(&file.path)
-                .to_string_lossy()
-                .into_owned();
-
-            let chunk_str = format!(">>>> {}\n{}\n\n", rel_path, content);
+            let rel_str = normalize_path(base_dir, &file.path);
+            let chunk_str = format!(">>>> {}\n{}\n\n", rel_str, content);
             let chunk_size = chunk_str.len();
 
             // Write chunk if buffer would exceed size
-            if current_chunk_size + chunk_size > 1024 * 1024 * 10 {
-                // 10MB buffer
+            if current_chunk_size + chunk_size > max_size {
                 write_chunk_to_file(output_dir, current_chunk_index, &current_chunk)?;
                 current_chunk.clear();
                 current_chunk_size = 0;
@@ -119,7 +121,7 @@ pub fn process_files_parallel(
 
     // Spawn aggregator thread
     let output_dir = output_dir.to_path_buf();
-    let aggregator_handle = thread::spawn(move || aggregator_loop(rx, output_dir));
+    let aggregator_handle = thread::spawn(move || aggregator_loop(rx, output_dir, max_size));
 
     // Spawn worker threads - use fewer threads for smaller workloads
     let num_threads = if files.len() < 4 { 1 } else { get() };
@@ -158,16 +160,11 @@ pub fn process_files_parallel(
 fn read_and_send_chunks(
     base_path: &Path,
     file_entry: FileEntry,
-    max_size: usize,
+    _max_size: usize,
     tx: &Sender<FileChunk>,
 ) -> Result<()> {
     let mut file = fs::File::open(&file_entry.path)?;
-    let rel_path = file_entry
-        .path
-        .strip_prefix(base_path)
-        .unwrap_or(&file_entry.path)
-        .to_string_lossy()
-        .into_owned();
+    let rel_str = normalize_path(base_path, &file_entry.path);
 
     // Read file content in chunks to avoid loading entire file
     let mut total_buf = Vec::new();
@@ -178,24 +175,24 @@ fn read_and_send_chunks(
     }
 
     // If total size <= max_size, send it as single chunk
-    if total_buf.len() <= max_size {
+    if total_buf.len() <= MIN_CONTENT_SIZE {
         let chunk_content = String::from_utf8_lossy(&total_buf).to_string();
         let fc = FileChunk {
             priority: file_entry.priority,
             file_index: file_entry.file_index,
             part_index: 0,
-            rel_path,
+            rel_path: rel_str.to_string(),
             content: chunk_content,
         };
         tx.send(fc)?;
         return Ok(());
     }
 
-    // Otherwise break into multiple parts
+    // Otherwise break into multiple parts using CHUNK_SIZE_BYTES
     let mut start = 0;
     let mut part_index = 0;
     while start < total_buf.len() {
-        let end = (start + max_size).min(total_buf.len());
+        let end = (start + CHUNK_SIZE_BYTES).min(total_buf.len());
         let slice = &total_buf[start..end];
         let chunk_str = String::from_utf8_lossy(slice).to_string();
 
@@ -203,7 +200,7 @@ fn read_and_send_chunks(
             priority: file_entry.priority,
             file_index: file_entry.file_index,
             part_index,
-            rel_path: format!("{}:part{}", rel_path, part_index),
+            rel_path: format!("{}:part{}", rel_str, part_index),
             content: chunk_str,
         };
         tx.send(fc)?;
@@ -232,7 +229,11 @@ fn collect_files(
         .unwrap_or_else(|_| GitignoreBuilder::new(base_dir).build().unwrap());
 
     let mut builder = WalkBuilder::new(base_dir);
-    builder.follow_links(false).standard_filters(true);
+    builder
+        .follow_links(false)
+        .standard_filters(true)
+        .add_custom_ignore_filename(".gitignore")
+        .require_git(false);
 
     let mut results = Vec::new();
     let mut file_index = 0;
@@ -240,49 +241,34 @@ fn collect_files(
     for entry in builder.build().flatten() {
         if entry.file_type().is_some_and(|ft| ft.is_file()) {
             let path = entry.path().to_path_buf();
+            let rel_str = normalize_path(base_dir, &path);
             let rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
-            let rel_str = rel_path.to_string_lossy();
 
-            // Skip if matched by gitignore
-            #[cfg(windows)]
-            let gitignore_path = rel_path
-                .to_str()
-                .map(|s| s.replace('\\', "/"))
-                .unwrap_or_else(|| rel_str.to_string());
-
-            #[cfg(not(windows))]
-            let gitignore_path = rel_str.to_string();
-
-            if gitignore.matched(&path, path.is_dir()).is_ignore() {
+            // Skip via .gitignore
+            if gitignore.matched(rel_path, false).is_ignore() {
+                debug!("Skipping {} - matched by gitignore", rel_str);
                 continue;
             }
 
-            // Skip if matched by custom ignore patterns
+            // Skip via our ignore regexes
             if ignore_patterns.iter().any(|p| p.is_match(&rel_str)) {
+                debug!("Skipping {} - matched ignore pattern", rel_str);
                 continue;
             }
 
-            // Skip binary files
-            if !is_text_file(
-                &path,
-                config.map(|c| &c.binary_extensions[..]).unwrap_or(&[]),
-            ) {
+            // Check if text or binary
+            let user_bin_exts = config
+                .as_ref()
+                .map(|c| c.binary_extensions.as_slice())
+                .unwrap_or(&[]);
+            if !is_text_file(&path, user_bin_exts) {
+                debug!("Skipping binary file: {}", rel_str);
                 continue;
-            }
-
-            // Calculate priority
-            let mut priority = get_file_priority(&rel_str, ignore_patterns, priority_list);
-
-            // Apply recentness boost if available
-            if let Some(boost_map) = recentness_boost {
-                if let Some(boost) = boost_map.get(&gitignore_path) {
-                    priority += boost;
-                }
             }
 
             results.push(FileEntry {
                 path,
-                priority,
+                priority: get_file_priority(&rel_str, ignore_patterns, priority_list),
                 file_index,
             });
             file_index += 1;
@@ -299,10 +285,10 @@ fn collect_files(
         // If priorities are equal, sort by Git boost (ascending)
         if let Some(boost_map) = recentness_boost {
             let a_boost = boost_map
-                .get(&a.path.to_string_lossy().to_string())
+                .get(&normalize_path(base_dir, &a.path))
                 .unwrap_or(&0);
             let b_boost = boost_map
-                .get(&b.path.to_string_lossy().to_string())
+                .get(&normalize_path(base_dir, &b.path))
                 .unwrap_or(&0);
             return a_boost.cmp(b_boost); // Lower boost (older files) come first
         }
@@ -312,7 +298,7 @@ fn collect_files(
 }
 
 /// Receives chunks from workers and writes them to files
-fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
+fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf, max_size: usize) -> Result<()> {
     // Collect chunks first to maintain priority order
     let mut all_chunks = Vec::new();
     while let Ok(chunk) = rx.recv() {
@@ -330,15 +316,33 @@ fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
     let mut current_chunk = String::new();
     let mut current_chunk_size = 0;
     let mut current_chunk_index = 0;
+    let mut current_priority = None;
 
     // Process chunks in sorted order
     for chunk in all_chunks {
         let chunk_str = format!(">>>> {}\n{}\n\n", chunk.rel_path, chunk.content);
         let chunk_size = chunk_str.len();
 
-        // If adding this chunk would exceed reasonable buffer size, write current chunk
-        if current_chunk_size + chunk_size > 1024 * 1024 * 10 {
-            // 10MB buffer
+        // Check priority first to avoid unnecessary size checks
+        let should_start_new_chunk = (current_priority.is_some()
+            && current_priority.unwrap() != chunk.priority)
+            || current_chunk_size + chunk_size > max_size;
+
+        if should_start_new_chunk {
+            if current_priority.is_some() && current_priority.unwrap() != chunk.priority {
+                debug_file!(
+                    "Starting new chunk due to priority change: {} -> {}",
+                    current_priority.unwrap(),
+                    chunk.priority
+                );
+            } else {
+                debug_file!(
+                    "Starting new chunk due to size limit: {} + {} > {}",
+                    current_chunk_size,
+                    chunk_size,
+                    max_size
+                );
+            }
             write_chunk_to_file(&output_dir, current_chunk_index, &current_chunk)?;
             current_chunk.clear();
             current_chunk_size = 0;
@@ -347,6 +351,7 @@ fn aggregator_loop(rx: Receiver<FileChunk>, output_dir: PathBuf) -> Result<()> {
 
         current_chunk.push_str(&chunk_str);
         current_chunk_size += chunk_size;
+        current_priority = Some(chunk.priority);
     }
 
     // Write final chunk if any content remains

@@ -31,6 +31,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v3
 
@@ -49,7 +50,7 @@ jobs:
         run: node --version || echo "No Node"
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --verbose -- --test-threads=1
 
   lint:
     name: Lint
@@ -143,6 +144,21 @@ jobs:
     name: Benchmark
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        benchmark_group:
+          [
+            "SingleFile_ByteMode",
+            "SingleFile_ByteMode_Large",
+            "SingleFile_TokenMode_Large",
+            "MultipleFiles_Small",
+            "MultipleFiles_Medium",
+            "MultipleFiles_Large",
+            "MultipleFiles_TokenMode",
+            "CustomConfig",
+          ]
+      fail-fast: false
+
     steps:
       - uses: actions/checkout@v3
         with:
@@ -162,7 +178,7 @@ jobs:
           cargo bench --bench serialization --no-run
 
       - name: Run benchmark on target branch
-        run: cargo bench --bench serialization -- --save-baseline main
+        run: cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }} '${{ matrix.benchmark_group }}/'
 
       - name: Build benchmarks on PR branch
         run: |
@@ -170,13 +186,18 @@ jobs:
           cargo bench --bench serialization --no-run
 
       - name: Compare benchmarks
-        run: cargo bench --bench serialization -- --baseline main --noise-threshold 2
+        run: |
+          cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 '${{ matrix.benchmark_group }}/' > benchmark_results.md
+          echo "## Benchmark Results for ${{ matrix.benchmark_group }}" >> $GITHUB_STEP_SUMMARY
+          cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v3
         with:
-          name: criterion-results
-          path: target/criterion/
+          name: criterion-${{ matrix.benchmark_group }}-results
+          path: |
+            target/criterion/${{ matrix.benchmark_group }}/
+            benchmark_results.md
           if-no-files-found: error
 
   release:

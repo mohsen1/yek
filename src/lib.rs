@@ -3,14 +3,15 @@ use ignore::gitignore::GitignoreBuilder;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufWriter, Read, Write};
+use std::fs::{self, File};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as SysCommand, Stdio};
-use tracing::{debug, info};
+use tracing::debug;
 use walkdir::WalkDir;
 mod parallel;
 use parallel::process_files_parallel;
+use path_slash::PathExt;
 
 /// Helper macro to write debug statements both to standard debug log and to debug file if set.
 #[macro_export]
@@ -30,7 +31,7 @@ fn write_debug_to_file(msg: &str) {
             let _ = fs::create_dir_all(parent);
         }
         // Append the debug text to the file
-        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) {
+        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
             let _ = writeln!(f, "{}", msg);
         }
     }
@@ -393,50 +394,6 @@ pub fn format_size(size: usize, is_tokens: bool) -> String {
     }
 }
 
-/// Write chunk to file or stdout
-fn write_chunk(
-    files: &[(String, String)],
-    index: usize,
-    output_dir: Option<&Path>,
-    stream: bool,
-    count_tokens: bool,
-) -> Result<usize> {
-    let mut chunk_data = String::new();
-    for (path, content) in files {
-        chunk_data.push_str(">>>> ");
-        #[cfg(windows)]
-        chunk_data.push_str(&path.replace('\\', "/"));
-        #[cfg(not(windows))]
-        chunk_data.push_str(path);
-        chunk_data.push('\n');
-        chunk_data.push_str(content);
-        chunk_data.push_str("\n\n");
-    }
-    let size = count_size(&chunk_data, count_tokens);
-
-    if stream {
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
-        handle.write_all(chunk_data.as_bytes())?;
-        handle.flush()?;
-    } else if let Some(dir) = output_dir {
-        let chunk_path = dir.join(format!("chunk-{}.txt", index));
-        let f = File::create(&chunk_path)?;
-        let mut w = BufWriter::new(f);
-        w.write_all(chunk_data.as_bytes())?;
-        w.flush()?;
-
-        info!(
-            "Written chunk {} with {} files ({}).",
-            index,
-            files.len(),
-            format_size(size, count_tokens)
-        );
-    }
-
-    Ok(size)
-}
-
 /// Determine final priority of a file by scanning the priority list
 /// in descending order of score.
 pub fn get_file_priority(
@@ -506,6 +463,11 @@ pub fn get_recent_commit_times(repo_root: &Path) -> Option<HashMap<String, u64>>
 struct FileEntry {
     path: PathBuf,
     priority: i32,
+    // Used in parallel mode to maintain file order within priority groups
+    // This field is used by the aggregator to sort chunks from the same file
+    // See src/parallel.rs:aggregator_loop for usage
+    #[allow(dead_code)]
+    file_index: usize,
 }
 
 /// Validate the config object, returning any errors found
@@ -629,13 +591,10 @@ pub fn serialize_repo(
     };
 
     if stream {
-        // For streaming, we still use the old single-threaded approach
+        // -- New approach: gather files in memory, then pick the highest‐priority subset that fits --
+        // 1) Collect all FileEntry objects
         let mut files: Vec<FileEntry> = Vec::new();
-        let mut total_size = 0;
-        let mut current_chunk = 0;
-        let mut current_chunk_files = Vec::new();
 
-        // Walk directory tree
         for entry in WalkDir::new(base_path)
             .follow_links(true)
             .into_iter()
@@ -647,56 +606,47 @@ pub fn serialize_repo(
             }
 
             // Get path relative to base
-            let rel_path = path.strip_prefix(base_path).unwrap_or(path);
-            let rel_str = rel_path.to_string_lossy();
+            let rel_str = normalize_path(base_path, path);
 
-            // Normalize path separators to forward slashes for consistent pattern matching
-            #[cfg(windows)]
-            let rel_str = rel_str.replace('\\', "/");
-
-            // Skip if matched by gitignore
-            #[cfg(windows)]
-            let gitignore_path = rel_path
-                .to_str()
-                .map(|s| s.replace('\\', "/"))
-                .map(PathBuf::from)
-                .unwrap_or(rel_path.to_path_buf());
-            #[cfg(not(windows))]
-            let gitignore_path = rel_path.to_path_buf();
-
-            if gitignore.matched(&gitignore_path, false).is_ignore() {
+            // Skip via .gitignore
+            if gitignore
+                .matched(path.strip_prefix(base_path).unwrap_or(path), false)
+                .is_ignore()
+            {
                 debug!("Skipping {} - matched by gitignore", rel_str);
                 continue;
             }
 
-            // Skip if matched by our ignore patterns
-            let mut skip = false;
-            #[cfg(windows)]
-            let pattern_path = rel_str.replace('\\', "/");
-            #[cfg(not(windows))]
-            let pattern_path = rel_str.to_string();
-
-            for pat in &final_config.ignore_patterns {
-                if pat.is_match(&pattern_path) {
-                    debug!("Skipping {} - matched ignore pattern", rel_str);
-                    skip = true;
-                    break;
-                }
-            }
-            if skip {
+            // Skip via our ignore regexes
+            if final_config
+                .ignore_patterns
+                .iter()
+                .any(|pat| pat.is_match(&rel_str))
+            {
+                debug!("Skipping {} - matched ignore pattern", rel_str);
                 continue;
             }
 
-            // Calculate priority score
+            // Check if text or binary
+            let user_bin_exts = config
+                .as_ref()
+                .map(|c| c.binary_extensions.as_slice())
+                .unwrap_or(&[]);
+            if !is_text_file(path, user_bin_exts) {
+                debug!("Skipping binary file: {}", rel_str);
+                continue;
+            }
+
+            // Calculate priority with recentness boost
             let mut priority = get_file_priority(
-                &pattern_path,
+                &rel_str,
                 &final_config.ignore_patterns,
                 &final_config.priority_list,
             );
 
-            // Apply rank-based boost if available
-            if let Some(ref boost_map) = recentness_boost {
-                if let Some(boost) = boost_map.get(&pattern_path) {
+            // Apply recentness boost if available
+            if let Some(boost_map) = recentness_boost.as_ref() {
+                if let Some(boost) = boost_map.get(&rel_str) {
                     priority += *boost;
                 }
             }
@@ -704,43 +654,31 @@ pub fn serialize_repo(
             files.push(FileEntry {
                 path: path.to_path_buf(),
                 priority,
+                file_index: files.len(),
             });
         }
 
-        // Sort files by priority (ascending) so higher priority files come last
-        files.sort_by(|a, b| a.priority.cmp(&b.priority));
+        // 2) Sort ascending by priority, so the last entries are the most important
+        files.sort_by_key(|f| f.priority);
 
-        // Process files in sorted order
-        for file in files {
-            let path = file.path;
-            let rel_path = path.strip_prefix(base_path).unwrap_or(&path);
-            let rel_str = rel_path.to_string_lossy();
+        // 3) Traverse from high→low priority, but obey max_size
+        let mut chosen = Vec::new();
+        let mut used_size = 0_usize;
 
-            // Skip binary files
-            if let Some(ref cfg) = config {
-                if !is_text_file(&path, &cfg.binary_extensions) {
-                    debug!("Skipping binary file: {}", rel_str);
-                    continue;
-                }
-            } else if !is_text_file(&path, &[]) {
-                debug!("Skipping binary file: {}", rel_str);
-                continue;
-            }
+        // We go from the back (highest priority) to the front (lowest)
+        for file_entry in files.iter().rev() {
+            let path = &file_entry.path;
+            let rel_str = normalize_path(base_path, path);
 
-            // Read file content
-            let content = match fs::read_to_string(&path) {
+            // Read the content
+            let content = match fs::read_to_string(path) {
                 Ok(c) => c,
                 Err(e) => {
                     debug!("Failed to read {}: {}", rel_str, e);
                     continue;
                 }
             };
-
             let size = count_size(&content, count_tokens);
-            if size == 0 {
-                debug!("Skipping empty file: {}", rel_str);
-                continue;
-            }
 
             // If a single file is larger than max_size, split it into multiple chunks
             if size > max_size {
@@ -772,54 +710,42 @@ pub fn serialize_repo(
                         remaining.split_at(std::cmp::min(chunk_size, remaining.len()));
                     remaining = rest.trim_start();
 
-                    let chunk_files =
-                        vec![(format!("{}:part{}", rel_str, part), chunk.to_string())];
+                    chosen.push((format!("{}:part{}", rel_str, part), chunk.to_string()));
                     debug_file!("Written chunk {}", part);
-                    write_chunk(
-                        &chunk_files,
-                        part,
-                        output_dir.as_deref(),
-                        stream,
-                        count_tokens,
-                    )?;
                     part += 1;
                 }
                 continue;
             }
 
-            // Check if adding this file would exceed chunk size
-            if total_size + size > max_size && !current_chunk_files.is_empty() {
-                // Write current chunk
-                write_chunk(
-                    &current_chunk_files,
-                    current_chunk,
-                    output_dir.as_deref(),
-                    stream,
-                    count_tokens,
-                )?;
-                debug_file!("Written chunk {}", current_chunk);
-                current_chunk += 1;
-                current_chunk_files.clear();
-                total_size = 0;
+            // If adding it fits under max_size, keep it. Otherwise skip.
+            if used_size + size <= max_size {
+                chosen.push((rel_str.to_string(), content));
+                used_size += size;
+            } else {
+                debug!(
+                    "Skipping {} (size {}) to stay under max_size {}",
+                    rel_str, size, max_size
+                );
             }
-
-            // Add file to current chunk
-            current_chunk_files.push((rel_str.to_string(), content));
-            total_size += size;
         }
 
-        // Write final chunk if any files remain
-        if !current_chunk_files.is_empty() {
-            write_chunk(
-                &current_chunk_files,
-                current_chunk,
-                output_dir.as_deref(),
-                stream,
-                count_tokens,
-            )?;
-            debug_file!("Written chunk {}", current_chunk);
+        // Because we iterated from highest→lowest, chosen[] is in descending priority order.
+        // If you want the final output to go from *lowest → highest*, then reverse:
+        chosen.reverse();
+
+        // 4) Stream them out
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+
+        for (path, content) in chosen {
+            // Path banner
+            writeln!(handle, ">>>> {}", path)?;
+            // File content
+            writeln!(handle, "{}", content)?;
+            writeln!(handle)?; // blank line
         }
 
+        handle.flush()?;
         Ok(None)
     } else if let Some(out_dir) = output_dir {
         // Use parallel processing for non-streaming mode
@@ -935,4 +861,120 @@ fn compute_recentness_boost(
         result.insert((*path).clone(), boost);
     }
     result
+}
+
+#[cfg(target_family = "windows")]
+fn is_effectively_absolute(path: &std::path::Path) -> bool {
+    if path.is_absolute() {
+        return true;
+    }
+    // Also treat a leading slash/backslash as absolute
+    match path.to_str() {
+        Some(s) => s.starts_with('/') || s.starts_with('\\'),
+        None => false,
+    }
+}
+
+#[cfg(not(target_family = "windows"))]
+fn is_effectively_absolute(path: &std::path::Path) -> bool {
+    path.is_absolute()
+}
+
+/// Returns a relative, normalized path string (forward slashes on all platforms).
+pub fn normalize_path(base: &Path, path: &Path) -> String {
+    let rel = match path.strip_prefix(base) {
+        Ok(rel) => rel,
+        Err(_) => path,
+    };
+
+    // Special handling for Windows UNC paths and drive letters
+    #[cfg(target_family = "windows")]
+    if let Some(s) = path.to_str() {
+        // Handle UNC paths
+        if s.starts_with("\\\\")
+            || s.starts_with("//")
+            || s.starts_with("\\/")
+            || s.starts_with("/\\")
+        {
+            return format!("//{}", s.replace('\\', "/").trim_start_matches('/'));
+        }
+
+        // Handle Windows drive letters
+        if let Some(drive_path) = s
+            .strip_prefix(|c| matches!(c, 'A'..='Z' | 'a'..='z'))
+            .and_then(|s| s.strip_prefix(":\\"))
+        {
+            let drive_letter = s.chars().next().unwrap();
+            return format!("/{drive_letter}:/{}", drive_path.replace('\\', "/"));
+        }
+    }
+
+    // Convert to a relative path with components joined by "/"
+    let path_buf: PathBuf = rel
+        .components()
+        .filter(|c| !matches!(c, std::path::Component::RootDir))
+        .collect();
+
+    if path_buf.as_os_str().is_empty() {
+        return ".".to_string();
+    }
+
+    let slash_path = path_buf.to_slash_lossy().into_owned();
+
+    // Only add leading slash if we consider `path` "absolute" but it is not under `base`
+    if is_effectively_absolute(path) && path.strip_prefix(base).is_err() {
+        format!("/{}", slash_path)
+    } else {
+        slash_path
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_normalize_path() {
+        let base = PathBuf::from("/base/path");
+        let path = PathBuf::from("/base/path/foo/bar.txt");
+        assert_eq!(normalize_path(&base, &path), "foo/bar.txt");
+
+        // Test with path not under base
+        let other_path = PathBuf::from("/other/path/baz.txt");
+        assert_eq!(normalize_path(&base, &other_path), "/other/path/baz.txt");
+
+        // Test with relative paths
+        let rel_base = PathBuf::from("base");
+        let rel_path = PathBuf::from("base/foo/bar.txt");
+        assert_eq!(normalize_path(&rel_base, &rel_path), "foo/bar.txt");
+
+        // Test with current directory
+        let current = PathBuf::from(".");
+        assert_eq!(normalize_path(&base, &current), ".");
+
+        // Test with Windows-style absolute path
+        #[cfg(target_family = "windows")]
+        {
+            let win_path = PathBuf::from("C:\\other\\path\\baz.txt");
+            assert_eq!(normalize_path(&base, &win_path), "/C:/other/path/baz.txt");
+
+            let win_unc = PathBuf::from("\\\\server\\share\\file.txt");
+            assert_eq!(normalize_path(&base, &win_unc), "//server/share/file.txt");
+
+            // Test with forward slashes in UNC path
+            let win_unc_fwd = PathBuf::from("//server/share/file.txt");
+            assert_eq!(
+                normalize_path(&base, &win_unc_fwd),
+                "//server/share/file.txt"
+            );
+
+            // Test with mixed slashes in UNC path
+            let win_unc_mixed = PathBuf::from("\\/server\\share/file.txt");
+            assert_eq!(
+                normalize_path(&base, &win_unc_mixed),
+                "//server/share/file.txt"
+            );
+        }
+    }
 }

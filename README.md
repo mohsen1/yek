@@ -10,7 +10,7 @@ A [fast](#performance) Rust based tool to read text-based files in a repository 
 - Supports processing multiple directories in a single command.
 - Configurable via a `yek.toml` file.
 
-Yek ([يک](https://fa.wikipedia.org/wiki/۱)) means "One" in Farsi/Persian.
+Yek <a href="https://fa.wikipedia.org/wiki/۱">يک</a> means "One" in Farsi/Persian.
 
 Consider having a simple repo like this:
 
@@ -28,16 +28,17 @@ Running `yek` in this directory will produce a single file and write it to the t
 
 ```txt
 >>>> README.md
-... content of README.md ...
+... content ...
 >>>> tests/test.rs
-... content of tests/test.rs ...
+... content ...
 >>>> src/utils.rs
-... content of src/utils.rs ...
+... content ...
 >>>> src/main.rs
-... rest of the file ...
+... content ...
 ```
 
-> `yek` will prioritize more important files to come last in the output. This is useful for LLM consumption.
+> [!NOTE]  
+> `yek` will prioritize more important files to come last in the output. This is useful for LLM consumption since LLMs tend to pay more attention to content that appears later in the context.
 
 ## Installation
 
@@ -61,7 +62,8 @@ irm https://bodo.run/yek.ps1 | iex
 
 <!-- WINDOWS_INSTALLATION_END -->
 
-### From Source
+<details>
+<summary style="cursor: pointer;">or build from source</summary>
 
 1. [Install Rust](https://www.rust-lang.org/tools/install).
 2. Clone this repository.
@@ -71,6 +73,8 @@ irm https://bodo.run/yek.ps1 | iex
 ```bash
 export PATH=$(pwd)/target/release:$PATH
 ```
+
+</details>
 
 ## Usage
 
@@ -96,6 +100,9 @@ Cap the max size to 128K tokens and only process the `src` directory:
 yek --max-size 128K --tokens src/
 ```
 
+> [!NOTE]
+> When multiple chunks are written, the last chunk will contain the highest-priority files.
+
 Cap the max size to 100KB and only process the `src` directory, writing to a specific directory:
 
 ```bash
@@ -108,13 +115,7 @@ Process multiple directories:
 yek src/ tests/
 ```
 
-Process multiple repositories:
-
-```bash
-yek ~/code/project1 ~/code/project2
-```
-
-### Help
+### CLI Reference
 
 ```bash
 yek --help
