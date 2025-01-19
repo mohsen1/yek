@@ -1,0 +1,30 @@
+output_dir = "./repo-serialized"
+[ignore_patterns]
+patterns = [
+    "^target/",
+    "Cargo.lock",
+    "^repo-serialized/",
+    "^LICENSE$"
+]
+
+[[priority_rules]]
+score = 100
+patterns = ["^src/"]
+
+[[priority_rules]]
+score = 90
+patterns = ["^lib/", "^test/"]
+
+[[priority_rules]]
+score = 80
+patterns = ["^docs/"]
+
+binary_extensions = [
+    ".rlib",   # Rust static libraries
+    ".rmeta",  # Rust metadata files
+    ".dll",    # Dynamic libraries
+    ".so",     # Shared objects
+    ".dylib"   # Dynamic libraries (macOS)
+]
+
+output_dir = "./repo-serialized" 

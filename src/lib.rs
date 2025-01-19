@@ -117,6 +117,7 @@ fn default_priority_list() -> Vec<PriorityPattern> {
 /// Default sets of ignore patterns (separate from .gitignore)
 fn default_ignore_patterns() -> Vec<Regex> {
     let raw = vec![
+        r"^LICENSE$",
         r"^\.git/",
         r"^\.next/",
         r"^node_modules/",
