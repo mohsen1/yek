@@ -41,19 +41,6 @@ Running `yek` in this directory will produce a single file and write it to the t
 
 ## Installation
 
-### Via Homebrew (recommended for macOS)
-
-<!-- HOMEBREW_INSTALLATION_BEGIN -->
-
-```bash
-brew tap bodo-run/yek https://github.com/bodo-run/yek.git
-brew install yek
-```
-
-<!-- HOMEBREW_INSTALLATION_END -->
-
-### Via Install Script
-
 For Unix-like systems (macOS, Linux):
 
 <!-- LINUX_INSTALLATION_BEGIN -->

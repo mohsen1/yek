@@ -27,6 +27,7 @@ predicates = "3.0"
 tempfile = "3.9"
 criterion = "0.5"
 rand = "0.8"
+git-cliff = "1.4.0"
 
 [[bench]]
 name = "serialization"
