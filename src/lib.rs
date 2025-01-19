@@ -305,6 +305,9 @@ fn write_chunk(
     let mut chunk_data = String::new();
     for (path, content) in files {
         chunk_data.push_str(">>>> ");
+        #[cfg(windows)]
+        chunk_data.push_str(&path.replace('\\', "/"));
+        #[cfg(not(windows))]
         chunk_data.push_str(path);
         chunk_data.push('\n');
         chunk_data.push_str(content);
