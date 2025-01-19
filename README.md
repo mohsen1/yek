@@ -213,9 +213,9 @@ Executed in   22.24 mins    fish           external
 
 `yek` is **230x faster** than `repomix`.
 
-## Planned Features
+## Roadmap
 
-- [ ] Be smarter about finding out test files
+See [proposed features](https://github.com/bodo-run/yek/issues?q=type:%22Feature%22). I am open to accepting new feature requests. Please write a detailed proposal to discuss new features.
 
 ## License
 
