@@ -1,13 +1,13 @@
 class Yek < Formula
   desc "A tool to chunk and serialize repository content for LLM consumption"
   homepage "https://github.com/bodo-run/yek"
-  version "0.13.3"
+  version "0.13.4"
   head "https://github.com/bodo-run/yek.git", branch: "main"
 
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/bodo-run/yek/releases/download/v#{version}/yek-aarch64-apple-darwin.tar.gz"
-      sha256 "e6652fa0792e2b12a47a8eed7d832d29a284a408b7b7d882458d47cb163f0931"  # arm64
+      sha256 "2a4edcb4b767b6e53dff37a8d4889fa635f19e43b6a508a6c54f807eac031303"  # arm64
     else
       url "https://github.com/bodo-run/yek/releases/download/v#{version}/yek-x86_64-apple-darwin.tar.gz"
       sha256 "34896ad65e8ae7c5e93d90e87f15656b67ed5b7596492863d1da80e548ba7301"  # x86_64

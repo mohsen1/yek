@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.4] - 2025-01-19
+
+### Features
+
+
+### Bug Fixes
+
+- fix: lint
+
+### Other Changes
+
+
+
 ## [0.13.3] - 2025-01-19
 
 ### Features
