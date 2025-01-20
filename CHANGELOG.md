@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.8] - 2025-01-20
+[0.13.8]: https://github.com/bodo-run/yek/compare/v0.13.7...v0.13.8
+### Bug Fixes
+
+- Use WalkBuilder in streaming mode to respect gitignore
+- Include hidden files in WalkBuilder configuration
+
+### Miscellaneous Tasks
+
+- Fix the release script
+
+### Refactor
+
+- Improve gitignore handling and fix clippy warnings
+- Improve binary file handling and remove duplicate gitignore checks
+
+### Testing
+
+- Add comprehensive gitignore end-to-end tests
+- Fix binary file test assertion
+
+### Ci
+
+- Simpler release script
+
 ## [0.13.7] - 2025-01-19
 [0.13.7]: https://github.com/bodo-run/yek/compare/v0.13.5...v0.13.7
 ### Bug Fixes
