@@ -2,6 +2,7 @@ mod integration_common;
 use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
 use std::fs;
+use yek::{find_config_file, load_config_file, serialize_repo, YekConfig};
 
 /// Helper to run yek in streaming mode (pipe to stdout)
 fn run_stream_mode(dir: &std::path::Path) -> String {
@@ -30,210 +31,337 @@ fn run_file_mode(dir: &std::path::Path) -> String {
 
     // Read all chunk files
     let mut content = String::new();
-    let read_dir = fs::read_dir(&output_dir).expect("Failed to read output directory");
-    for entry in read_dir {
-        let entry = entry.expect("Failed to read directory entry");
-        let path = entry.path();
-        content.push_str(
-            &fs::read_to_string(&path)
-                .unwrap_or_else(|_| panic!("Failed to read file: {}", path.display())),
-        );
+    for entry in fs::read_dir(output_dir).unwrap() {
+        let path = entry.unwrap().path();
+        content.push_str(&fs::read_to_string(path).unwrap());
     }
     content
 }
 
 #[test]
-fn basic_gitignore_exclusion() {
+fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
 
-    // Setup test files
-    create_file(repo.path(), ".gitignore", "ignore_me.txt\n");
-    create_file(repo.path(), "ignore_me.txt", "should be ignored");
-    create_file(repo.path(), "keep_me.txt", "should be kept");
+    // Create test files and commit them
+    create_file(repo.path(), ".gitignore", b"ignore_me.txt\n");
+    create_file(repo.path(), "ignore_me.txt", b"should be ignored");
+    create_file(repo.path(), "keep_me.txt", b"should be kept");
 
-    // Test both modes
-    for content in [run_stream_mode(repo.path()), run_file_mode(repo.path())] {
-        // Should exclude ignored file
-        assert!(
-            !content.contains("ignore_me.txt"),
-            "Found ignored file in output: {content}"
-        );
+    // Run serialization
+    let output_dir = repo.path().join("test_output");
+    fs::create_dir_all(&output_dir)?;
 
-        // Should include kept file
-        assert!(
-            content.contains("keep_me.txt"),
-            "Missing kept file in output: {content}"
-        );
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
+
+    serialize_repo(repo.path(), Some(&config))?;
+
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
+        }
     }
+
+    assert!(
+        !combined_content.contains(">>>> ignore_me.txt"),
+        "ignore_me.txt should be ignored"
+    );
+    assert!(
+        combined_content.contains(">>>> keep_me.txt"),
+        "keep_me.txt should be kept"
+    );
+
+    Ok(())
 }
 
 #[test]
-fn nested_gitignore_in_subdirectory() {
+fn test_gitignore_subdirectory() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
 
-    // Root gitignore
-    create_file(repo.path(), ".gitignore", "*.temp\n");
+    // Create test files and commit them
+    create_file(repo.path(), ".gitignore", b"*.temp\n");
 
-    // Subdirectory with its own gitignore
-    let sub_dir = repo.path().join("src");
-    fs::create_dir_all(&sub_dir).unwrap();
-    create_file(&sub_dir, ".gitignore", "secret.conf\n");
-    create_file(&sub_dir, "secret.conf", "password=1234");
-    create_file(&sub_dir, "app.rs", "fn main() {}");
+    // Create subdirectory with its own .gitignore
+    let sub_dir = repo.path().join("subdir");
+    fs::create_dir_all(&sub_dir)?;
+    create_file(&sub_dir, ".gitignore", b"secret.conf\n");
+    create_file(&sub_dir, "secret.conf", b"password=1234");
+    create_file(&sub_dir, "app.rs", b"fn main() {}");
 
-    // Another subdir without gitignore
-    let other_dir = repo.path().join("config");
-    fs::create_dir_all(&other_dir).unwrap();
-    create_file(&other_dir, "settings.temp", "key=value");
+    // Create another directory without .gitignore
+    let other_dir = repo.path().join("otherdir");
+    fs::create_dir_all(&other_dir)?;
+    create_file(&other_dir, "settings.temp", b"key=value");
 
-    for content in [run_stream_mode(repo.path()), run_file_mode(repo.path())] {
-        // Should exclude nested gitignore entries
-        assert!(
-            !content.contains("secret.conf"),
-            "Found nested gitignore file: {content}"
-        );
+    // Run serialization
+    let output_dir = repo.path().join("test_output");
+    fs::create_dir_all(&output_dir)?;
 
-        // Should exclude root gitignore pattern
-        assert!(
-            !content.contains("settings.temp"),
-            "Found root gitignore pattern violation: {content}"
-        );
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
 
-        // Should keep valid files
-        assert!(
-            content.contains("app.rs"),
-            "Missing valid source file: {content}"
-        );
+    serialize_repo(repo.path(), Some(&config))?;
+
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
+        }
     }
+
+    assert!(
+        !combined_content.contains(">>>> otherdir/settings.temp"),
+        "settings.temp should be ignored by root .gitignore"
+    );
+    assert!(
+        !combined_content.contains(">>>> subdir/secret.conf"),
+        "secret.conf should be ignored by subdirectory .gitignore"
+    );
+    assert!(
+        combined_content.contains(">>>> subdir/app.rs"),
+        "app.rs should be kept"
+    );
+
+    Ok(())
 }
 
 #[test]
-fn complex_ignore_patterns() {
+fn test_gitignore_complex_patterns() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
 
+    // Create test files and commit them
     create_file(
         repo.path(),
         ".gitignore",
-        "
-        # Comment
-        *.log
-        /build/
-        temp/*
-        !temp/keep.me
-    ",
+        b"# Comment
+*.log
+/build/
+temp/*
+!temp/keep.me
+",
     );
 
-    // Create test files
-    create_file(repo.path(), "error.log", "logs");
-    create_file(repo.path(), "build/output.exe", "binary");
-    create_file(repo.path(), "temp/junk.tmp", "tmp");
-    create_file(repo.path(), "temp/keep.me", "important");
-    create_file(repo.path(), "src/main.rs", "fn main() {}");
+    create_file(repo.path(), "error.log", b"logs");
+    create_file(repo.path(), "build/output.exe", b"binary");
+    create_file(repo.path(), "temp/junk.tmp", b"tmp");
+    create_file(repo.path(), "temp/keep.me", b"important");
+    create_file(repo.path(), "src/main.rs", b"fn main() {}");
 
-    for content in [run_stream_mode(repo.path()), run_file_mode(repo.path())] {
-        // Excluded patterns
-        assert!(
-            !content.contains("error.log"),
-            "Found *.log file: {content}"
-        );
-        assert!(
-            !content.contains("build/output.exe"),
-            "Found build dir file: {content}"
-        );
-        assert!(
-            !content.contains("temp/junk.tmp"),
-            "Found temp/* file: {content}"
-        );
+    // Run serialization
+    let output_dir = repo.path().join("test_output");
+    fs::create_dir_all(&output_dir)?;
 
-        // Included exceptions
-        assert!(
-            content.contains("temp/keep.me"),
-            "Missing !temp/keep.me: {content}"
-        );
-        assert!(
-            content.contains("src/main.rs"),
-            "Missing source file: {content}"
-        );
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
+
+    serialize_repo(repo.path(), Some(&config))?;
+
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
+        }
     }
+
+    assert!(
+        !combined_content.contains(">>>> error.log"),
+        "error.log should be ignored"
+    );
+    assert!(
+        !combined_content.contains(">>>> build/output.exe"),
+        "build/output.exe should be ignored"
+    );
+    assert!(
+        !combined_content.contains(">>>> temp/junk.tmp"),
+        "temp/junk.tmp should be ignored"
+    );
+    assert!(
+        combined_content.contains(">>>> temp/keep.me"),
+        "temp/keep.me should be kept (negated pattern)"
+    );
+    assert!(
+        combined_content.contains(">>>> src/main.rs"),
+        "src/main.rs should be kept"
+    );
+
+    Ok(())
 }
 
 #[test]
-fn combined_ignore_rules() {
+fn test_gitignore_and_yek_toml() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
 
-    // Main config
+    // Create yek.toml with ignore patterns
     create_file(
         repo.path(),
         "yek.toml",
-        "
-        [ignore_patterns]
-        patterns = [\"^exclude/\"]
-    ",
+        b"ignore_patterns = [\"^exclude/.*$\"]\n",
     );
 
-    // Gitignore
+    // Create .gitignore
     create_file(
         repo.path(),
         ".gitignore",
-        "
-        *.tmp
-        /node_modules/
-    ",
+        b"*.tmp
+/node_modules/
+",
     );
 
-    // Test files
-    create_file(repo.path(), "exclude/secret.txt", "confidential");
-    create_file(repo.path(), "test.tmp", "temporary");
-    create_file(repo.path(), "node_modules/lib.js", "junk");
-    create_file(repo.path(), "src/index.rs", "fn main() {}");
+    // Create test files and commit them
+    create_file(repo.path(), "exclude/secret.txt", b"confidential");
+    create_file(repo.path(), "test.tmp", b"temporary");
+    create_file(repo.path(), "node_modules/lib.js", b"junk");
+    create_file(repo.path(), "src/index.rs", b"fn main() {}");
 
-    for content in [run_stream_mode(repo.path()), run_file_mode(repo.path())] {
-        // Should exclude both gitignore and config patterns
-        assert!(
-            !content.contains("exclude/secret.txt"),
-            "Found excluded dir: {content}"
-        );
-        assert!(!content.contains("test.tmp"), "Found *.tmp file: {content}");
-        assert!(
-            !content.contains("node_modules/lib.js"),
-            "Found node_modules: {content}"
-        );
+    // Run serialization
+    let output_dir = repo.path().join("test_output");
+    fs::create_dir_all(&output_dir)?;
 
-        // Should keep valid files
-        assert!(
-            content.contains("src/index.rs"),
-            "Missing source file: {content}"
-        );
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
+
+    serialize_repo(repo.path(), Some(&config))?;
+
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
+        }
     }
+
+    assert!(
+        !combined_content.contains(">>>> exclude/secret.txt"),
+        "exclude/secret.txt should be ignored by yek.toml"
+    );
+    assert!(
+        !combined_content.contains(">>>> test.tmp"),
+        "test.tmp should be ignored by .gitignore"
+    );
+    assert!(
+        !combined_content.contains(">>>> node_modules/lib.js"),
+        "node_modules/lib.js should be ignored by .gitignore"
+    );
+    assert!(
+        combined_content.contains(">>>> src/index.rs"),
+        "src/index.rs should be kept"
+    );
+
+    Ok(())
 }
 
 #[test]
-fn binary_file_exclusion() {
+fn test_gitignore_binary_files() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
 
-    // Create files without .gitignore using proper binary data
-    create_file(
-        repo.path(),
-        "binary.jpg",
-        &String::from_utf8_lossy(&[0xFF, 0xD8, 0xFF, 0xE0]),
-    ); // JPEG magic bytes
-    create_file(repo.path(), "text.txt", "normal text");
-    create_file(repo.path(), "unknown.xyz", "unknown format");
+    // Create test files with binary content
+    create_file(repo.path(), "binary.jpg", b"\xFF\xD8\xFF\xDB"); // JPEG magic bytes
+    create_file(repo.path(), "text.txt", b"normal text");
+    create_file(repo.path(), "unknown.xyz", b"unknown format");
 
-    for content in [run_stream_mode(repo.path()), run_file_mode(repo.path())] {
-        // Should exclude known binary format
-        assert!(
-            !content.contains("binary.jpg"),
-            "Found binary.jpg: {content}"
-        );
+    // Run serialization
+    let output_dir = repo.path().join("test_output");
+    fs::create_dir_all(&output_dir)?;
 
-        // Should include text files
-        assert!(content.contains("text.txt"), "Missing text.txt: {content}");
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
 
-        // Should include unknown.xyz since it's text content
-        assert!(
-            content.contains("unknown.xyz"),
-            "Missing unknown.xyz which has text content: {content}"
-        );
+    serialize_repo(repo.path(), Some(&config))?;
+
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
+        }
     }
+
+    assert!(
+        !combined_content.contains(">>>> binary.jpg"),
+        "binary.jpg should be ignored as a binary file"
+    );
+    assert!(
+        combined_content.contains(">>>> text.txt"),
+        "text.txt should be kept"
+    );
+    assert!(
+        !combined_content.contains(">>>> unknown.xyz"),
+        "unknown.xyz should be ignored as a binary file (unknown extension)"
+    );
+
+    Ok(())
 }

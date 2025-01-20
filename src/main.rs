@@ -1,36 +1,13 @@
 use anyhow::Result;
-use byte_unit::Byte;
-use clap::{Arg, ArgAction, Command};
-use std::io::IsTerminal;
+use clap::{Arg, Command};
+use std::io::{stdout, IsTerminal};
 use std::path::{Path, PathBuf};
-use tracing::{info, Level};
+use tracing::{subscriber, Level};
 use tracing_subscriber::fmt;
-use yek::{find_config_file, load_config_file, serialize_repo};
-
-fn parse_size_input(input: &str, is_tokens: bool) -> std::result::Result<usize, String> {
-    if is_tokens {
-        // Handle token count with K suffix
-        let input = input.trim();
-        if input.to_uppercase().ends_with('K') {
-            let num = input[..input.len() - 1]
-                .parse::<usize>()
-                .map_err(|e| format!("Invalid token count: {}", e))?;
-            Ok(num * 1000)
-        } else {
-            input
-                .parse::<usize>()
-                .map_err(|e| format!("Invalid token count: {}", e))
-        }
-    } else {
-        Byte::from_str(input)
-            .map(|b| b.get_bytes() as usize)
-            .map_err(|e| e.to_string())
-    }
-}
+use yek::{find_config_file, load_config_file, parse_size_input, serialize_repo, YekConfig};
 
 fn main() -> Result<()> {
     let matches = Command::new("yek")
-        .version(env!("CARGO_PKG_VERSION"))
         .about("Repository content chunker and serializer for LLM consumption")
         .arg(
             Arg::new("directories")
@@ -41,20 +18,20 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("max-size")
                 .long("max-size")
-                .help("Maximum size per chunk (e.g. '10MB', '128KB', '1GB' or '100K' tokens when --tokens is used)")
+                .help("Maximum size per chunk (e.g. '10MB', '128KB', '1GB')")
                 .default_value("10MB"),
         )
         .arg(
             Arg::new("tokens")
                 .long("tokens")
                 .help("Count size in tokens instead of bytes")
-                .action(ArgAction::SetTrue),
+                .action(clap::ArgAction::SetTrue),
         )
         .arg(
             Arg::new("debug")
                 .long("debug")
                 .help("Enable debug output")
-                .action(ArgAction::SetTrue),
+                .action(clap::ArgAction::SetTrue),
         )
         .arg(
             Arg::new("output-dir")
@@ -69,111 +46,114 @@ fn main() -> Result<()> {
     } else {
         Level::INFO
     };
-    fmt()
-        .with_max_level(level)
-        .with_target(false)
-        .with_file(false)
-        .with_line_number(false)
-        .with_thread_ids(false)
-        .with_thread_names(false)
-        .with_level(false)
-        .with_ansi(true)
-        .without_time()
-        .init();
 
-    // Parse max size
-    let max_size_str = matches.get_one::<String>("max-size").unwrap();
-    let max_size = parse_size_input(max_size_str, matches.get_flag("tokens"))
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    // Configure logging output
+    if let Ok(debug_output) = std::env::var("YEK_DEBUG_OUTPUT") {
+        let file = std::fs::File::create(debug_output)?;
+        let subscriber = fmt()
+            .with_max_level(level)
+            .with_writer(file)
+            .without_time()
+            .with_target(false)
+            .with_ansi(false)
+            .finish();
+        subscriber::set_global_default(subscriber)?;
+    } else {
+        fmt()
+            .with_max_level(level)
+            .without_time()
+            .with_target(false)
+            .with_ansi(true)
+            .init();
+    }
 
-    // Get directories to process
-    let directories: Vec<PathBuf> = matches
+    // Gather directories
+    let directories: Vec<&str> = matches
         .get_many::<String>("directories")
         .unwrap()
-        .map(|s| Path::new(s).to_path_buf())
+        .map(|s| s.as_str())
         .collect();
 
-    // Get output directory from command line or config
-    let output_dir = matches
-        .get_one::<String>("output-dir")
-        .map(|s| Path::new(s).to_path_buf());
+    // Gather config
+    let mut yek_config = YekConfig::default();
 
-    // Check if we're in stream mode (piped output)
-    let stream = output_dir.is_none() && !std::io::stdout().is_terminal();
+    // Possibly parse max size
+    if let Some(size_str) = matches.get_one::<String>("max-size") {
+        yek_config.max_size = Some(parse_size_input(size_str, matches.get_flag("tokens"))?);
+    }
 
-    for dir in directories {
-        // Find config file for each directory
-        let config = find_config_file(&dir).and_then(|p| load_config_file(&p));
+    yek_config.token_mode = matches.get_flag("tokens");
 
-        if let Some(output_path) = serialize_repo(
-            max_size,
-            Some(&dir),
-            stream,
-            matches.get_flag("tokens"),
-            config,
-            output_dir.as_deref(),
-            None,
-        )? {
-            info!("Output written to {}", output_path.display());
+    // Are we writing chunk files or streaming?
+    // If --output-dir is given, we always write to that directory.
+    // Otherwise, if stdout is not a TTY, we stream. If it *is* a TTY, create a temp dir.
+    if let Some(out_dir) = matches.get_one::<String>("output-dir") {
+        yek_config.output_dir = Some(PathBuf::from(out_dir));
+    } else {
+        let stdout_is_tty = stdout().is_terminal();
+        if stdout_is_tty {
+            // Write chunk files to a temporary directory
+            let tmp = std::env::temp_dir().join("yek-serialize");
+            yek_config.output_dir = Some(tmp);
+        } else {
+            // Stream to stdout
+            yek_config.stream = true;
         }
+    }
+
+    // Run serialize_repo for each directory
+    for dir in directories {
+        let path = Path::new(dir);
+
+        // Make a per-directory clone of base config
+        let mut config_for_this_dir = yek_config.clone();
+
+        // Look up any local yek.toml
+        if let Some(toml_path) = find_config_file(path) {
+            if let Some(file_cfg) = load_config_file(&toml_path) {
+                // Merge file_cfg into config_for_this_dir
+                merge_config(&mut config_for_this_dir, &file_cfg);
+            }
+        }
+
+        serialize_repo(path, Some(&config_for_this_dir))?;
     }
 
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Merge the fields of `other` into `dest`.
+fn merge_config(dest: &mut YekConfig, other: &YekConfig) {
+    // Merge ignore patterns
+    dest.ignore_patterns
+        .extend_from_slice(&other.ignore_patterns);
+    // Merge priority rules
+    dest.priority_rules.extend_from_slice(&other.priority_rules);
+    // Merge binary extensions
+    dest.binary_extensions
+        .extend_from_slice(&other.binary_extensions);
 
-    #[test]
-    fn test_parse_size_input_bytes() {
-        // Using byte_unit::Byte to calculate expected values
-        assert_eq!(
-            parse_size_input("10MB", false).unwrap(),
-            Byte::from_str("10MB").unwrap().get_bytes() as usize
-        );
-        assert_eq!(
-            parse_size_input("128KB", false).unwrap(),
-            Byte::from_str("128KB").unwrap().get_bytes() as usize
-        );
-        assert_eq!(
-            parse_size_input("1GB", false).unwrap(),
-            Byte::from_str("1GB").unwrap().get_bytes() as usize
-        );
-        assert!(parse_size_input("invalid", false).is_err());
+    // Respect whichever max_size is more specific
+    if dest.max_size.is_none() && other.max_size.is_some() {
+        dest.max_size = other.max_size;
     }
 
-    #[test]
-    fn test_parse_size_input_tokens() {
-        // Test K suffix variations
-        assert_eq!(parse_size_input("100K", true).unwrap(), 100_000);
-        assert_eq!(parse_size_input("100k", true).unwrap(), 100_000);
-        assert_eq!(parse_size_input("0K", true).unwrap(), 0);
-        assert_eq!(parse_size_input("1K", true).unwrap(), 1_000);
-        assert_eq!(parse_size_input("1k", true).unwrap(), 1_000);
-
-        // Test without K suffix
-        assert_eq!(parse_size_input("100", true).unwrap(), 100);
-        assert_eq!(parse_size_input("1000", true).unwrap(), 1000);
-        assert_eq!(parse_size_input("0", true).unwrap(), 0);
-
-        // Test invalid inputs
-        assert!(parse_size_input("K", true).is_err());
-        assert!(parse_size_input("-1K", true).is_err());
-        assert!(parse_size_input("-100", true).is_err());
-        assert!(parse_size_input("100KB", true).is_err());
-        assert!(parse_size_input("invalid", true).is_err());
-        assert!(parse_size_input("", true).is_err());
-        assert!(parse_size_input(" ", true).is_err());
-        assert!(parse_size_input("100K100", true).is_err());
-        assert!(parse_size_input("100.5K", true).is_err());
+    // token_mode: if `other` is true, set it
+    if other.token_mode {
+        dest.token_mode = true;
     }
 
-    #[test]
-    fn test_parse_size_input_whitespace() {
-        // Test whitespace handling
-        assert_eq!(parse_size_input(" 100K ", true).unwrap(), 100_000);
-        assert_eq!(parse_size_input("\t100k\n", true).unwrap(), 100_000);
-        assert_eq!(parse_size_input(" 100 ", true).unwrap(), 100);
+    // If `other.output_dir` is set, we can choose to override or not. Usually the CLI
+    // argument has higher precedence, so we only override if `dest.output_dir` is None:
+    if dest.output_dir.is_none() && other.output_dir.is_some() {
+        dest.output_dir = other.output_dir.clone();
+    }
+
+    // Similarly for stream
+    if !dest.stream && other.stream {
+        // only override if CLI didn't force an output dir
+        if dest.output_dir.is_none() {
+            dest.stream = true;
+        }
     }
 }

@@ -2,7 +2,16 @@ output_dir = "./repo-serialized"
 
 [ignore_patterns]
 patterns = [
-    "^repo-serialized/"
+    "^repo-serialized/",
+    "^.*\\.txt$",
+    "^benchmarks/",
+    "^src/defaults\\.rs$",
+    "^\\.github/.*$",
+    "README.md",
+    "CHANGELOG.md",
+    "^LICENSE$",
+    "^README$",
+    "^askai.yaml$",
 ]
 
 [[priority_rules]]
@@ -16,5 +25,9 @@ patterns = ["^src/lib/", "^test/"]
 [[priority_rules]]
 score = 30
 patterns = ["^scripts/"]
+
+[[priority_rules]]
+score = 10
+patterns = ["^src/defaults\\.rs$"]
 
 output_dir = "./repo-serialized" 

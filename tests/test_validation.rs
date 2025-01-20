@@ -9,10 +9,9 @@ fn fails_on_invalid_regex_in_config() {
     create_file(
         repo.path(),
         "yek.toml",
-        r#"
-[ignore_patterns]
-patterns = ["["] # invalid regex
-"#,
+        r#"ignore_patterns = ["["]  # invalid regex
+"#
+        .as_bytes(),
     );
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
@@ -21,7 +20,7 @@ patterns = ["["] # invalid regex
         .success() // The tool doesn't "fail," it just logs invalid config
         .stderr(
             predicate::str::contains("Invalid configuration in")
-                .and(predicate::str::contains("Invalid regex pattern")),
+                .and(predicate::str::contains("Invalid pattern")),
         );
 }
 
@@ -34,8 +33,9 @@ fn fails_on_negative_priority() {
         r#"
 [[priority_rules]]
 score = -10
-patterns = [".*"]
-"#,
+pattern = ".*"
+"#
+        .as_bytes(),
     );
 
     let mut cmd = Command::cargo_bin("yek").unwrap();

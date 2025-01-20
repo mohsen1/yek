@@ -7,8 +7,8 @@ fn multiple_directories_test() {
     let repo1 = setup_temp_repo();
     let repo2 = setup_temp_repo();
 
-    create_file(repo1.path(), "file1.txt", "content1");
-    create_file(repo2.path(), "file2.txt", "content2");
+    create_file(repo1.path(), "file1.txt", "content1".as_bytes());
+    create_file(repo2.path(), "file2.txt", "content2".as_bytes());
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.arg(repo1.path().to_str().unwrap())
