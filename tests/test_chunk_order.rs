@@ -1,7 +1,7 @@
 mod integration_common;
 use std::fs;
 use tempfile::TempDir;
-use yek::{normalize_path, serialize_repo, PriorityRule, YekConfig};
+use yek::{serialize_repo, PriorityRule, YekConfig};
 
 /// Tests that files are written in ascending priority order within a chunk.
 /// Lower priority files should appear first, and higher priority files should appear last.

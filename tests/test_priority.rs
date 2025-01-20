@@ -1,6 +1,7 @@
 mod integration_common;
 use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
+use std::fs;
 
 #[test]
 fn priority_rules_are_applied() {
@@ -32,22 +33,27 @@ pattern = "^less_important/"
         "lower priority".as_bytes(),
     );
 
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
-        .output()
-        .expect("Failed to execute command");
+    let output_dir = repo.path().join("yek-output");
+    fs::create_dir_all(&output_dir).unwrap();
 
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut cmd = Command::cargo_bin("yek").unwrap();
+    cmd.current_dir(repo.path())
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .assert()
+        .success();
+
+    // Read the first chunk file
+    let chunk_0 = fs::read_to_string(output_dir.join("chunk-0.txt")).unwrap();
+    println!("Chunk content:\n{}", chunk_0);
 
     // Check that very_important appears after less_important in the output
-    let very_pos = stdout
-        .find("very_important")
-        .expect("very_important not found");
-    let less_pos = stdout
-        .find("less_important")
-        .expect("less_important not found");
+    let very_pos = chunk_0
+        .find(">>>> very_important/one.txt")
+        .expect("very_important/one.txt not found");
+    let less_pos = chunk_0
+        .find(">>>> less_important/two.txt")
+        .expect("less_important/two.txt not found");
     assert!(
         very_pos > less_pos,
         "very_important should appear after less_important since higher priority files come last"

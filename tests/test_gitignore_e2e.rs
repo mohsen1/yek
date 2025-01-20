@@ -49,7 +49,7 @@ fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
         if let Some(mut file_cfg) = load_config_file(&toml_path) {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
@@ -111,7 +111,7 @@ fn test_gitignore_subdirectory() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
         if let Some(mut file_cfg) = load_config_file(&toml_path) {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
@@ -180,7 +180,7 @@ temp/*
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
         if let Some(mut file_cfg) = load_config_file(&toml_path) {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
@@ -261,7 +261,7 @@ fn test_gitignore_and_yek_toml() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
         if let Some(mut file_cfg) = load_config_file(&toml_path) {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
@@ -321,7 +321,7 @@ fn test_gitignore_binary_files() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+    let config = if let Some(toml_path) = find_config_file(repo.path()) {
         if let Some(mut file_cfg) = load_config_file(&toml_path) {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg

@@ -3,6 +3,7 @@ use crossbeam_channel::bounded;
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
 use std::{
+    collections::HashSet,
     path::Path,
     sync::{Arc, Mutex},
     thread,
@@ -23,6 +24,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
 
     let config = Arc::new(config.clone());
     let base_dir = Arc::new(base_dir.to_path_buf());
+    let processed_files = Arc::new(Mutex::new(HashSet::new()));
 
     // Spawn worker threads
     let mut handles = Vec::new();
@@ -30,6 +32,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
         let tx = tx.clone();
         let config = Arc::clone(&config);
         let base_dir = Arc::clone(&base_dir);
+        let processed_files = Arc::clone(&processed_files);
 
         let handle = thread::spawn(move || -> Result<()> {
             let file_index = Arc::new(Mutex::new(0_usize));
@@ -52,6 +55,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
                 let config = Arc::clone(&config);
                 let base_dir = Arc::clone(&base_dir);
                 let file_index = Arc::clone(&file_index);
+                let processed_files = Arc::clone(&processed_files);
 
                 Box::new(move |entry| {
                     let entry = match entry {
@@ -65,6 +69,15 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
 
                     let path = entry.path().to_path_buf();
                     let rel_path = normalize_path(&path, &base_dir);
+
+                    // Check if file has already been processed
+                    {
+                        let mut processed = processed_files.lock().unwrap();
+                        if !processed.insert(rel_path.clone()) {
+                            // File was already processed
+                            return WalkState::Continue;
+                        }
+                    }
 
                     // Skip files matching ignore patterns from yek.toml
                     if config.ignore_patterns.iter().any(|p| {
@@ -133,6 +146,8 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
         handle.join().unwrap()?;
     }
 
+    info!("Processed {} files in parallel", results.len());
+
     // Sort by priority (ascending) and file index (ascending)
     results.sort_by(|a, b| {
         a.priority
@@ -140,6 +155,5 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
             .then_with(|| a.file_index.cmp(&b.file_index))
     });
 
-    info!("Processed {} files in parallel", results.len());
     Ok(results)
 }

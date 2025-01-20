@@ -338,6 +338,10 @@ fn write_chunks(
     let chunk_size = config.max_size.unwrap_or(DEFAULT_CHUNK_SIZE);
     let token_mode = config.token_mode;
 
+    // Sort entries by priority (ascending)
+    let mut sorted_entries = entries.to_vec();
+    sorted_entries.sort_by_key(|(_, _, prio)| *prio);
+
     // For chunk files:
     let out_dir = if !is_stream {
         config
@@ -355,7 +359,7 @@ fn write_chunks(
     let mut used_size = 0_usize;
 
     // Process each file
-    for (rel_path, content, _prio) in entries {
+    for (rel_path, content, _prio) in sorted_entries {
         debug!("Processing file: {}", rel_path);
         if token_mode {
             // Count tokens
@@ -409,7 +413,7 @@ fn write_chunks(
 
                 debug!("Adding file to buffer");
                 buffer.push_str(&format!("chunk {}\n>>>> {}\n", chunk_idx, rel_path));
-                buffer.push_str(content);
+                buffer.push_str(&content);
                 buffer.push('\n');
                 used_size += add_size;
             }
@@ -464,7 +468,7 @@ fn write_chunks(
 
                 debug!("Adding file to buffer");
                 buffer.push_str(&format!("chunk {}\n>>>> {}\n", chunk_idx, rel_path));
-                buffer.push_str(content);
+                buffer.push_str(&content);
                 buffer.push('\n');
                 used_size += add_size;
             }
