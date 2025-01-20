@@ -14,62 +14,60 @@ permissions:
 
 jobs:
   should-release:
-    name: Check Release Eligibility
+    name: Check Release Eligibility 
     runs-on: ubuntu-latest
     outputs:
       needed: ${{ steps.check-release.outputs.release_needed }}
+      tag: ${{ steps.check-release.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
-      - name: Check if on main branch
-        id: check-branch
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "on_main=true" >> $GITHUB_OUTPUT
-          else
-            echo "on_main=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Check for existing release (main branch only)
-        if: steps.check-branch.outputs.on_main == 'true'
+      - name: Check release conditions
         id: check-release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CURRENT_SHA=$(git rev-parse HEAD)
-          RELEASE_EXISTS=false
-
-          # Get all releases and their tags
-          mapfile -t RELEASES < <(gh api repos/$GITHUB_REPOSITORY/releases --jq '.[].tag_name')
-
-          for TAG in "${RELEASES[@]}"; do
-            # Resolve tag to commit SHA (handles annotated tags)
-            TAG_OBJECT_SHA=$(gh api repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG --jq '.object.sha' 2>/dev/null || true)
-            if [ -n "$TAG_OBJECT_SHA" ]; then
-              if [[ "$(gh api repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT_SHA --jq '.object.type' 2>/dev/null)" == "commit" ]]; then
-                COMMIT_SHA=$(gh api repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT_SHA --jq '.object.sha')
-              else
-                COMMIT_SHA=$(gh api repos/$GITHUB_REPOSITORY/git/commits/$TAG_OBJECT_SHA --jq '.sha')
-              fi
-
-              if [ "$COMMIT_SHA" = "$CURRENT_SHA" ]; then
-                RELEASE_EXISTS=true
-                break
-              fi
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${{ github.ref_name }}"
+            if ! gh release view "$TAG" &>/dev/null; then
+              echo "release_needed=true" >> $GITHUB_OUTPUT
+              echo "release_tag=$TAG" >> $GITHUB_OUTPUT
+              exit 0
             fi
-          done
-
-          echo "release_needed=$([ "$RELEASE_EXISTS" = "false" ] && echo "true" || echo "false")" >> $GITHUB_OUTPUT
-
-      - name: Set default output for non-main branches
-        if: steps.check-branch.outputs.on_main != 'true'
-        run: echo "release_needed=false" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$LATEST_TAG" ]; then
+              echo "release_needed=true" >> $GITHUB_OUTPUT
+              echo "release_tag=v0.0.1" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            if git rev-list "$LATEST_TAG..HEAD" | grep -q .; then
+              if [[ $LATEST_TAG =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+                MAJOR=${BASH_REMATCH[1]}
+                MINOR=${BASH_REMATCH[2]}
+                PATCH=${BASH_REMATCH[3]}
+                NEXT_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+              else
+                NEXT_TAG="${LATEST_TAG}.1"
+              fi
+              echo "release_needed=true" >> $GITHUB_OUTPUT
+              echo "release_tag=$NEXT_TAG" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+          echo "release_needed=false" >> $GITHUB_OUTPUT
+          echo "release_tag=" >> $GITHUB_OUTPUT
 
   build:
     needs: should-release
     if: (github.ref == 'refs/heads/main' && needs.should-release.outputs.needed == 'true') || startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/ci.yml
-      
+    with:
+      version_tag: ${{ needs.should-release.outputs.tag }}
+    secrets: inherit
+
   release:
     needs: [should-release, build]
     if: |
@@ -83,9 +81,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ needs.should-release.outputs.tag }}
           files: yek-*.tar.gz
           generate_release_notes: true
-          update: ${{ steps.check-branch.outputs.on_main == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
