@@ -19,6 +19,8 @@ jobs:
     outputs:
       needed: ${{ steps.check-release.outputs.release_needed }}
     steps:
+      - uses: actions/checkout@v4
+      
       - name: Check if on main branch
         id: check-branch
         run: |
@@ -98,7 +100,9 @@ jobs:
           mkdir -p "yek-${{ matrix.target }}"
           if [[ "${{ matrix.target }}" == *"windows"* ]]; then
             cp "target/${{ matrix.target }}/release/yek.exe" "yek-${{ matrix.target }}/"
-            7z a "yek-${{ matrix.target }}.tar.gz" "yek-${{ matrix.target }}"/*
+            7z a -ttar "yek-${{ matrix.target }}.tar" "yek-${{ matrix.target }}"
+            7z a -tgzip "yek-${{ matrix.target }}.tar.gz" "yek-${{ matrix.target }}.tar"
+            rm "yek-${{ matrix.target }}.tar"
           else
             cp "target/${{ matrix.target }}/release/yek" "yek-${{ matrix.target }}/"
             tar -czf "yek-${{ matrix.target }}.tar.gz" "yek-${{ matrix.target }}"
@@ -130,11 +134,12 @@ jobs:
       - uses: actions/download-artifact@v3
       - name: Move artifacts
         run: find . -name 'yek-*.tar.gz' -exec mv {} . \;
-      - uses: softprops/action-gh-release@v1
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
           files: yek-*.tar.gz
           generate_release_notes: true
-          update: true
+          update: ${{ steps.check-branch.outputs.on_main == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -148,4 +153,4 @@ jobs:
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --no-verify
+        run: cargo publish --no-verify --allow-dirty
