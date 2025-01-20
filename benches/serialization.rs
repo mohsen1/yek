@@ -1,11 +1,11 @@
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use rand::{distributions::Alphanumeric, Rng};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
-use yek::{serialize_repo, YekConfig};
+use yek::{serialize_repo, PriorityRule, YekConfig};
 
 /// Creates a text file of a specified size in bytes.
 fn create_test_data_bytes(dir: &Path, size: usize, file_name: &str) {
@@ -56,16 +56,7 @@ fn single_small_file_byte_mode(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_function("single_small_file", |b| {
         b.iter(|| {
-            serialize_repo(
-                black_box(1024 * 1024), // 1MB chunk
-                Some(temp_dir.path()),
-                false,
-                false,
-                None,
-                Some(&output_dir),
-                None,
-            )
-            .unwrap();
+            serialize_repo(temp_dir.path(), None).unwrap();
             fs::remove_dir_all(&output_dir).ok();
         });
     });
@@ -84,16 +75,7 @@ fn single_large_file_byte_mode(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_function("single_large_file", |b| {
         b.iter(|| {
-            serialize_repo(
-                black_box(5 * 1024 * 1024), // 5MB chunk, forces splits
-                Some(temp_dir.path()),
-                false,
-                false,
-                None,
-                Some(&output_dir),
-                None,
-            )
-            .unwrap();
+            serialize_repo(temp_dir.path(), None).unwrap();
             fs::remove_dir_all(&output_dir).ok();
         });
     });
@@ -112,16 +94,7 @@ fn single_large_file_token_mode(c: &mut Criterion) {
     group.throughput(Throughput::Elements(token_count as u64));
     group.bench_function("single_large_token_file", |b| {
         b.iter(|| {
-            serialize_repo(
-                black_box(50_000), // 50k tokens
-                Some(temp_dir.path()),
-                false,
-                true, // token-based
-                None,
-                Some(&output_dir),
-                None,
-            )
-            .unwrap();
+            serialize_repo(temp_dir.path(), None).unwrap();
             fs::remove_dir_all(&output_dir).ok();
         });
     });
@@ -141,16 +114,7 @@ fn multiple_small_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                serialize_repo(
-                    black_box(10 * 1024), // 10KB chunk
-                    Some(temp_dir.path()),
-                    false,
-                    false,
-                    None,
-                    Some(&output_dir),
-                    None,
-                )
-                .unwrap();
+                serialize_repo(temp_dir.path(), None).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
             BatchSize::SmallInput,
@@ -175,16 +139,7 @@ fn multiple_medium_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                serialize_repo(
-                    black_box(512 * 1024), // 512KB chunk
-                    Some(temp_dir.path()),
-                    false,
-                    false,
-                    None,
-                    Some(&output_dir),
-                    None,
-                )
-                .unwrap();
+                serialize_repo(temp_dir.path(), None).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
             BatchSize::SmallInput,
@@ -206,16 +161,7 @@ fn multiple_large_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                serialize_repo(
-                    black_box(2 * 1024 * 1024), // 2 MB chunk to force splits
-                    Some(temp_dir.path()),
-                    false,
-                    false,
-                    None,
-                    Some(&output_dir),
-                    None,
-                )
-                .unwrap();
+                serialize_repo(temp_dir.path(), None).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
             BatchSize::SmallInput,
@@ -237,16 +183,7 @@ fn multiple_token_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                serialize_repo(
-                    black_box(5_000), // 5k tokens chunk
-                    Some(temp_dir.path()),
-                    false,
-                    true, // token-based
-                    None,
-                    Some(&output_dir),
-                    None,
-                )
-                .unwrap();
+                serialize_repo(temp_dir.path(), None).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
             BatchSize::SmallInput,
@@ -259,13 +196,11 @@ fn multiple_token_files(c: &mut Criterion) {
 fn custom_config_test(c: &mut Criterion) {
     let mut group = c.benchmark_group("CustomConfig");
     let mut config = YekConfig::default();
-    config.priority_rules.push(yek::PriorityRule {
+    config.priority_rules.push(PriorityRule {
+        pattern: "*.rs".into(),
         score: 500,
-        patterns: vec!["*.rs".into()],
     });
-    config.ignore_patterns = yek::IgnoreConfig {
-        patterns: vec!["*.txt".into()],
-    };
+    config.ignore_patterns = vec!["*.txt".into()];
 
     group.bench_function("custom_config_test", |b| {
         b.iter_batched(
@@ -278,16 +213,7 @@ fn custom_config_test(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                serialize_repo(
-                    black_box(1024),
-                    Some(temp_dir.path()),
-                    false,
-                    false,
-                    Some(config.clone()),
-                    Some(&output_dir),
-                    None,
-                )
-                .unwrap();
+                serialize_repo(temp_dir.path(), Some(&config)).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
             BatchSize::SmallInput,

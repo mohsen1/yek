@@ -1,37 +1,15 @@
 use anyhow::Result;
-use byte_unit::Byte;
-use clap::{Arg, ArgAction, Command};
-use std::io::IsTerminal;
+use clap::{Arg, Command};
+use std::io::{stdout, IsTerminal};
 use std::path::{Path, PathBuf};
-use tracing::{info, Level};
+use tracing::Level;
 use tracing_subscriber::fmt;
-use yek::{find_config_file, load_config_file, serialize_repo};
-
-fn parse_size_input(input: &str, is_tokens: bool) -> std::result::Result<usize, String> {
-    if is_tokens {
-        // Handle token count with K suffix
-        let input = input.trim();
-        if input.to_uppercase().ends_with('K') {
-            let num = input[..input.len() - 1]
-                .parse::<usize>()
-                .map_err(|e| format!("Invalid token count: {}", e))?;
-            Ok(num * 1000)
-        } else {
-            input
-                .parse::<usize>()
-                .map_err(|e| format!("Invalid token count: {}", e))
-        }
-    } else {
-        Byte::from_str(input)
-            .map(|b| b.get_bytes() as usize)
-            .map_err(|e| e.to_string())
-    }
-}
+use yek::{parse_size_input, serialize_repo, YekConfig};
 
 fn main() -> Result<()> {
     let matches = Command::new("yek")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Repository content chunker and serializer for LLM consumption")
+        .about("A tool to serialize repository content")
         .arg(
             Arg::new("directories")
                 .help("Directories to process")
@@ -39,27 +17,27 @@ fn main() -> Result<()> {
                 .default_value("."),
         )
         .arg(
-            Arg::new("max-size")
-                .long("max-size")
-                .help("Maximum size per chunk (e.g. '10MB', '128KB', '1GB' or '100K' tokens when --tokens is used)")
-                .default_value("10MB"),
+            Arg::new("output-dir")
+                .long("output-dir")
+                .short('o')
+                .help("Output directory for chunk files"),
         )
         .arg(
-            Arg::new("tokens")
-                .long("tokens")
-                .help("Count size in tokens instead of bytes")
-                .action(ArgAction::SetTrue),
+            Arg::new("max-size")
+                .long("max-size")
+                .help("Maximum size of each chunk in bytes or with K/M/G suffix"),
         )
         .arg(
             Arg::new("debug")
                 .long("debug")
                 .help("Enable debug output")
-                .action(ArgAction::SetTrue),
+                .action(clap::ArgAction::SetTrue),
         )
         .arg(
-            Arg::new("output-dir")
-                .long("output-dir")
-                .help("Output directory for chunks"),
+            Arg::new("tokens")
+                .long("tokens")
+                .help("Use token-based chunking instead of byte-based")
+                .action(clap::ArgAction::SetTrue),
         )
         .get_matches();
 
@@ -71,51 +49,48 @@ fn main() -> Result<()> {
     };
     fmt()
         .with_max_level(level)
-        .with_target(false)
-        .with_file(false)
-        .with_line_number(false)
-        .with_thread_ids(false)
-        .with_thread_names(false)
-        .with_level(false)
-        .with_ansi(true)
         .without_time()
+        .with_target(false)
+        .with_ansi(true)
         .init();
 
-    // Parse max size
-    let max_size_str = matches.get_one::<String>("max-size").unwrap();
-    let max_size = parse_size_input(max_size_str, matches.get_flag("tokens"))
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    // Get directories to process
-    let directories: Vec<PathBuf> = matches
+    // Gather directories
+    let directories: Vec<&str> = matches
         .get_many::<String>("directories")
         .unwrap()
-        .map(|s| Path::new(s).to_path_buf())
+        .map(|s| s.as_str())
         .collect();
 
-    // Get output directory from command line or config
-    let output_dir = matches
-        .get_one::<String>("output-dir")
-        .map(|s| Path::new(s).to_path_buf());
+    // Gather config
+    let mut yek_config = YekConfig::default();
 
-    // Check if we're in stream mode (piped output)
-    let stream = output_dir.is_none() && !std::io::stdout().is_terminal();
+    // Possibly parse max size
+    if let Some(size_str) = matches.get_one::<String>("max-size") {
+        yek_config.max_size = Some(parse_size_input(size_str, matches.get_flag("tokens"))?);
+    }
 
-    for dir in directories {
-        // Find config file for each directory
-        let config = find_config_file(&dir).and_then(|p| load_config_file(&p));
+    yek_config.token_mode = matches.get_flag("tokens");
 
-        if let Some(output_path) = serialize_repo(
-            max_size,
-            Some(&dir),
-            stream,
-            matches.get_flag("tokens"),
-            config,
-            output_dir.as_deref(),
-            None,
-        )? {
-            info!("Output written to {}", output_path.display());
+    // Are we writing chunk files or streaming?
+    // If --output-dir is given, we always write to that directory.
+    // Otherwise, if stdout is not a TTY, we stream. If it *is* a TTY, create a temp dir.
+    if let Some(out_dir) = matches.get_one::<String>("output-dir") {
+        yek_config.output_dir = Some(PathBuf::from(out_dir));
+    } else {
+        let stdout_is_tty = stdout().is_terminal();
+        if stdout_is_tty {
+            // Write chunk files to a temporary directory
+            let tmp = std::env::temp_dir().join("yek-serialize");
+            yek_config.output_dir = Some(tmp);
+        } else {
+            // Stream to stdout
+            yek_config.stream = true;
         }
+    }
+
+    // Run serialize_repo for each directory
+    for dir in directories {
+        serialize_repo(Path::new(dir), Some(&yek_config))?;
     }
 
     Ok(())
@@ -126,38 +101,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_size_input_bytes() {
-        // Using byte_unit::Byte to calculate expected values
-        assert_eq!(
-            parse_size_input("10MB", false).unwrap(),
-            Byte::from_str("10MB").unwrap().get_bytes() as usize
-        );
-        assert_eq!(
-            parse_size_input("128KB", false).unwrap(),
-            Byte::from_str("128KB").unwrap().get_bytes() as usize
-        );
-        assert_eq!(
-            parse_size_input("1GB", false).unwrap(),
-            Byte::from_str("1GB").unwrap().get_bytes() as usize
-        );
-        assert!(parse_size_input("invalid", false).is_err());
-    }
-
-    #[test]
     fn test_parse_size_input_tokens() {
-        // Test K suffix variations
         assert_eq!(parse_size_input("100K", true).unwrap(), 100_000);
         assert_eq!(parse_size_input("100k", true).unwrap(), 100_000);
         assert_eq!(parse_size_input("0K", true).unwrap(), 0);
         assert_eq!(parse_size_input("1K", true).unwrap(), 1_000);
         assert_eq!(parse_size_input("1k", true).unwrap(), 1_000);
 
-        // Test without K suffix
+        // Plain numbers
         assert_eq!(parse_size_input("100", true).unwrap(), 100);
         assert_eq!(parse_size_input("1000", true).unwrap(), 1000);
         assert_eq!(parse_size_input("0", true).unwrap(), 0);
 
-        // Test invalid inputs
+        // Invalid cases
         assert!(parse_size_input("K", true).is_err());
         assert!(parse_size_input("-1K", true).is_err());
         assert!(parse_size_input("-100", true).is_err());
@@ -167,13 +123,49 @@ mod tests {
         assert!(parse_size_input(" ", true).is_err());
         assert!(parse_size_input("100K100", true).is_err());
         assert!(parse_size_input("100.5K", true).is_err());
-    }
 
-    #[test]
-    fn test_parse_size_input_whitespace() {
-        // Test whitespace handling
+        // Whitespace handling
         assert_eq!(parse_size_input(" 100K ", true).unwrap(), 100_000);
         assert_eq!(parse_size_input("\t100k\n", true).unwrap(), 100_000);
         assert_eq!(parse_size_input(" 100 ", true).unwrap(), 100);
+    }
+
+    #[test]
+    fn test_parse_size_input_bytes() {
+        // KB
+        assert_eq!(parse_size_input("100KB", false).unwrap(), 102_400);
+        assert_eq!(parse_size_input("100kb", false).unwrap(), 102_400);
+        assert_eq!(parse_size_input("0KB", false).unwrap(), 0);
+        assert_eq!(parse_size_input("1KB", false).unwrap(), 1_024);
+
+        // MB
+        assert_eq!(parse_size_input("1MB", false).unwrap(), 1_048_576);
+        assert_eq!(parse_size_input("1mb", false).unwrap(), 1_048_576);
+        assert_eq!(parse_size_input("0MB", false).unwrap(), 0);
+
+        // GB
+        assert_eq!(parse_size_input("1GB", false).unwrap(), 1_073_741_824);
+        assert_eq!(parse_size_input("1gb", false).unwrap(), 1_073_741_824);
+        assert_eq!(parse_size_input("0GB", false).unwrap(), 0);
+
+        // Plain bytes
+        assert_eq!(parse_size_input("1024", false).unwrap(), 1024);
+        assert_eq!(parse_size_input("0", false).unwrap(), 0);
+
+        // Invalid cases
+        assert!(parse_size_input("invalid", false).is_err());
+        assert!(parse_size_input("", false).is_err());
+        assert!(parse_size_input(" ", false).is_err());
+        assert!(parse_size_input("-1KB", false).is_err());
+        assert!(parse_size_input("-1024", false).is_err());
+        assert!(parse_size_input("1.5KB", false).is_err());
+        assert!(parse_size_input("1K", false).is_err()); // Must be KB
+        assert!(parse_size_input("1M", false).is_err()); // Must be MB
+        assert!(parse_size_input("1G", false).is_err()); // Must be GB
+
+        // Whitespace handling
+        assert_eq!(parse_size_input(" 100KB ", false).unwrap(), 102_400);
+        assert_eq!(parse_size_input("\t100kb\n", false).unwrap(), 102_400);
+        assert_eq!(parse_size_input(" 1024 ", false).unwrap(), 1024);
     }
 }
