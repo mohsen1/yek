@@ -210,8 +210,8 @@ jobs:
 
       - name: Run benchmark on target branch
         run: |
-          mkdir -p target/criterion/output
-          cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }} '${{ matrix.benchmark_group }}/' --output-dir target/criterion/output
+          mkdir -p target/criterion
+          CRITERION_HOME="$(pwd)/target/criterion" cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }} '${{ matrix.benchmark_group }}/'
 
       - name: Build benchmarks on PR branch
         run: |
@@ -220,8 +220,7 @@ jobs:
 
       - name: Compare benchmarks
         run: |
-          mkdir -p target/criterion/output
-          cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 '${{ matrix.benchmark_group }}/' --output-dir target/criterion/output > benchmark_results.md
+          CRITERION_HOME="$(pwd)/target/criterion" cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 '${{ matrix.benchmark_group }}/' > benchmark_results.md
           echo "## Benchmark Results for ${{ matrix.benchmark_group }}" >> $GITHUB_STEP_SUMMARY
           cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
 
