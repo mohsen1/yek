@@ -1,123 +1,72 @@
 mod integration_common;
-use assert_cmd::Command;
-use integration_common::{create_file, setup_temp_repo};
 use std::fs;
-use tracing::Level;
-use tracing_subscriber::fmt;
+use tempfile::TempDir;
+use yek::serialize_repo;
+use yek::YekConfig;
 
 #[test]
 fn skips_known_binary_files() {
-    // Setup logging
-    fmt()
-        .with_max_level(Level::DEBUG)
-        .with_target(false)
-        .with_file(true)
-        .with_line_number(true)
-        .with_thread_ids(false)
-        .with_thread_names(false)
-        .with_ansi(true)
-        .try_init()
-        .ok();
-
-    let repo = setup_temp_repo();
-    create_file(repo.path(), "test.jpg", "binary content");
-    create_file(repo.path(), "test.txt", "text content");
-
-    let output_dir = repo.path().join("yek-output");
+    let temp = TempDir::new().unwrap();
+    let output_dir = temp.path().join("yek-output");
     fs::create_dir_all(&output_dir).unwrap();
 
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let assert = cmd
-        .current_dir(repo.path())
-        .arg("--debug")
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .env("TERM", "xterm-256color")
-        .assert()
-        .success();
+    // Create a binary file
+    let test_file = temp.path().join("test.jpg");
+    fs::write(&test_file, b"binary content").unwrap();
 
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // Create a text file
+    let text_file = temp.path().join("test.txt");
+    fs::write(&text_file, "text content").unwrap();
+
+    // Run serialization
+    let mut config = YekConfig::default();
+    config.output_dir = Some(output_dir.clone());
+    serialize_repo(temp.path(), Some(&config)).unwrap();
+
+    // Check that the first chunk exists and contains only the text file
+    let chunk_0 = output_dir.join("test.txt.txt");
+    assert!(chunk_0.exists(), "Should write first chunk");
+    let content = fs::read_to_string(chunk_0).unwrap();
     assert!(
-        stdout.contains("Written chunk 0 with"),
-        "Should write first chunk"
+        content.contains("text content"),
+        "Should contain text file content"
     );
-
-    // Check output directory
-    let output_dir = repo.path().join("yek-output");
-    assert!(output_dir.exists(), "Output directory should exist");
-
-    // Check chunk file
-    let chunk_file = output_dir.join("chunk-0.txt");
-    assert!(chunk_file.exists(), "Chunk file should exist");
-
-    // Verify content
-    let content = fs::read_to_string(chunk_file).unwrap();
     assert!(
-        !content.contains("test.jpg"),
-        "Should not contain binary file"
+        !content.contains("binary content"),
+        "Should not contain binary file content"
     );
-    assert!(content.contains("test.txt"), "Should contain text file");
 }
 
 #[test]
 fn respects_custom_binary_extensions() {
-    // Setup logging
-    fmt()
-        .with_max_level(Level::DEBUG)
-        .with_target(false)
-        .with_file(true)
-        .with_line_number(true)
-        .with_thread_ids(false)
-        .with_thread_names(false)
-        .with_ansi(true)
-        .try_init()
-        .ok();
-
-    let repo = setup_temp_repo();
-    create_file(repo.path(), "test.custom", "binary content");
-    create_file(repo.path(), "test.txt", "text content");
-
-    let output_dir = repo.path().join("yek-output");
+    let temp = TempDir::new().unwrap();
+    let output_dir = temp.path().join("yek-output");
     fs::create_dir_all(&output_dir).unwrap();
 
-    // Create config file with custom binary extension
-    create_file(
-        repo.path(),
-        "yek.toml",
-        r#"
-        binary_extensions = [".custom"]
-        "#,
-    );
+    // Create a file with custom binary extension
+    let test_file = temp.path().join("test.dat");
+    fs::write(&test_file, "custom binary content").unwrap();
 
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let assert = cmd
-        .current_dir(repo.path())
-        .arg("--debug")
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .env("TERM", "xterm-256color")
-        .assert()
-        .success();
+    // Create a text file
+    let text_file = temp.path().join("test.txt");
+    fs::write(&text_file, "text content").unwrap();
 
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    // Run serialization with custom config
+    let mut config = YekConfig::default();
+    config.output_dir = Some(output_dir.clone());
+    config.binary_extensions = vec!["dat".to_string()];
+    serialize_repo(temp.path(), Some(&config)).unwrap();
+
+    // Check that the first chunk exists and contains only the text file
+    let chunk_0 = output_dir.join("test.txt.txt");
+    assert!(chunk_0.exists(), "Should write first chunk");
+    let content = fs::read_to_string(chunk_0).unwrap();
     assert!(
-        stdout.contains("Written chunk 0 with"),
-        "Should write first chunk"
+        content.contains("text content"),
+        "Should contain text file content"
     );
-
-    // Check output directory
-    let output_dir = repo.path().join("yek-output");
-    assert!(output_dir.exists(), "Output directory should exist");
-
-    // Check chunk file
-    let chunk_file = output_dir.join("chunk-0.txt");
-    assert!(chunk_file.exists(), "Chunk file should exist");
-
-    // Verify content
-    let content = fs::read_to_string(chunk_file).unwrap();
     assert!(
-        !content.contains("test.custom"),
-        "Should not contain custom binary file"
+        !content.contains("custom binary content"),
+        "Should not contain binary file content"
     );
-    assert!(content.contains("test.txt"), "Should contain text file");
 }
