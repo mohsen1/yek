@@ -71,6 +71,7 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     strategy:
       matrix:
         include:
@@ -82,6 +83,7 @@ jobs:
             target: x86_64-unknown-linux-musl
             artifact_name: yek
             asset_name: yek-x86_64-unknown-linux-musl.tar.gz
+            container: clux/muslrust:stable
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             artifact_name: yek
@@ -90,6 +92,7 @@ jobs:
             target: aarch64-unknown-linux-musl
             artifact_name: yek
             asset_name: yek-aarch64-unknown-linux-musl.tar.gz
+            container: clux/muslrust:stable
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: yek
@@ -112,24 +115,10 @@ jobs:
           cache-on-failure: true
           key: ${{ matrix.target }}
       - name: Install cross-compilation tools
-        if: contains(matrix.target, 'aarch64-unknown-linux')
+        if: contains(matrix.target, 'aarch64-unknown-linux') && !contains(matrix.target, 'musl')
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
-      - name: Install MUSL tools
-        if: contains(matrix.target, 'musl')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools musl-dev
-          # Install OpenSSL for MUSL
-          sudo apt-get install -y pkg-config libssl-dev
-          sudo mkdir -p /musl
-          sudo ln -s /usr/include/x86_64-linux-gnu/asm /musl/include
-          sudo ln -s /usr/include/asm-generic /musl/include
-          sudo ln -s /usr/include/linux /musl/include
-          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig" >> $GITHUB_ENV
       - name: Setup OpenSSL (macOS)
         if: runner.os == 'macOS'
         run: |
