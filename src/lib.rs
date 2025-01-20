@@ -476,137 +476,64 @@ fn write_chunks(
 
 /// The main function that the tests call.
 pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
-    let mut config = cfg.cloned().unwrap_or_default();
+    let config = cfg.cloned().unwrap_or_default();
+    let max_size = config.max_size.unwrap_or(DEFAULT_CHUNK_SIZE);
 
-    // Validate config
-    let errs = validate_config(&config);
-    if !errs.is_empty() {
-        eprintln!("Invalid configuration in {}", repo_path.display());
-        for e in errs {
-            eprintln!("  {}: {}", e.field, e.message);
-        }
-        // The tests do not fail on config error; they only print warnings
+    // Process files in parallel
+    let processed_files = parallel::process_files_parallel(repo_path, &config)?;
+
+    if processed_files.is_empty() {
+        return Ok(());
     }
 
-    // Get all files in the repo
-    let mut entries = Vec::new();
+    // Write output
+    if config.stream {
+        // Stream mode - write directly to stdout
+        let mut current_chunk = String::new();
+        for file in processed_files {
+            let chunk_str = format!(">>>> {}\n{}\n\n", file.rel_path, file.content);
+            current_chunk.push_str(&chunk_str);
 
-    // Build Gitignore from .gitignore if present
-    let mut gi_builder = GitignoreBuilder::new(repo_path);
-    let gitignore_path = repo_path.join(".gitignore");
-    if gitignore_path.exists() {
-        let _ = gi_builder.add(&gitignore_path);
-    }
-    // Build compiled Gitignore
-    let compiled_gi = gi_builder.build().unwrap();
-
-    // Compile regex patterns from config
-    let ignore_regexes: Vec<Regex> = config
-        .ignore_patterns
-        .iter()
-        .filter_map(|pattern| {
-            let regex_pattern = if pattern.starts_with('^') || pattern.ends_with('$') {
-                // Already a regex pattern
-                pattern.to_string()
-            } else {
-                // Convert glob pattern to regex
-                glob_to_regex(pattern)
-            };
-            Regex::new(&regex_pattern).ok()
-        })
-        .collect();
-
-    // Get Git commit times once for all files
-    let git_times = get_recent_commit_times(repo_path);
-
-    // Walk the directory tree
-    for entry in WalkDir::new(repo_path)
-        .follow_links(false)
-        .into_iter()
-        // Skip everything under .git directory and apply ignore patterns
-        .filter_entry(|e| {
-            let rel = e.path().strip_prefix(repo_path).unwrap_or(e.path());
-
-            // Skip .git directory
-            if rel.starts_with(".git") {
-                return false;
-            }
-
-            // Skip if matched by .gitignore
-            let gitignore_match =
-                compiled_gi.matched_path_or_any_parents(rel, e.file_type().is_dir());
-            if gitignore_match.is_ignore() {
-                return false;
-            }
-
-            // Skip if matched by regex patterns
-            let rel_str = rel.to_string_lossy();
-            if ignore_regexes.iter().any(|re| re.is_match(&rel_str)) {
-                return false;
-            }
-
-            true
-        })
-    {
-        let entry = entry?;
-        if !entry.file_type().is_file() {
-            continue;
-        }
-
-        // Get path relative to repo root
-        let rel_path = entry
-            .path()
-            .strip_prefix(repo_path)
-            .unwrap_or(entry.path())
-            .to_string_lossy()
-            .into_owned();
-
-        // Skip binary files
-        if !is_text_file(entry.path(), &config.binary_extensions)? {
-            debug!("Skipping binary file: {}", rel_path);
-            continue;
-        }
-
-        // Read file content with UTF-8 conversion
-        let content = fs::read(entry.path())?;
-        let content = String::from_utf8_lossy(&content).into_owned();
-
-        // Calculate priority
-        let mut priority = get_file_priority(&rel_path, &config.priority_rules);
-
-        // Add Git-based priority boost if available
-        if let Some(ref times) = git_times {
-            if times.get(&rel_path).is_some() {
-                priority += compute_recentness_boost(times, 50)
-                    .get(&rel_path)
-                    .copied()
-                    .unwrap_or(0);
+            if current_chunk.len() >= max_size {
+                print!("{}", current_chunk);
+                current_chunk.clear();
             }
         }
 
-        entries.push((rel_path, content, priority));
-    }
+        if !current_chunk.is_empty() {
+            print!("{}", current_chunk);
+        }
+    } else {
+        // File mode - write to output directory
+        let output_dir = config
+            .output_dir
+            .as_ref()
+            .ok_or_else(|| anyhow!("Output directory must be specified when not in stream mode"))?;
+        fs::create_dir_all(output_dir)?;
 
-    // Sort by priority (ascending) and then by path for deterministic ordering
-    entries.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
+        let mut current_chunk = String::new();
+        let mut current_chunk_size = 0;
+        let mut current_chunk_index = 0;
 
-    // If we're writing to files and no output directory is specified,
-    // create a default one in the repo directory
-    if !config.stream && config.output_dir.is_none() {
-        config.output_dir = Some(repo_path.join("yek-output"));
-    }
+        for file in processed_files {
+            let chunk_str = format!(">>>> {}\n{}\n\n", file.rel_path, file.content);
+            let chunk_size = chunk_str.len();
 
-    // If we're writing to files, ensure the directory exists
-    if !config.stream {
-        if let Some(ref out_dir) = config.output_dir {
-            if !out_dir.exists() {
-                fs::create_dir_all(out_dir)?;
+            if current_chunk_size + chunk_size > max_size {
+                write_single_chunk(&current_chunk, current_chunk_index, None, output_dir, false)?;
+                current_chunk.clear();
+                current_chunk_size = 0;
+                current_chunk_index += 1;
             }
+
+            current_chunk.push_str(&chunk_str);
+            current_chunk_size += chunk_size;
+        }
+
+        if !current_chunk.is_empty() {
+            write_single_chunk(&current_chunk, current_chunk_index, None, output_dir, false)?;
         }
     }
-
-    // Now chunk/stream in ascending priority order
-    write_chunks(&entries, &config, config.stream)?;
 
     Ok(())
 }

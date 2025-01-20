@@ -20,12 +20,11 @@ pub const CHUNK_SIZE_BYTES: usize = 1024;
 /// Minimum content size that triggers chunking
 pub const MIN_CONTENT_SIZE: usize = CHUNK_SIZE_BYTES * 2;
 
-/// Represents a chunk of text read from one file
+/// Represents a processed file entry with content and metadata
 #[derive(Debug)]
-pub struct FileChunk {
+pub struct ProcessedFile {
     pub priority: i32,
     pub file_index: usize,
-    pub part_index: usize,
     pub rel_path: String,
     pub content: String,
 }
@@ -42,101 +41,56 @@ struct FileEntry {
 pub const DEFAULT_CHANNEL_CAPACITY: usize = 1024;
 pub const PARALLEL_THRESHOLD: usize = 10; // Only parallelize if more than 10 files
 
-pub fn process_files_parallel(
-    base_dir: &Path,
-    max_size: usize,
-    output_dir: &Path,
-    config: Option<&YekConfig>,
-    ignore_patterns: &[Regex],
-    priority_list: &[PriorityPattern],
-    recentness_boost: Option<&HashMap<String, i32>>,
-) -> Result<()> {
-    fs::create_dir_all(output_dir)?;
-
-    let files = collect_files(
-        base_dir,
-        config,
-        ignore_patterns,
-        priority_list,
-        recentness_boost,
-    )?;
-
-    if files.is_empty() {
-        return Ok(());
-    }
-
-    // For small sets of files, process sequentially
-    if files.len() <= PARALLEL_THRESHOLD {
-        debug!("Processing {} files sequentially", files.len());
-        let mut current_chunk = String::new();
-        let mut current_chunk_size = 0;
-        let mut current_chunk_index = 0;
-
-        for file in files {
-            let content = match fs::read_to_string(&file.path) {
-                Ok(c) => c,
-                Err(_e) => {
-                    debug!("Failed to read {}", normalize_path(base_dir, &file.path));
-                    continue;
-                }
-            };
-
-            if content.is_empty() {
-                continue;
-            }
-
-            let rel_str = normalize_path(base_dir, &file.path);
-            let chunk_str = format!(">>>> {}\n{}\n\n", rel_str, content);
-            let chunk_size = chunk_str.len();
-
-            // Write chunk if buffer would exceed size
-            if current_chunk_size + chunk_size > max_size {
-                write_chunk_to_file(output_dir, current_chunk_index, &current_chunk)?;
-                current_chunk.clear();
-                current_chunk_size = 0;
-                current_chunk_index += 1;
-            }
-
-            current_chunk.push_str(&chunk_str);
-            current_chunk_size += chunk_size;
-        }
-
-        // Write final chunk if any content remains
-        if !current_chunk.is_empty() {
-            write_chunk_to_file(output_dir, current_chunk_index, &current_chunk)?;
-        }
-
-        return Ok(());
-    }
-
-    // For larger sets, process in parallel
-    debug!("Processing {} files in parallel", files.len());
-
-    let channel_capacity = config
-        .and_then(|c| c.channel_capacity)
-        .unwrap_or(DEFAULT_CHANNEL_CAPACITY);
-
-    // Create channels for worker→aggregator communication
-    let (tx, rx) = bounded(channel_capacity);
-
-    // Spawn aggregator thread
-    let output_dir = output_dir.to_path_buf();
-    let aggregator_handle = thread::spawn(move || aggregator_loop(rx, output_dir, max_size));
-
-    // Spawn worker threads - use fewer threads for smaller workloads
-    let num_threads = if files.len() < 4 { 1 } else { get() };
-    let chunk_size = files.len().div_ceil(num_threads);
+/// Process files in parallel using ignore::WalkBuilder
+pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec<ProcessedFile>> {
+    let (tx, rx) = bounded(1024);
     let mut handles = Vec::new();
+    let num_threads = get();
 
-    for chunk in files.chunks(chunk_size) {
-        let chunk_files = chunk.to_vec();
-        let sender = tx.clone();
-        let base_path = base_dir.to_path_buf();
+    // Configure parallel walker
+    let walker = WalkBuilder::new(base_dir)
+        .hidden(true)
+        .git_ignore(true)
+        .threads(num_threads)
+        .build_parallel();
+
+    // Create worker threads
+    for _ in 0..num_threads {
+        let tx = tx.clone();
+        let config = config.clone();
+        let base_dir = base_dir.to_path_buf();
 
         let handle = thread::spawn(move || -> Result<()> {
-            for file_entry in chunk_files {
-                read_and_send_chunks(&base_path, file_entry, max_size, &sender)?;
-            }
+            let mut file_index = 0;
+            walker.run(|| {
+                Box::new(|entry| {
+                    if let Ok(entry) = entry {
+                        if entry.file_type().map_or(false, |ft| ft.is_file()) {
+                            let path = entry.path().to_path_buf();
+                            if let Ok(is_text) = is_text_file(&path, &config.binary_extensions) {
+                                if is_text {
+                                    let rel_path = normalize_path(&base_dir, &path);
+                                    let priority =
+                                        get_file_priority(&rel_path, &config.priority_rules);
+
+                                    if let Ok(content) = fs::read_to_string(&path) {
+                                        let processed = ProcessedFile {
+                                            priority,
+                                            file_index,
+                                            rel_path,
+                                            content,
+                                        };
+                                        if tx.send(processed).is_ok() {
+                                            file_index += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    ignore::WalkState::Continue
+                })
+            });
             Ok(())
         });
         handles.push(handle);
@@ -145,69 +99,21 @@ pub fn process_files_parallel(
     // Drop original sender
     drop(tx);
 
-    // Wait for workers
+    // Collect results
+    let mut results = Vec::new();
+    while let Ok(processed) = rx.recv() {
+        results.push(processed);
+    }
+
+    // Wait for all threads
     for handle in handles {
         handle.join().unwrap()?;
     }
 
-    // Wait for aggregator
-    aggregator_handle.join().unwrap()?;
+    // Sort by priority and file index
+    results.sort_by_key(|f| (-f.priority, f.file_index));
 
-    Ok(())
-}
-
-/// Reads and chunks a single file, sending chunks through the channel
-fn read_and_send_chunks(
-    base_path: &Path,
-    file_entry: FileEntry,
-    _max_size: usize,
-    tx: &Sender<FileChunk>,
-) -> Result<()> {
-    let mut file = fs::File::open(&file_entry.path)?;
-    let rel_str = normalize_path(base_path, &file_entry.path);
-
-    // Read file content in chunks to avoid loading entire file
-    let mut total_buf = Vec::new();
-    file.read_to_end(&mut total_buf)?;
-
-    if total_buf.is_empty() {
-        return Ok(());
-    }
-
-    // If total size <= max_size, send it as single chunk
-    if total_buf.len() <= MIN_CONTENT_SIZE {
-        let chunk_content = String::from_utf8_lossy(&total_buf).to_string();
-        let fc = FileChunk {
-            priority: file_entry.priority,
-            file_index: file_entry.file_index,
-            part_index: 0,
-            rel_path: rel_str.to_string(),
-            content: chunk_content,
-        };
-        tx.send(fc)?;
-        return Ok(());
-    }
-
-    // Otherwise break into multiple parts using CHUNK_SIZE_BYTES
-    let mut start = 0;
-    let mut part_index = 0;
-    while start < total_buf.len() {
-        let end = (start + CHUNK_SIZE_BYTES).min(total_buf.len());
-        let slice = &total_buf[start..end];
-        let chunk_str = String::from_utf8_lossy(slice).to_string();
-
-        let fc = FileChunk {
-            priority: file_entry.priority,
-            file_index: file_entry.file_index,
-            part_index,
-            rel_path: format!("{}:part{}", rel_str, part_index),
-            content: chunk_str,
-        };
-        tx.send(fc)?;
-        start = end;
-        part_index += 1;
-    }
-    Ok(())
+    Ok(results)
 }
 
 /// Collects files from directory respecting .gitignore and sorts by priority
