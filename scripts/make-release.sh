@@ -45,14 +45,14 @@ echo "Bumping version to: $NEW_VERSION"
 
 # 4. Generate/Update CHANGELOG using cargo-cliff
 #    Make sure cargo-cliff is installed (cargo install cargo-cliff)
-cargo cliff --tag "v${NEW_VERSION}" --output CHANGELOG.md
+git cliff --tag "v${NEW_VERSION}" --output CHANGELOG.md
 
 # 5. Update Cargo.toml
 sed -i.bak "s/^version *= *\"${CURRENT_VERSION}\"/version = \"${NEW_VERSION}\"/" Cargo.toml
 rm -f Cargo.toml.bak
 
 # 6. Update Cargo.lock (so that if your package references itself, it's updated)
-cargo update -p "$(cargo pkgid | sed 's|.*#||')"
+cargo update -p yek
 
 # 7. Commit changes
 git add Cargo.toml Cargo.lock CHANGELOG.md
