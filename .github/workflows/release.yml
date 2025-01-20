@@ -1,100 +1,88 @@
 name: Release
+
 on:
   push:
     tags:
-      - "v*"
-    branches:
-      - main
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  packages: write
-  actions: read
+      - 'v*'
 
 jobs:
-  should-release:
-    name: Check Release Eligibility 
-    runs-on: ubuntu-latest
-    outputs:
-      needed: ${{ steps.check-release.outputs.release_needed }}
-      tag: ${{ steps.check-release.outputs.release_tag }}
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
         with:
-          fetch-depth: 0
-      
-      - name: Check release conditions
-        id: check-release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            TAG="${{ github.ref_name }}"
-            if ! gh release view "$TAG" &>/dev/null; then
-              echo "release_needed=true" >> $GITHUB_OUTPUT
-              echo "release_tag=$TAG" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-            if [ -z "$LATEST_TAG" ]; then
-              echo "release_needed=true" >> $GITHUB_OUTPUT
-              echo "release_tag=v0.0.1" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            if git rev-list "$LATEST_TAG..HEAD" | grep -q .; then
-              if [[ $LATEST_TAG =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-                MAJOR=${BASH_REMATCH[1]}
-                MINOR=${BASH_REMATCH[2]}
-                PATCH=${BASH_REMATCH[3]}
-                NEXT_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-              else
-                NEXT_TAG="${LATEST_TAG}.1"
-              fi
-              echo "release_needed=true" >> $GITHUB_OUTPUT
-              echo "release_tag=$NEXT_TAG" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          fi
-          echo "release_needed=false" >> $GITHUB_OUTPUT
-          echo "release_tag=" >> $GITHUB_OUTPUT
+          profile: minimal
+          override: true
+      - run: cargo test --all-features
 
-  build:
-    needs: should-release
-    if: (github.ref == 'refs/heads/main' && needs.should-release.outputs.needed == 'true') || startsWith(github.ref, 'refs/tags/v')
-    uses: ./.github/workflows/ci.yml
-    with:
-      version_tag: ${{ needs.should-release.outputs.tag }}
-    secrets: inherit
-
-  release:
-    needs: [should-release, build]
-    if: |
-      (github.ref == 'refs/heads/main' && needs.should-release.outputs.needed == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+  publish:
+    needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v3
-      - name: Move artifacts
-        run: find . -name 'yek-*.tar.gz' -exec mv {} . \;
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          override: true
+      - run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  build:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Package artifact
+        run: |
+          mkdir -p "yek-${{ matrix.target }}"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp "target/${{ matrix.target }}/release/yek.exe" "yek-${{ matrix.target }}/"
+          else
+            cp "target/${{ matrix.target }}/release/yek" "yek-${{ matrix.target }}/"
+          fi
+          tar -czf "yek-${{ matrix.target }}.tar.gz" "yek-${{ matrix.target }}"
+      - uses: actions/upload-artifact@v3
+        with:
+          name: yek-${{ matrix.target }}
+          path: yek-${{ matrix.target }}.tar.gz
+
+  release:
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.should-release.outputs.tag }}
-          files: yek-*.tar.gz
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish:
-    needs: [release]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Publish to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --no-verify --allow-dirty
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: "See CHANGELOG.md for details."
+          files: |
+            artifacts/*.tar.gz
