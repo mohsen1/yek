@@ -24,7 +24,7 @@ fn test_normalize_path() {
     #[cfg(target_family = "windows")]
     {
         let win_path = PathBuf::from("C:\\other\\path\\baz.txt");
-        assert_eq!(normalize_path(&win_path, &base), "/C:/other/path/baz.txt");
+        assert_eq!(normalize_path(&win_path, &base), "C:/other/path/baz.txt");
 
         let win_unc = PathBuf::from("\\\\server\\share\\file.txt");
         assert_eq!(normalize_path(&win_unc, &base), "//server/share/file.txt");
