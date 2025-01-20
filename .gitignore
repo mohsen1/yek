@@ -6,3 +6,4 @@ target/
 yek.toml
 repo-serialized/
 dist/
+/*.txt
