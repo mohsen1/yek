@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use ignore::gitignore::GitignoreBuilder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,6 +14,57 @@ use walkdir::WalkDir;
 mod defaults;
 
 use defaults::BINARY_FILE_EXTENSIONS;
+
+/// Convert a glob pattern to a regex pattern
+fn glob_to_regex(pattern: &str) -> String {
+    let mut regex = String::with_capacity(pattern.len() * 2);
+    let mut chars = pattern.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '*' => {
+                if chars.peek() == Some(&'*') {
+                    chars.next(); // consume second *
+                    regex.push_str(".*");
+                } else {
+                    regex.push_str("[^/]*");
+                }
+            }
+            '?' => regex.push('.'),
+            '.' => regex.push_str("\\."),
+            '/' => regex.push('/'),
+            '[' => {
+                regex.push('[');
+                for c in chars.by_ref() {
+                    if c == ']' {
+                        regex.push(']');
+                        break;
+                    }
+                    regex.push(c);
+                }
+            }
+            '{' => {
+                regex.push('(');
+                for c in chars.by_ref() {
+                    if c == '}' {
+                        regex.push(')');
+                        break;
+                    } else if c == ',' {
+                        regex.push('|');
+                    } else {
+                        regex.push(c);
+                    }
+                }
+            }
+            c if c.is_alphanumeric() || c == '_' || c == '-' => regex.push(c),
+            c => {
+                regex.push('\\');
+                regex.push(c);
+            }
+        }
+    }
+    regex
+}
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct IgnorePatterns {
@@ -83,8 +135,17 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 pub fn get_file_priority(path: &str, rules: &[PriorityRule]) -> i32 {
     rules
         .iter()
-        .filter(|rule| path.contains(&rule.pattern))
-        .map(|rule| rule.score)
+        .filter_map(|rule| {
+            let re = match Regex::new(&rule.pattern) {
+                Ok(re) => re,
+                Err(_) => return None,
+            };
+            if re.is_match(path) {
+                Some(rule.score)
+            } else {
+                None
+            }
+        })
         .max()
         .unwrap_or(0)
 }
@@ -172,6 +233,31 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
                 message: "Priority rule must have a pattern".to_string(),
             });
         }
+        // Validate regex pattern
+        if let Err(e) = Regex::new(&rule.pattern) {
+            errors.push(ConfigError {
+                field: "priority_rules".to_string(),
+                message: format!("Invalid regex pattern '{}': {}", rule.pattern, e),
+            });
+        }
+    }
+
+    // Validate ignore patterns
+    for pattern in &config.ignore_patterns {
+        let regex_pattern = if pattern.starts_with('^') || pattern.ends_with('$') {
+            // Already a regex pattern
+            pattern.to_string()
+        } else {
+            // Convert glob pattern to regex
+            glob_to_regex(pattern)
+        };
+
+        if let Err(e) = Regex::new(&regex_pattern) {
+            errors.push(ConfigError {
+                field: "ignore_patterns".to_string(),
+                message: format!("Invalid pattern '{}': {}", pattern, e),
+            });
+        }
     }
 
     // Validate max_size
@@ -214,6 +300,7 @@ pub const DEFAULT_CHUNK_SIZE: usize = 10 * 1024 * 1024; // 10MB in README
 fn write_single_chunk(
     content: &str,
     index: usize,
+    part_index: Option<usize>,
     out_dir: &Path,
     is_stream: bool,
 ) -> io::Result<()> {
@@ -222,21 +309,13 @@ fn write_single_chunk(
         write!(stdout, "{}", content)?;
         stdout.flush()?;
     } else {
-        // Extract the file name from the content (after >>>> and before newline)
+        // Always use chunk index in filename
         let mut file_name = format!("chunk-{}", index);
-        for line in content.lines() {
-            if line.starts_with(">>>>") {
-                if let Some(name) = line.trim_start_matches(">>>>").trim().split(':').next() {
-                    file_name = name.to_string();
-                    break;
-                }
-            }
+        if let Some(part_i) = part_index {
+            file_name = format!("chunk-{}-part-{}", index, part_i);
         }
         let path = out_dir.join(format!("{}.txt", file_name));
-        // Create parent directory if it doesn't exist
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        fs::create_dir_all(path.parent().unwrap())?;
         fs::write(path, content.as_bytes())?;
     }
     Ok(())
@@ -264,7 +343,7 @@ fn write_chunks(
     };
     debug!("Output directory: {:?}", out_dir);
 
-    let mut chunk_index = 0;
+    let mut chunk_idx = 0;
     let mut buffer = String::new();
     let mut used_size = 0_usize;
 
@@ -278,14 +357,15 @@ fn write_chunks(
             debug!("Token mode: {} tokens in file", file_tokens);
 
             // If file exceeds chunk_size by itself, do forced splits
-            if file_tokens > chunk_size {
+            if file_tokens >= chunk_size {
+                debug!("File exceeds chunk size, splitting into multiple chunks");
                 // Flush current buffer first
                 if !buffer.is_empty() {
                     debug!("Flushing buffer before large file");
-                    write_single_chunk(&buffer, chunk_index, out_dir, is_stream)?;
+                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
                     buffer.clear();
                     used_size = 0;
-                    chunk_index += 1;
+                    chunk_idx += 1;
                 }
 
                 // Split large file into chunks
@@ -296,14 +376,14 @@ fn write_chunks(
                     let chunk_tokens = &tokens[start..end];
                     let chunk_str = format!(
                         "chunk {}\n>>>> {}:part {}\n{}\n",
-                        chunk_index,
+                        chunk_idx,
                         rel_path,
                         part,
                         chunk_tokens.join(" ")
                     );
                     debug!("Writing large file part {}", part);
-                    write_single_chunk(&chunk_str, chunk_index, out_dir, is_stream)?;
-                    chunk_index += 1;
+                    write_single_chunk(&chunk_str, chunk_idx, Some(part), out_dir, is_stream)?;
+                    chunk_idx += 1;
                     part += 1;
                     start = end;
                 }
@@ -314,14 +394,14 @@ fn write_chunks(
 
                 if used_size + add_size > chunk_size && !buffer.is_empty() {
                     debug!("Flushing buffer due to size limit");
-                    write_single_chunk(&buffer, chunk_index, out_dir, is_stream)?;
+                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
                     buffer.clear();
                     used_size = 0;
-                    chunk_index += 1;
+                    chunk_idx += 1;
                 }
 
                 debug!("Adding file to buffer");
-                buffer.push_str(&format!("chunk {}\n>>>> {}\n", chunk_index, rel_path));
+                buffer.push_str(&format!("chunk {}\n>>>> {}\n", chunk_idx, rel_path));
                 buffer.push_str(content);
                 buffer.push('\n');
                 used_size += add_size;
@@ -332,14 +412,15 @@ fn write_chunks(
             debug!("Byte mode: {} bytes in file", file_len);
 
             // If file exceeds chunk_size by itself, do forced splits
-            if file_len > chunk_size {
+            if file_len >= chunk_size {
+                debug!("File exceeds chunk size, splitting into multiple chunks");
                 // Flush current buffer first
                 if !buffer.is_empty() {
                     debug!("Flushing buffer before large file");
-                    write_single_chunk(&buffer, chunk_index, out_dir, is_stream)?;
+                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
                     buffer.clear();
                     used_size = 0;
-                    chunk_index += 1;
+                    chunk_idx += 1;
                 }
 
                 // Split large file into chunks
@@ -350,14 +431,14 @@ fn write_chunks(
                     let chunk_data = &content.as_bytes()[start..end];
                     let chunk_str = format!(
                         "chunk {}\n>>>> {}:part {}\n{}\n",
-                        chunk_index,
+                        chunk_idx,
                         rel_path,
                         part,
                         String::from_utf8_lossy(chunk_data)
                     );
                     debug!("Writing large file part {}", part);
-                    write_single_chunk(&chunk_str, chunk_index, out_dir, is_stream)?;
-                    chunk_index += 1;
+                    write_single_chunk(&chunk_str, chunk_idx, Some(part), out_dir, is_stream)?;
+                    chunk_idx += 1;
                     part += 1;
                     start = end;
                 }
@@ -368,14 +449,14 @@ fn write_chunks(
 
                 if used_size + add_size > chunk_size && !buffer.is_empty() {
                     debug!("Flushing buffer due to size limit");
-                    write_single_chunk(&buffer, chunk_index, out_dir, is_stream)?;
+                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
                     buffer.clear();
                     used_size = 0;
-                    chunk_index += 1;
+                    chunk_idx += 1;
                 }
 
                 debug!("Adding file to buffer");
-                buffer.push_str(&format!("chunk {}\n>>>> {}\n", chunk_index, rel_path));
+                buffer.push_str(&format!("chunk {}\n>>>> {}\n", chunk_idx, rel_path));
                 buffer.push_str(content);
                 buffer.push('\n');
                 used_size += add_size;
@@ -386,7 +467,7 @@ fn write_chunks(
     // Flush final chunk if not empty
     if !buffer.is_empty() {
         debug!("Flushing final buffer");
-        write_single_chunk(&buffer, chunk_index, out_dir, is_stream)?;
+        write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
     }
 
     debug!("Finished write_chunks");
@@ -396,6 +477,7 @@ fn write_chunks(
 /// The main function that the tests call.
 pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     let mut config = cfg.cloned().unwrap_or_default();
+
     // Validate config
     let errs = validate_config(&config);
     if !errs.is_empty() {
@@ -408,18 +490,62 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
 
     // Get all files in the repo
     let mut entries = Vec::new();
+
+    // Build Gitignore from .gitignore if present
+    let mut gi_builder = GitignoreBuilder::new(repo_path);
+    let gitignore_path = repo_path.join(".gitignore");
+    if gitignore_path.exists() {
+        let _ = gi_builder.add(&gitignore_path);
+    }
+    // Build compiled Gitignore
+    let compiled_gi = gi_builder.build().unwrap();
+
+    // Compile regex patterns from config
+    let ignore_regexes: Vec<Regex> = config
+        .ignore_patterns
+        .iter()
+        .filter_map(|pattern| {
+            let regex_pattern = if pattern.starts_with('^') || pattern.ends_with('$') {
+                // Already a regex pattern
+                pattern.to_string()
+            } else {
+                // Convert glob pattern to regex
+                glob_to_regex(pattern)
+            };
+            Regex::new(&regex_pattern).ok()
+        })
+        .collect();
+
+    // Get Git commit times once for all files
     let git_times = get_recent_commit_times(repo_path);
 
     // Walk the directory tree
     for entry in WalkDir::new(repo_path)
         .follow_links(false)
         .into_iter()
+        // Skip everything under .git directory and apply ignore patterns
         .filter_entry(|e| {
-            let path = e.path().strip_prefix(repo_path).unwrap_or(e.path());
-            !config
-                .ignore_patterns
-                .iter()
-                .any(|p| path.to_string_lossy().contains(p))
+            let rel = e.path().strip_prefix(repo_path).unwrap_or(e.path());
+
+            // Skip .git directory
+            if rel.starts_with(".git") {
+                return false;
+            }
+
+            // Skip if matched by .gitignore
+            let gitignore_match =
+                compiled_gi.matched_path_or_any_parents(rel, e.file_type().is_dir());
+            if gitignore_match.is_ignore() {
+                return false;
+            }
+
+            // Skip if matched by regex patterns
+            let rel_str = rel.to_string_lossy();
+            if ignore_regexes.iter().any(|re| re.is_match(&rel_str)) {
+                return false;
+            }
+
+            true
         })
     {
         let entry = entry?;
@@ -461,8 +587,8 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
         entries.push((rel_path, content, priority));
     }
 
-    // Sort ascending by priority, so highest prio is last
-    entries.sort_by_key(|(_, _, p)| *p);
+    // Sort by priority (ascending) and then by path for deterministic ordering
+    entries.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
 
     // If we're writing to files and no output directory is specified,
     // create a default one in the repo directory

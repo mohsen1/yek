@@ -30,7 +30,7 @@ fn basic_file_output_test() {
     }
 
     // Check that the first chunk exists and contains our test file
-    let chunk_0 = output_dir.join("test.txt.txt");
+    let chunk_0 = output_dir.join("chunk-0.txt");
     assert!(chunk_0.exists(), "Should write first chunk");
     let content = fs::read_to_string(chunk_0).unwrap();
     assert!(

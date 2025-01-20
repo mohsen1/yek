@@ -266,34 +266,30 @@ fn collect_files(
                 continue;
             }
 
+            // Calculate priority
+            let mut priority = get_file_priority(&rel_str, priority_list);
+
+            // Add Git-based priority boost if available
+            if let Some(boost) = recentness_boost.and_then(|bm| bm.get(&rel_str)) {
+                priority += boost;
+            }
+
             results.push(FileEntry {
                 path,
-                priority: get_file_priority(&rel_str, ignore_patterns, priority_list),
+                priority,
                 file_index,
             });
             file_index += 1;
         }
     }
 
-    // Sort by priority (ascending) so higher priority files come last
+    // Sort by priority (ascending) and then by file index for deterministic ordering
     results.sort_by(|a, b| {
-        // First sort by priority (ascending)
-        let p = a.priority.cmp(&b.priority);
-        if p != std::cmp::Ordering::Equal {
-            return p;
-        }
-        // If priorities are equal, sort by Git boost (ascending)
-        if let Some(boost_map) = recentness_boost {
-            let a_boost = boost_map
-                .get(&normalize_path(base_dir, &a.path))
-                .unwrap_or(&0);
-            let b_boost = boost_map
-                .get(&normalize_path(base_dir, &b.path))
-                .unwrap_or(&0);
-            return a_boost.cmp(b_boost); // Lower boost (older files) come first
-        }
-        std::cmp::Ordering::Equal
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| a.file_index.cmp(&b.file_index))
     });
+
     Ok(results)
 }
 

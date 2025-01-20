@@ -53,8 +53,8 @@ fn chunk_order_reflects_priority() {
         }
     }
 
-    // All files should be in test.txt.txt since it's the first file processed
-    let output_path = output_dir.join("test.txt.txt");
+    // All files should be in chunk-0.txt since it's the first chunk
+    let output_path = output_dir.join("chunk-0.txt");
     let content = fs::read_to_string(&output_path).unwrap();
 
     // Check that files appear in ascending priority order

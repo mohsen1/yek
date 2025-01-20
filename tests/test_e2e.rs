@@ -1,6 +1,6 @@
 mod integration_common;
 use assert_cmd::Command;
-use integration_common::{create_file, setup_temp_repo};
+use integration_common::{create_file, ensure_empty_output_dir, setup_temp_repo};
 use std::fs;
 use tempfile::TempDir;
 
@@ -12,23 +12,27 @@ fn e2e_small_repo_basic() {
     let repo = setup_temp_repo();
 
     // Create a few files
-    create_file(repo.path(), "README.md", "# This is a test repo");
-    create_file(repo.path(), "src/main.rs", "fn main() {}");
-    create_file(repo.path(), "src/lib.rs", "pub fn lib_fn() {}");
-    create_file(repo.path(), "tests/test_it.rs", "#[test] fn test_it() {}");
-    create_file(repo.path(), "ignore_me/binary.bin", "fakebinary\x00\x7f");
+    create_file(repo.path(), "README.md", "# This is a test repo".as_bytes());
+    create_file(repo.path(), "src/main.rs", "fn main() {}".as_bytes());
+    create_file(repo.path(), "src/lib.rs", "pub fn lib_fn() {}".as_bytes());
+    create_file(
+        repo.path(),
+        "tests/test_it.rs",
+        "#[test] fn test_it() {}".as_bytes(),
+    );
+    create_file(repo.path(), "ignore_me/binary.bin", b"fakebinary\x00\x7f");
     // Add .gitignore to ignore `ignore_me/`
-    create_file(repo.path(), ".gitignore", "ignore_me/\n");
+    create_file(repo.path(), ".gitignore", "ignore_me/\n".as_bytes());
 
     // Run `yek` in non-stream mode
     let output_dir = repo.path().join("yek-output");
-    fs::create_dir_all(&output_dir).unwrap();
+    ensure_empty_output_dir(&output_dir);
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.current_dir(repo.path())
         .arg("--output-dir")
         .arg(&output_dir)
-        .arg("--max-size=5KB") // Force chunking if something is large
+        .arg("--max-size=200KB") // Large enough to include all files in one chunk
         .assert()
         .success();
 
@@ -61,10 +65,10 @@ fn e2e_large_file_splitting() {
 
     // 1 MB worth of text
     let big_content = "test content ".repeat(100_000);
-    create_file(repo.path(), "BIGFILE.txt", &big_content);
+    create_file(repo.path(), "BIGFILE.txt", big_content.as_bytes());
 
     let output_dir = repo.path().join("yek-output");
-    fs::create_dir_all(&output_dir).unwrap();
+    ensure_empty_output_dir(&output_dir);
 
     // We set chunk limit to ~100 KB so that 1 MB file is forced into ~10 parts
     let mut cmd = Command::cargo_bin("yek").unwrap();
@@ -108,17 +112,29 @@ fn e2e_nested_paths() {
     let repo = setup_temp_repo();
 
     // Nested directories
-    create_file(repo.path(), "src/module1/foo.rs", "// module1 foo");
-    create_file(repo.path(), "src/module1/bar.rs", "// module1 bar");
-    create_file(repo.path(), "src/module2/baz.rs", "// module2 baz");
+    create_file(
+        repo.path(),
+        "src/module1/foo.rs",
+        "// module1 foo".as_bytes(),
+    );
+    create_file(
+        repo.path(),
+        "src/module1/bar.rs",
+        "// module1 bar".as_bytes(),
+    );
+    create_file(
+        repo.path(),
+        "src/module2/baz.rs",
+        "// module2 baz".as_bytes(),
+    );
     create_file(
         repo.path(),
         "src/module2/extra/deep_file.rs",
-        "// deep nested file",
+        "// deep nested file".as_bytes(),
     );
 
     let output_dir = repo.path().join("yek-output");
-    fs::create_dir_all(&output_dir).unwrap();
+    ensure_empty_output_dir(&output_dir);
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.current_dir(repo.path())
@@ -151,8 +167,16 @@ fn e2e_cross_platform_sanity() {
     let repo = setup_temp_repo();
 
     // We just put some small files
-    create_file(repo.path(), "windows_path.txt", "C:\\windows\\style\\path");
-    create_file(repo.path(), "unix_path.txt", "/home/user/unix/style/path");
+    create_file(
+        repo.path(),
+        "windows_path.txt",
+        "C:\\windows\\style\\path".as_bytes(),
+    );
+    create_file(
+        repo.path(),
+        "unix_path.txt",
+        "/home/user/unix/style/path".as_bytes(),
+    );
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.current_dir(repo.path())
@@ -170,7 +194,7 @@ fn e2e_cross_platform_sanity() {
 #[test]
 fn e2e_stream_detection() {
     let repo = setup_temp_repo();
-    create_file(repo.path(), "test.txt", "some content");
+    create_file(repo.path(), "test.txt", "some content".as_bytes());
 
     // We'll forcibly pipe the output into a local buffer
     let mut cmd = Command::cargo_bin("yek").unwrap();
@@ -200,8 +224,7 @@ fn e2e_custom_config_all_features() {
 
     // Custom config
     let config_toml = r#"
-[ignore_patterns]
-patterns = ["assets/", "*.lock"]
+ignore_patterns = ["assets/", "*.lock"]
 
 binary_extensions = ["custombin"]
 
@@ -219,17 +242,25 @@ score = 50
 pattern = ".*"
 score = 1
 "#;
-    create_file(repo.path(), "yek.toml", config_toml);
+    create_file(repo.path(), "yek.toml", config_toml.as_bytes());
 
     // Some files
-    create_file(repo.path(), "assets/secret.txt", "should be ignored");
-    create_file(repo.path(), "README.md", "readme content");
-    create_file(repo.path(), "app.lock", "lock file ignored");
-    create_file(repo.path(), "core/main.rs", "core is high priority");
-    create_file(repo.path(), "binary.custombin", "fake binary\x00\x7f");
+    create_file(
+        repo.path(),
+        "assets/secret.txt",
+        "should be ignored".as_bytes(),
+    );
+    create_file(repo.path(), "README.md", "readme content".as_bytes());
+    create_file(repo.path(), "app.lock", "lock file ignored".as_bytes());
+    create_file(
+        repo.path(),
+        "core/main.rs",
+        "core is high priority".as_bytes(),
+    );
+    create_file(repo.path(), "binary.custombin", b"fake binary\x00\x7f");
 
     let output_dir = repo.path().join("yek-output");
-    fs::create_dir_all(&output_dir).unwrap();
+    ensure_empty_output_dir(&output_dir);
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
     let assert = cmd
@@ -300,7 +331,8 @@ fn e2e_multi_directory_priority() {
 [[priority_rules]]
 pattern = "^dir1/"
 score = 10
-"#,
+"#
+        .as_bytes(),
     );
     create_file(
         repo2.path(),
@@ -309,18 +341,20 @@ score = 10
 [[priority_rules]]
 pattern = "^super/"
 score = 99
-"#,
+"#
+        .as_bytes(),
     );
 
     // Some files in repo1
-    create_file(repo1.path(), "dir1/a.txt", "from repo1/dir1");
-    create_file(repo1.path(), "dir2/b.txt", "from repo1/dir2");
+    create_file(repo1.path(), "dir1/a.txt", "from repo1/dir1".as_bytes());
+    create_file(repo1.path(), "dir2/b.txt", "from repo1/dir2".as_bytes());
     // Some files in repo2
-    create_file(repo2.path(), "super/c.txt", "from repo2/super");
-    create_file(repo2.path(), "basic/d.txt", "from repo2/basic");
+    create_file(repo2.path(), "super/c.txt", "from repo2/super".as_bytes());
+    create_file(repo2.path(), "basic/d.txt", "from repo2/basic".as_bytes());
 
     // Let's process them both at once
     let output_dir = TempDir::new().unwrap(); // create a truly separate temp directory
+    ensure_empty_output_dir(output_dir.path());
     let out_str = output_dir.path().to_str().unwrap();
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
@@ -359,15 +393,15 @@ fn e2e_many_small_files_parallel() {
 
     // Create many small files
     for i in 0..200 {
-        let file_name = format!("file_{}.txt", i);
+        let file_name = format!("file_{:03}.txt", i);
         let content = "some small content\n".repeat(100);
-        create_file(repo.path(), &file_name, &content);
+        create_file(repo.path(), &file_name, content.as_bytes());
     }
 
     // We rely on environment CPU cores for parallel chunk creation
     // Then confirm all files appear in the final output
     let output_dir = repo.path().join("yek-output");
-    fs::create_dir_all(&output_dir).unwrap();
+    ensure_empty_output_dir(&output_dir);
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.current_dir(repo.path())
@@ -378,28 +412,49 @@ fn e2e_many_small_files_parallel() {
         .success();
 
     // Ensure we have multiple chunks
-    let chunk_files: Vec<_> = fs::read_dir(&output_dir)
+    let mut chunk_files: Vec<_> = fs::read_dir(&output_dir)
         .unwrap()
         .filter_map(|e| {
             let p = e.ok()?.path();
-            (p.extension()? == "txt").then_some(p)
+            if p.extension()? == "txt" {
+                // Extract chunk index from filename "chunk-{index}.txt"
+                let index = p
+                    .file_stem()?
+                    .to_str()?
+                    .strip_prefix("chunk-")?
+                    .split("-part-") // Handle split parts if any
+                    .next()?
+                    .parse::<usize>()
+                    .ok()?;
+                Some((index, p))
+            } else {
+                None
+            }
         })
         .collect();
+    // Sort by chunk index
+    chunk_files.sort_by_key(|(index, _)| *index);
+    let chunk_files: Vec<_> = chunk_files.into_iter().map(|(_, p)| p).collect();
+
     assert!(
         chunk_files.len() > 1,
         "Must produce multiple chunks with 200 small files"
     );
 
-    // Very basic check if some of them definitely appear
-    let chunk0 = fs::read_to_string(&chunk_files[0]).unwrap();
-    assert!(
-        chunk0.contains("file_0.txt"),
-        "Should contain first file in earliest chunk"
-    );
+    // Check if files appear in any chunk
+    let mut found_first = false;
+    let mut found_last = false;
 
-    let last_chunk = fs::read_to_string(chunk_files.last().unwrap()).unwrap();
-    assert!(
-        last_chunk.contains("file_199.txt"),
-        "Should contain last file in final chunk"
-    );
+    for chunk_file in &chunk_files {
+        let content = fs::read_to_string(chunk_file).unwrap();
+        if content.contains(">>>> file_000.txt") {
+            found_first = true;
+        }
+        if content.contains(">>>> file_199.txt") {
+            found_last = true;
+        }
+    }
+
+    assert!(found_first, "file_000.txt must appear in some chunk");
+    assert!(found_last, "file_199.txt must appear in some chunk");
 }

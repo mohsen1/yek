@@ -9,17 +9,28 @@ fn priority_rules_are_applied() {
         repo.path(),
         "yek.toml",
         r#"
-[[priority_rules]]
-score = 100
-patterns = ["^very_important/"]
+git_boost_max = 0
 
 [[priority_rules]]
 score = 10
-patterns = ["^less_important/"]
-"#,
+pattern = "^very_important/"
+
+[[priority_rules]]
+score = 1
+pattern = "^less_important/"
+"#
+        .as_bytes(),
     );
-    create_file(repo.path(), "very_important/one.txt", "high priority");
-    create_file(repo.path(), "less_important/two.txt", "lower priority");
+    create_file(
+        repo.path(),
+        "very_important/one.txt",
+        "high priority".as_bytes(),
+    );
+    create_file(
+        repo.path(),
+        "less_important/two.txt",
+        "lower priority".as_bytes(),
+    );
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
     let output = cmd
@@ -30,7 +41,7 @@ patterns = ["^less_important/"]
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Check that less_important appears before very_important in the output
+    // Check that very_important appears after less_important in the output
     let very_pos = stdout
         .find("very_important")
         .expect("very_important not found");
@@ -38,7 +49,7 @@ patterns = ["^less_important/"]
         .find("less_important")
         .expect("less_important not found");
     assert!(
-        less_pos < very_pos,
-        "less_important should appear before very_important since higher priority files come last"
+        very_pos > less_pos,
+        "very_important should appear after less_important since higher priority files come last"
     );
 }
