@@ -97,7 +97,7 @@ yek src/ | pbcopy
 Cap the max size to 128K tokens and only process the `src` directory:
 
 ```bash
-yek --max-size 128K --tokens src/
+yek --max-size 128K --tokens=gpt-4 src/
 ```
 
 > [!NOTE]
@@ -129,7 +129,7 @@ Arguments:
 
 Options:
       --max-size <max-size>      Maximum size per chunk (e.g. '10MB', '128KB', '1GB') [default: 10MB]
-      --tokens                   Count size in tokens instead of bytes
+      --tokens[=<model>]         Count size in tokens instead of bytes using specified model (e.g. gpt-4, gpt-3.5-turbo)
       --debug                    Enable debug output
       --output-dir <output-dir>  Output directory for chunks
   -h, --help                     Print help
@@ -144,6 +144,7 @@ You can place a file called `yek.toml` at your project root or pass a custom pat
 2. Define file priority rules for processing order
 3. Add additional binary file extensions to ignore (extends the built-in list)
 4. Configure Git-based priority boost
+5. Configure tokenizer model for token counting
 
 ### Example `yek.toml`
 
@@ -160,6 +161,9 @@ patterns = [
 
 # Configure Git-based priority boost (optional)
 git_boost_max = 50  # Maximum score boost based on Git history (default: 100)
+
+# Configure default tokenizer model (optional, can be overridden via --tokens=<model>)
+tokenizer_model = "gpt-4"  # Supported models: gpt-4, gpt-3.5-turbo, claude-2, bert-base-uncased
 
 # Define priority rules for processing order
 # Higher scores are processed first

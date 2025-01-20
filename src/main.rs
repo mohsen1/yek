@@ -4,7 +4,10 @@ use std::io::{stdout, IsTerminal};
 use std::path::{Path, PathBuf};
 use tracing::{subscriber, Level};
 use tracing_subscriber::fmt;
-use yek::{find_config_file, load_config_file, parse_size_input, serialize_repo, YekConfig};
+use yek::{
+    find_config_file, load_config_file, parse_size_input, serialize_repo, YekConfig,
+    SUPPORTED_MODELS,
+};
 
 fn main() -> Result<()> {
     let matches = Command::new("yek")
@@ -24,8 +27,10 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("tokens")
                 .long("tokens")
-                .help("Count size in tokens instead of bytes")
-                .action(clap::ArgAction::SetTrue),
+                .help(format!("Count size in tokens instead of bytes using specified model (supported models: {})", SUPPORTED_MODELS.join(", ")))
+                .value_name("model")
+                .num_args(0..=1)
+                .default_missing_value("gpt-4"),
         )
         .arg(
             Arg::new("debug")
@@ -79,10 +84,14 @@ fn main() -> Result<()> {
 
     // Possibly parse max size
     if let Some(size_str) = matches.get_one::<String>("max-size") {
-        yek_config.max_size = Some(parse_size_input(size_str, matches.get_flag("tokens"))?);
+        yek_config.max_size = Some(parse_size_input(size_str, matches.contains_id("tokens"))?);
     }
 
-    yek_config.token_mode = matches.get_flag("tokens");
+    // Handle token mode and model
+    if let Some(model) = matches.get_one::<String>("tokens") {
+        yek_config.token_mode = true;
+        yek_config.tokenizer_model = Some(model.to_string());
+    }
 
     // Are we writing chunk files or streaming?
     // If --output-dir is given, we always write to that directory.
@@ -141,6 +150,11 @@ fn merge_config(dest: &mut YekConfig, other: &YekConfig) {
     // token_mode: if `other` is true, set it
     if other.token_mode {
         dest.token_mode = true;
+    }
+
+    // tokenizer_model: CLI takes precedence over config file
+    if dest.tokenizer_model.is_none() && other.tokenizer_model.is_some() {
+        dest.tokenizer_model = other.tokenizer_model.clone();
     }
 
     // If `other.output_dir` is set, we can choose to override or not. Usually the CLI

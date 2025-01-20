@@ -105,6 +105,8 @@ pub struct YekConfig {
     pub stream: bool,
     #[serde(default)]
     pub token_mode: bool,
+    #[serde(default)]
+    pub tokenizer_model: Option<String>,
 }
 
 /// Check if file is text by extension or scanning first chunk for null bytes.
@@ -223,8 +225,24 @@ pub struct ConfigError {
     pub message: String,
 }
 
+pub const SUPPORTED_MODELS: &[&str] = &["gpt-4", "gpt-3.5-turbo", "claude-2", "bert-base-uncased"];
+
 pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
     let mut errors = Vec::new();
+
+    // Validate tokenizer model if specified
+    if let Some(model) = &config.tokenizer_model {
+        if !SUPPORTED_MODELS.contains(&model.as_str()) {
+            errors.push(ConfigError {
+                field: "tokenizer_model".to_string(),
+                message: format!(
+                    "Unsupported model '{}'. Supported models: {}",
+                    model,
+                    SUPPORTED_MODELS.join(", ")
+                ),
+            });
+        }
+    }
 
     // Validate priority rules
     for rule in &config.priority_rules {
@@ -488,6 +506,14 @@ fn write_chunks(
 /// The main function that the tests call.
 pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     let config = cfg.cloned().unwrap_or_default();
+
+    // Log tokenizer configuration
+    if config.token_mode {
+        debug!(
+            "Token mode enabled with model: {:?}",
+            config.tokenizer_model.as_deref().unwrap_or("gpt-4")
+        );
+    }
 
     // Process files in parallel
     let processed_files = process_files_parallel(repo_path, &config)?;

@@ -63,7 +63,7 @@ fn splits_large_file_in_chunks_token_mode() {
     let mut cmd = Command::cargo_bin("yek").unwrap();
     let output = cmd
         .current_dir(repo.path())
-        .arg("--tokens")
+        .arg("--tokens=gpt-4")
         .arg("--max-size")
         .arg("150000") // ~150k tokens
         .arg("--debug")
