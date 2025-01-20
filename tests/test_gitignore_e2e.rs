@@ -9,6 +9,8 @@ fn run_stream_mode(dir: &std::path::Path) -> String {
         .unwrap()
         .current_dir(dir)
         .env("TERM", "dumb") // Force non-interactive mode
+        .env("NO_COLOR", "1") // Disable color output
+        .env("CI", "1") // Force CI mode
         .output()
         .expect("Failed to execute command");
 
@@ -28,9 +30,13 @@ fn run_file_mode(dir: &std::path::Path) -> String {
 
     // Read all chunk files
     let mut content = String::new();
-    for entry in fs::read_dir(output_dir).unwrap() {
-        let path = entry.unwrap().path();
-        content.push_str(&fs::read_to_string(path).unwrap());
+    let read_dir = fs::read_dir(&output_dir).expect("Failed to read output directory");
+    for entry in read_dir {
+        let entry = entry.expect("Failed to read directory entry");
+        let path = entry.path();
+        content.push_str(
+            &fs::read_to_string(&path).unwrap_or_else(|_| panic!("Failed to read file: {}", path.display())),
+        );
     }
     content
 }
@@ -219,12 +225,10 @@ fn binary_file_exclusion() {
         // Should include text files
         assert!(content.contains("text.txt"), "Missing text.txt: {content}");
 
-        // Should exclude unknown.xyz if detected as binary
-        if content.contains("unknown.xyz") {
-            assert!(
-                content.contains("unknown.xyz"),
-                "unknown.xyz was excluded but might be text"
-            );
-        }
+        // Should include unknown.xyz since it's text content
+        assert!(
+            content.contains("unknown.xyz"),
+            "Missing unknown.xyz which has text content: {content}"
+        );
     }
 }
