@@ -67,63 +67,9 @@ jobs:
 
   build:
     needs: should-release
-    if: |
-      (github.ref == 'refs/heads/main' && needs.should-release.outputs.needed == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      matrix:
-        include:
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-          - target: x86_64-pc-windows-gnu
-            os: windows-latest
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - name: Install cross-compilation tools
-        if: runner.os == 'Linux' && contains(matrix.target, 'aarch64')
-        run: sudo apt-get install -y gcc-aarch64-linux-gnu
-      - name: Build
-        run: |
-          cargo build --release --target ${{ matrix.target }}
-          mkdir -p "yek-${{ matrix.target }}"
-          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
-            cp "target/${{ matrix.target }}/release/yek.exe" "yek-${{ matrix.target }}/"
-            7z a -ttar "yek-${{ matrix.target }}.tar" "yek-${{ matrix.target }}"
-            7z a -tgzip "yek-${{ matrix.target }}.tar.gz" "yek-${{ matrix.target }}.tar"
-            rm "yek-${{ matrix.target }}.tar"
-          else
-            cp "target/${{ matrix.target }}/release/yek" "yek-${{ matrix.target }}/"
-            tar -czf "yek-${{ matrix.target }}.tar.gz" "yek-${{ matrix.target }}"
-          fi
-      - name: Compute SHA256
-        id: sha
-        run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            echo "sha256=$(certutil -hashfile yek-${{ matrix.target }}.tar.gz SHA256 | findstr /v 'hash' | tr -d ' \r\n')" >> $GITHUB_OUTPUT
-          else
-            echo "sha256=$(shasum -a 256 yek-${{ matrix.target }}.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
-          fi
-      - name: Create SHA file
-        run: echo "${{ steps.sha.outputs.sha256 }}" > sha-${{ matrix.target }}.txt
-      - uses: actions/upload-artifact@v3
-        with:
-          name: yek-${{ matrix.target }}
-          path: |
-            yek-${{ matrix.target }}.tar.gz
-            sha-${{ matrix.target }}.txt
-
+    if: (github.ref == 'refs/heads/main' && needs.should-release.outputs.needed == 'true') || startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/ci.yml
+      
   release:
     needs: [should-release, build]
     if: |
