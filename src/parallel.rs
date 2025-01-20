@@ -1,6 +1,7 @@
 use crate::{get_file_priority, glob_to_regex, is_text_file, normalize_path, Result, YekConfig};
-use crossbeam_channel::bounded;
+use crossbeam::channel::bounded;
 use ignore::{WalkBuilder, WalkState};
+use num_cpus;
 use regex::Regex;
 use std::{
     collections::HashSet,

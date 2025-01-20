@@ -10,6 +10,8 @@ fn run_stream_mode(dir: &std::path::Path) -> String {
         .unwrap()
         .current_dir(dir)
         .env("TERM", "dumb") // Force non-interactive mode
+        .env("NO_COLOR", "1") // Disable color output
+        .env("CI", "1") // Force CI mode
         .output()
         .expect("Failed to execute command");
 
