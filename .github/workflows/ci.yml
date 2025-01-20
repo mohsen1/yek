@@ -129,7 +129,23 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
-        run: cargo build --release --target ${{ matrix.target }} --locked
+          OPENSSL_STATIC: "1"
+          PKG_CONFIG_ALL_STATIC: "1"
+          PKG_CONFIG_ALLOW_CROSS: "1"
+          PKG_CONFIG_SYSROOT_DIR: "/"
+          OPENSSL_DIR: "/usr/local/musl"
+          PKG_CONFIG_PATH: "/usr/local/musl/lib/pkgconfig"
+        run: |
+          if [[ "${{ matrix.target }}" == *"-musl" ]]; then
+            # Install OpenSSL for MUSL
+            curl -L https://www.openssl.org/source/openssl-3.0.12.tar.gz | tar xz
+            cd openssl-3.0.12
+            ./Configure no-shared no-async --prefix=/usr/local/musl --openssldir=/usr/local/musl/ssl CFLAGS=-fPIC linux-x86_64
+            make -j$(nproc)
+            make install_sw
+            cd ..
+          fi
+          cargo build --release --target ${{ matrix.target }} --locked
       - name: Package
         shell: bash
         run: |
