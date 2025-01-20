@@ -224,7 +224,7 @@ fn collect_files(
     if gitignore_path.exists() {
         builder.add(&gitignore_path);
     }
-    let gitignore = builder
+    let _gitignore = builder
         .build()
         .unwrap_or_else(|_| GitignoreBuilder::new(base_dir).build().unwrap());
 
@@ -233,7 +233,9 @@ fn collect_files(
         .follow_links(false)
         .standard_filters(true)
         .hidden(false)
-        .add_custom_ignore_filename(".gitignore")
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(false)
         .require_git(false);
 
     let mut results = Vec::new();
@@ -241,15 +243,8 @@ fn collect_files(
 
     for entry in builder.build().flatten() {
         if entry.file_type().is_some_and(|ft| ft.is_file()) {
-            let path = entry.path().to_path_buf();
-            let rel_str = normalize_path(base_dir, &path);
-            let rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
-
-            // Skip via .gitignore
-            if gitignore.matched(rel_path, false).is_ignore() {
-                debug!("Skipping {} - matched by gitignore", rel_str);
-                continue;
-            }
+            let path = entry.path();
+            let rel_str = normalize_path(base_dir, path);
 
             // Skip via our ignore regexes
             if ignore_patterns.iter().any(|p| p.is_match(&rel_str)) {
@@ -257,18 +252,24 @@ fn collect_files(
                 continue;
             }
 
-            // Check if text or binary
+            // Skip .gitignore files
+            if path.file_name().is_some_and(|f| f == ".gitignore") {
+                debug!("Skipping .gitignore file");
+                continue;
+            }
+
+            // Skip binary files
             let user_bin_exts = config
                 .as_ref()
                 .map(|c| c.binary_extensions.as_slice())
                 .unwrap_or(&[]);
-            if !is_text_file(&path, user_bin_exts) {
+            if !is_text_file(path, user_bin_exts) {
                 debug!("Skipping binary file: {}", rel_str);
                 continue;
             }
 
             results.push(FileEntry {
-                path,
+                path: path.to_path_buf(),
                 priority: get_file_priority(&rel_str, ignore_patterns, priority_list),
                 file_index,
             });

@@ -600,56 +600,54 @@ pub fn serialize_repo(
             .follow_links(false)
             .standard_filters(true)
             .hidden(false)
-            .add_custom_ignore_filename(".gitignore")
+            .git_ignore(true)
+            .git_global(false)
+            .git_exclude(false)
             .require_git(false);
 
         for entry in builder.build().flatten() {
-            if !entry.file_type().is_some_and(|ft| ft.is_file()) {
-                continue;
-            }
+            if entry.file_type().is_some_and(|ft| ft.is_file()) {
+                let path = entry.path();
+                let rel_str = normalize_path(base_path, path);
 
-            let path = entry.path();
-            let rel_str = normalize_path(base_path, path);
-
-            // Skip via our ignore regexes
-            if final_config
-                .ignore_patterns
-                .iter()
-                .any(|pat| pat.is_match(&rel_str))
-            {
-                debug!("Skipping {} - matched ignore pattern", rel_str);
-                continue;
-            }
-
-            // Check if text or binary
-            let user_bin_exts = config
-                .as_ref()
-                .map(|c| c.binary_extensions.as_slice())
-                .unwrap_or(&[]);
-            if !is_text_file(path, user_bin_exts) {
-                debug!("Skipping binary file: {}", rel_str);
-                continue;
-            }
-
-            // Calculate priority with recentness boost
-            let mut priority = get_file_priority(
-                &rel_str,
-                &final_config.ignore_patterns,
-                &final_config.priority_list,
-            );
-
-            // Apply recentness boost if available
-            if let Some(boost_map) = recentness_boost.as_ref() {
-                if let Some(boost) = boost_map.get(&rel_str) {
-                    priority += *boost;
+                // Skip via our ignore regexes
+                if final_config
+                    .ignore_patterns
+                    .iter()
+                    .any(|pat| pat.is_match(&rel_str))
+                {
+                    debug!("Skipping {} - matched ignore pattern", rel_str);
+                    continue;
                 }
-            }
 
-            files.push(FileEntry {
-                path: path.to_path_buf(),
-                priority,
-                file_index: files.len(),
-            });
+                // Skip .gitignore files
+                if path.file_name().is_some_and(|f| f == ".gitignore") {
+                    debug!("Skipping .gitignore file");
+                    continue;
+                }
+
+                // Skip via gitignore
+                if entry.path().file_name().is_some_and(|f| f == ".gitignore") {
+                    debug!("Skipping .gitignore file");
+                    continue;
+                }
+
+                // Skip binary files
+                if !is_text_file(path, &[]) {
+                    debug!("Skipping binary file: {}", rel_str);
+                    continue;
+                }
+
+                files.push(FileEntry {
+                    path: path.to_path_buf(),
+                    priority: get_file_priority(
+                        &rel_str,
+                        &final_config.ignore_patterns,
+                        &final_config.priority_list,
+                    ),
+                    file_index: files.len(),
+                });
+            }
         }
 
         // 2) Sort ascending by priority, so the last entries are the most important
