@@ -35,7 +35,8 @@ fn run_file_mode(dir: &std::path::Path) -> String {
         let entry = entry.expect("Failed to read directory entry");
         let path = entry.path();
         content.push_str(
-            &fs::read_to_string(&path).unwrap_or_else(|_| panic!("Failed to read file: {}", path.display())),
+            &fs::read_to_string(&path)
+                .unwrap_or_else(|_| panic!("Failed to read file: {}", path.display())),
         );
     }
     content
@@ -210,8 +211,12 @@ fn combined_ignore_rules() {
 fn binary_file_exclusion() {
     let repo = setup_temp_repo();
 
-    // Create files without .gitignore
-    create_file(repo.path(), "binary.jpg", "ÿØÿÛ"); // JPEG magic bytes
+    // Create files without .gitignore using proper binary data
+    create_file(
+        repo.path(),
+        "binary.jpg",
+        &String::from_utf8_lossy(&[0xFF, 0xD8, 0xFF, 0xE0]),
+    ); // JPEG magic bytes
     create_file(repo.path(), "text.txt", "normal text");
     create_file(repo.path(), "unknown.xyz", "unknown format");
 

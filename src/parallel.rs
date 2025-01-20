@@ -3,7 +3,7 @@ use crate::{
     PriorityPattern, Result, YekConfig,
 };
 use crossbeam::channel::{bounded, Receiver, Sender};
-use ignore::{gitignore::GitignoreBuilder, WalkBuilder};
+use ignore::WalkBuilder;
 use num_cpus::get;
 use regex::Regex;
 use std::{
@@ -218,16 +218,6 @@ fn collect_files(
     priority_list: &[PriorityPattern],
     recentness_boost: Option<&HashMap<String, i32>>,
 ) -> Result<Vec<FileEntry>> {
-    // Build gitignore matcher
-    let mut builder = GitignoreBuilder::new(base_dir);
-    let gitignore_path = base_dir.join(".gitignore");
-    if gitignore_path.exists() {
-        builder.add(&gitignore_path);
-    }
-    let _gitignore = builder
-        .build()
-        .unwrap_or_else(|_| GitignoreBuilder::new(base_dir).build().unwrap());
-
     let mut builder = WalkBuilder::new(base_dir);
     builder
         .follow_links(false)

@@ -633,18 +633,32 @@ pub fn serialize_repo(
                 }
 
                 // Skip binary files
-                if !is_text_file(path, &[]) {
+                if !is_text_file(
+                    path,
+                    config
+                        .as_ref()
+                        .map(|c| &c.binary_extensions)
+                        .unwrap_or(&vec![]),
+                ) {
                     debug!("Skipping binary file: {}", rel_str);
                     continue;
                 }
 
+                // Apply recentness boost to priority
+                let mut priority = get_file_priority(
+                    &rel_str,
+                    &final_config.ignore_patterns,
+                    &final_config.priority_list,
+                );
+                if let Some(boost_map) = &recentness_boost {
+                    if let Some(boost) = boost_map.get(&rel_str) {
+                        priority += boost;
+                    }
+                }
+
                 files.push(FileEntry {
                     path: path.to_path_buf(),
-                    priority: get_file_priority(
-                        &rel_str,
-                        &final_config.ignore_patterns,
-                        &final_config.priority_list,
-                    ),
+                    priority,
                     file_index: files.len(),
                 });
             }
