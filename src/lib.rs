@@ -599,6 +599,7 @@ pub fn serialize_repo(
         builder
             .follow_links(false)
             .standard_filters(true)
+            .hidden(false)
             .add_custom_ignore_filename(".gitignore")
             .require_git(false);
 
