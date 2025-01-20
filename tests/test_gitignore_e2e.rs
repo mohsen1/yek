@@ -2,9 +2,7 @@ mod integration_common;
 use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
 use std::fs;
-use tempfile::TempDir;
-use walkdir::WalkDir;
-use yek::{serialize_repo, YekConfig};
+use yek::{find_config_file, load_config_file, serialize_repo, YekConfig};
 
 /// Helper to run yek in streaming mode (pipe to stdout)
 fn run_stream_mode(dir: &std::path::Path) -> String {
@@ -51,25 +49,39 @@ fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
+    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
+
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Verify output
-    let mut found_files = Vec::new();
-    for entry in WalkDir::new(&output_dir) {
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
         let entry = entry?;
-        if entry.file_type().is_file() {
-            found_files.push(entry.file_name().to_string_lossy().to_string());
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
         }
     }
 
     assert!(
-        !found_files.contains(&"ignore_me.txt".to_string()),
+        !combined_content.contains(">>>> ignore_me.txt"),
         "ignore_me.txt should be ignored"
     );
     assert!(
-        found_files.contains(&"keep_me.txt".to_string()),
+        combined_content.contains(">>>> keep_me.txt"),
         "keep_me.txt should be kept"
     );
 
@@ -99,38 +111,43 @@ fn test_gitignore_subdirectory() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
+    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
+
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Verify output
-    let mut found_files = Vec::new();
-    for entry in WalkDir::new(&output_dir) {
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
         let entry = entry?;
-        if entry.file_type().is_file() {
-            found_files.push(
-                entry
-                    .path()
-                    .strip_prefix(&output_dir)?
-                    .to_string_lossy()
-                    .to_string(),
-            );
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
         }
     }
 
     assert!(
-        !found_files.contains(
-            &"otherdir/settings.temp".replace('/', &std::path::MAIN_SEPARATOR.to_string())
-        ),
+        !combined_content.contains(">>>> otherdir/settings.temp"),
         "settings.temp should be ignored by root .gitignore"
     );
     assert!(
-        !found_files
-            .contains(&"subdir/secret.conf".replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+        !combined_content.contains(">>>> subdir/secret.conf"),
         "secret.conf should be ignored by subdirectory .gitignore"
     );
     assert!(
-        found_files.contains(&"subdir/app.rs".replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+        combined_content.contains(">>>> subdir/app.rs"),
         "app.rs should be kept"
     );
 
@@ -163,45 +180,51 @@ temp/*
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
+    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
+
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Verify output
-    let mut found_files = Vec::new();
-    for entry in WalkDir::new(&output_dir) {
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
         let entry = entry?;
-        if entry.file_type().is_file() {
-            found_files.push(
-                entry
-                    .path()
-                    .strip_prefix(&output_dir)?
-                    .to_string_lossy()
-                    .to_string(),
-            );
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
         }
     }
 
     assert!(
-        !found_files.contains(&"error.log".to_string()),
+        !combined_content.contains(">>>> error.log"),
         "error.log should be ignored"
     );
     assert!(
-        !found_files
-            .contains(&"build/output.exe".replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+        !combined_content.contains(">>>> build/output.exe"),
         "build/output.exe should be ignored"
     );
     assert!(
-        !found_files
-            .contains(&"temp/junk.tmp".replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+        !combined_content.contains(">>>> temp/junk.tmp"),
         "temp/junk.tmp should be ignored"
     );
     assert!(
-        found_files.contains(&"temp/keep.me".replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+        combined_content.contains(">>>> temp/keep.me"),
         "temp/keep.me should be kept (negated pattern)"
     );
     assert!(
-        found_files.contains(&"src/main.rs".replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+        combined_content.contains(">>>> src/main.rs"),
         "src/main.rs should be kept"
     );
 
@@ -216,10 +239,7 @@ fn test_gitignore_and_yek_toml() -> Result<(), Box<dyn std::error::Error>> {
     create_file(
         repo.path(),
         "yek.toml",
-        b"
-        [ignore_patterns]
-        patterns = [\"^exclude/\"]
-    ",
+        b"ignore_patterns = [\"^exclude/.*$\"]\n",
     );
 
     // Create .gitignore
@@ -241,41 +261,47 @@ fn test_gitignore_and_yek_toml() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
+    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
+
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Verify output
-    let mut found_files = Vec::new();
-    for entry in WalkDir::new(&output_dir) {
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
         let entry = entry?;
-        if entry.file_type().is_file() {
-            found_files.push(
-                entry
-                    .path()
-                    .strip_prefix(&output_dir)?
-                    .to_string_lossy()
-                    .to_string(),
-            );
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
         }
     }
 
     assert!(
-        !found_files
-            .contains(&"exclude/secret.txt".replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+        !combined_content.contains(">>>> exclude/secret.txt"),
         "exclude/secret.txt should be ignored by yek.toml"
     );
     assert!(
-        !found_files.contains(&"test.tmp".to_string()),
+        !combined_content.contains(">>>> test.tmp"),
         "test.tmp should be ignored by .gitignore"
     );
     assert!(
-        !found_files
-            .contains(&"node_modules/lib.js".replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+        !combined_content.contains(">>>> node_modules/lib.js"),
         "node_modules/lib.js should be ignored by .gitignore"
     );
     assert!(
-        found_files.contains(&"src/index.rs".replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+        combined_content.contains(">>>> src/index.rs"),
         "src/index.rs should be kept"
     );
 
@@ -295,30 +321,44 @@ fn test_gitignore_binary_files() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
+    let mut config = if let Some(toml_path) = find_config_file(repo.path()) {
+        if let Some(mut file_cfg) = load_config_file(&toml_path) {
+            file_cfg.output_dir = Some(output_dir.clone());
+            file_cfg
+        } else {
+            let mut cfg = YekConfig::default();
+            cfg.output_dir = Some(output_dir.clone());
+            cfg
+        }
+    } else {
+        let mut cfg = YekConfig::default();
+        cfg.output_dir = Some(output_dir.clone());
+        cfg
+    };
+
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Verify output
-    let mut found_files = Vec::new();
-    for entry in WalkDir::new(&output_dir) {
+    // Read all chunk contents
+    let mut combined_content = String::new();
+    for entry in fs::read_dir(&output_dir)? {
         let entry = entry?;
-        if entry.file_type().is_file() {
-            found_files.push(entry.file_name().to_string_lossy().to_string());
+        let path = entry.path();
+        if path.is_file() {
+            combined_content.push_str(&fs::read_to_string(path)?);
         }
     }
 
     assert!(
-        found_files.contains(&"binary.jpg".to_string()),
-        "binary.jpg should be kept"
+        !combined_content.contains(">>>> binary.jpg"),
+        "binary.jpg should be ignored as a binary file"
     );
     assert!(
-        found_files.contains(&"text.txt".to_string()),
+        combined_content.contains(">>>> text.txt"),
         "text.txt should be kept"
     );
     assert!(
-        found_files.contains(&"unknown.xyz".to_string()),
-        "unknown.xyz should be kept"
+        !combined_content.contains(">>>> unknown.xyz"),
+        "unknown.xyz should be ignored as a binary file (unknown extension)"
     );
 
     Ok(())

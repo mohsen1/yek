@@ -68,14 +68,22 @@ fn test_git_priority_stream() -> Result<(), Box<dyn std::error::Error>> {
 fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
     let repo_path = repo.path();
-    let output_dir = repo_path.join("test_output_config");
+    let output_dir = repo_path.join("test_output");
     fs::create_dir_all(&output_dir)?;
 
     // Create test files and commit them
-    create_file(repo_path, "src/main.rs", b"fn main() {}");
-    create_file(repo_path, "docs/README.md", b"# Documentation");
+    create_file(
+        repo_path,
+        "src/main.rs",
+        b"fn main() { println!(\"Hello\"); }",
+    );
+    create_file(
+        repo_path,
+        "docs/README.md",
+        b"# Documentation\nThis is a test.",
+    );
 
-    // Run serialization with config
+    // Run serialization with custom config
     let config = YekConfig {
         priority_rules: vec![
             PriorityRule {
@@ -112,27 +120,46 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_git_priority_empty_repo() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
-    serialize_repo(repo.path(), None)?;
+    let repo_path = repo.path();
+    let output_dir = repo_path.join("test_output");
+    fs::create_dir_all(&output_dir)?;
+
+    let mut config = YekConfig::default();
+    config.output_dir = Some(output_dir);
+    serialize_repo(repo_path, Some(&config))?;
     Ok(())
 }
 
 #[test]
 fn test_git_priority_no_git() -> Result<(), Box<dyn std::error::Error>> {
     let temp = TempDir::new()?;
+    let output_dir = temp.path().join("test_output");
+    fs::create_dir_all(&output_dir)?;
+
     create_file(
         temp.path(),
         "file1.txt",
         b"This is a test file without git.",
     );
-    serialize_repo(temp.path(), None)?;
+
+    let mut config = YekConfig::default();
+    config.output_dir = Some(output_dir);
+    serialize_repo(temp.path(), Some(&config))?;
     Ok(())
 }
 
 #[test]
 fn test_git_priority_binary_files() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
-    create_file(repo.path(), "binary.bin", b"\x00\x01\x02\x03");
-    create_file(repo.path(), "text.txt", b"This is a text file.");
-    serialize_repo(repo.path(), None)?;
+    let repo_path = repo.path();
+    let output_dir = repo_path.join("test_output");
+    fs::create_dir_all(&output_dir)?;
+
+    create_file(repo_path, "binary.bin", b"\x00\x01\x02\x03");
+    create_file(repo_path, "text.txt", b"This is a text file.");
+
+    let mut config = YekConfig::default();
+    config.output_dir = Some(output_dir);
+    serialize_repo(repo_path, Some(&config))?;
     Ok(())
 }

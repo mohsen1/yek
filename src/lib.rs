@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use ignore::gitignore::GitignoreBuilder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -9,11 +8,12 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as SysCommand, Stdio};
 use tracing::debug;
-use walkdir::WalkDir;
 
 mod defaults;
+mod parallel;
 
-use defaults::BINARY_FILE_EXTENSIONS;
+use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
+use parallel::process_files_parallel;
 
 /// Convert a glob pattern to a regex pattern
 fn glob_to_regex(pattern: &str) -> String {
@@ -112,6 +112,11 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
     // First check extension - fast path
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         let ext_lc = ext.to_lowercase();
+        // If it's in the known text extensions list, it's definitely text
+        if TEXT_FILE_EXTENSIONS.contains(&ext_lc.as_str()) {
+            return Ok(true);
+        }
+        // If it's in the binary extensions list (built-in or user-defined), it's definitely binary
         if BINARY_FILE_EXTENSIONS.contains(&ext_lc.as_str())
             || user_binary_extensions
                 .iter()
@@ -119,9 +124,11 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
         {
             return Ok(false);
         }
+        // Unknown extension - treat as binary
+        return Ok(false);
     }
 
-    // Read first few bytes to check for binary content
+    // No extension - scan content
     let mut file = fs::File::open(path)?;
     let mut buffer = [0; 512];
     let n = file.read(&mut buffer)?;
@@ -477,63 +484,18 @@ fn write_chunks(
 /// The main function that the tests call.
 pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     let config = cfg.cloned().unwrap_or_default();
-    let max_size = config.max_size.unwrap_or(DEFAULT_CHUNK_SIZE);
 
     // Process files in parallel
-    let processed_files = parallel::process_files_parallel(repo_path, &config)?;
+    let processed_files = process_files_parallel(repo_path, &config)?;
 
-    if processed_files.is_empty() {
-        return Ok(());
-    }
+    // Convert to the format expected by write_chunks
+    let entries: Vec<(String, String, i32)> = processed_files
+        .into_iter()
+        .map(|f| (f.rel_path, f.content, f.priority))
+        .collect();
 
-    // Write output
-    if config.stream {
-        // Stream mode - write directly to stdout
-        let mut current_chunk = String::new();
-        for file in processed_files {
-            let chunk_str = format!(">>>> {}\n{}\n\n", file.rel_path, file.content);
-            current_chunk.push_str(&chunk_str);
-
-            if current_chunk.len() >= max_size {
-                print!("{}", current_chunk);
-                current_chunk.clear();
-            }
-        }
-
-        if !current_chunk.is_empty() {
-            print!("{}", current_chunk);
-        }
-    } else {
-        // File mode - write to output directory
-        let output_dir = config
-            .output_dir
-            .as_ref()
-            .ok_or_else(|| anyhow!("Output directory must be specified when not in stream mode"))?;
-        fs::create_dir_all(output_dir)?;
-
-        let mut current_chunk = String::new();
-        let mut current_chunk_size = 0;
-        let mut current_chunk_index = 0;
-
-        for file in processed_files {
-            let chunk_str = format!(">>>> {}\n{}\n\n", file.rel_path, file.content);
-            let chunk_size = chunk_str.len();
-
-            if current_chunk_size + chunk_size > max_size {
-                write_single_chunk(&current_chunk, current_chunk_index, None, output_dir, false)?;
-                current_chunk.clear();
-                current_chunk_size = 0;
-                current_chunk_index += 1;
-            }
-
-            current_chunk.push_str(&chunk_str);
-            current_chunk_size += chunk_size;
-        }
-
-        if !current_chunk.is_empty() {
-            write_single_chunk(&current_chunk, current_chunk_index, None, output_dir, false)?;
-        }
-    }
+    // Write chunks
+    write_chunks(&entries, &config, config.stream)?;
 
     Ok(())
 }
@@ -654,51 +616,26 @@ fn is_effectively_absolute(path: &std::path::Path) -> bool {
 }
 
 /// Returns a relative, normalized path string (forward slashes on all platforms).
-pub fn normalize_path(base: &Path, path: &Path) -> String {
-    let rel = match path.strip_prefix(base) {
-        Ok(rel) => rel,
-        Err(_) => path,
-    };
-
-    // Special handling for Windows UNC paths and drive letters
-    #[cfg(target_family = "windows")]
-    if let Some(s) = path.to_str() {
-        // Handle UNC paths
-        if s.starts_with("\\\\")
-            || s.starts_with("//")
-            || s.starts_with("\\/")
-            || s.starts_with("/\\")
-        {
-            return format!("//{}", s.replace('\\', "/").trim_start_matches('/'));
-        }
-
-        // Handle Windows drive letters
-        if let Some(drive_path) = s
-            .strip_prefix(|c| matches!(c, 'A'..='Z' | 'a'..='z'))
-            .and_then(|s| s.strip_prefix(":\\"))
-        {
-            let drive_letter = s.chars().next().unwrap_or('C');
-            return format!("/{drive_letter}:/{}", drive_path.replace('\\', "/"));
-        }
-    }
-
-    // Convert to a relative path with components joined by "/"
-    let path_buf: PathBuf = rel
-        .components()
-        .filter(|c| !matches!(c, std::path::Component::RootDir))
-        .collect();
-
-    if path_buf.as_os_str().is_empty() {
+pub fn normalize_path(path: &Path, base: &Path) -> String {
+    // Handle current directory specially
+    if path.to_str() == Some(".") {
         return ".".to_string();
     }
 
-    let slash_path = path_buf.to_string_lossy().into_owned();
+    // Resolve both paths to their canonical forms to handle symlinks
+    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let canonical_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
 
-    // Only add leading slash if we consider `path` "absolute" but it is not under `base`
-    if is_effectively_absolute(path) && path.strip_prefix(base).is_err() {
-        format!("/{}", slash_path)
-    } else {
-        slash_path
+    // Attempt to strip the base directory from the file path
+    match canonical_path.strip_prefix(&canonical_base) {
+        Ok(rel_path) => {
+            // Convert to forward slashes and return as relative path
+            rel_path.to_string_lossy().replace('\\', "/")
+        }
+        Err(_) => {
+            // Return the absolute path without adding an extra leading slash
+            canonical_path.to_string_lossy().replace('\\', "/")
+        }
     }
 }
 
