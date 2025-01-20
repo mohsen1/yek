@@ -603,6 +603,7 @@ fn compute_recentness_boost(
 }
 
 #[cfg(target_family = "windows")]
+#[allow(dead_code)]
 fn is_effectively_absolute(path: &std::path::Path) -> bool {
     if path.is_absolute() {
         return true;
@@ -615,6 +616,7 @@ fn is_effectively_absolute(path: &std::path::Path) -> bool {
 }
 
 #[cfg(not(target_family = "windows"))]
+#[allow(dead_code)]
 fn is_effectively_absolute(path: &std::path::Path) -> bool {
     path.is_absolute()
 }
