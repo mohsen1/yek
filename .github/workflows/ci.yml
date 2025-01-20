@@ -9,17 +9,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Build optimizations
-  CARGO_PROFILE_RELEASE_LTO: true
-  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
-  CARGO_PROFILE_RELEASE_PANIC: abort
-  CARGO_PROFILE_RELEASE_OPT_LEVEL: 3
-  CARGO_PROFILE_RELEASE_STRIP: true
-  # Cache settings
-  CARGO_INCREMENTAL: 0
-  CARGO_NET_RETRY: 10
-  RUSTUP_MAX_RETRIES: 10
   RUST_BACKTRACE: short
+  OPENSSL_STATIC: true
+  PKG_CONFIG_ALLOW_CROSS: true
 
 permissions:
   contents: write
@@ -30,27 +22,24 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
       fail-fast: false
     steps:
       - uses: actions/checkout@v3
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
+      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Install Node (Windows)
-        if: startsWith(matrix.os, 'windows-')
-        run: choco install nodejs-lts --no-progress
-
-      - name: Show Node version
-        run: node --version || echo "No Node"
-
+      - name: Install OpenSSL (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+      - name: Install OpenSSL (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install openssl@3
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
       - name: Run tests
-        run: cargo test --verbose -- --test-threads=1
+        run: cargo test --verbose
 
   lint:
     name: Lint
@@ -61,8 +50,6 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
       - name: Clippy
         run: cargo clippy -- -D warnings
       - name: Format check
@@ -71,29 +58,31 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Linux GNU builds
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: yek
             asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            artifact_name: yek
-            asset_name: yek-x86_64-unknown-linux-musl.tar.gz
-            container: clux/muslrust:stable
-          - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             artifact_name: yek
             asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
+
+          # Linux MUSL builds
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact_name: yek
+            asset_name: yek-x86_64-unknown-linux-musl.tar.gz
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             artifact_name: yek
             asset_name: yek-aarch64-unknown-linux-musl.tar.gz
-            container: clux/muslrust:stable
+
+          # macOS builds
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: yek
@@ -102,10 +91,16 @@ jobs:
             target: aarch64-apple-darwin
             artifact_name: yek
             asset_name: yek-aarch64-apple-darwin.tar.gz
+
+          # Windows builds
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: yek.exe
             asset_name: yek-x86_64-pc-windows-msvc.zip
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact_name: yek.exe
+            asset_name: yek-aarch64-pc-windows-msvc.zip
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
@@ -113,51 +108,47 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-on-failure: true
           key: ${{ matrix.target }}
-      - name: Install cross-compilation tools
-        if: contains(matrix.target, 'aarch64-unknown-linux') && !contains(matrix.target, 'musl')
+
+      # Linux GNU dependencies
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: runner.os == 'Linux' && contains(matrix.target, 'aarch64') && !contains(matrix.target, 'musl')
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
-      - name: Setup OpenSSL (Linux)
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      # Linux MUSL dependencies
+      - name: Install MUSL tools
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-musl" ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          fi
+
+      # OpenSSL setup for different platforms
+      - name: Install OpenSSL (Ubuntu)
         if: runner.os == 'Linux' && !contains(matrix.target, 'musl')
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev
+
       - name: Setup OpenSSL (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install openssl@3
           echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
           echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "OPENSSL_LIBRARIES=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "LIBRARY_PATH=$(brew --prefix openssl@3)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
-          echo "LDFLAGS=-L$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
-      - name: Setup OpenSSL (MUSL)
-        if: contains(matrix.target, 'musl')
-        run: |
-          # Install OpenSSL for MUSL
-          curl -L https://www.openssl.org/source/openssl-3.0.12.tar.gz | tar xz
-          cd openssl-3.0.12
-          ./Configure no-shared no-async --prefix=/usr --openssldir=/usr/ssl CFLAGS=-fPIC linux-x86_64
-          make -j$(nproc)
-          make install_sw
-          cd ..
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
+
+      # Build with appropriate flags
       - name: Build target
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
-          OPENSSL_STATIC: "1"
-          PKG_CONFIG_ALL_STATIC: "1"
-          PKG_CONFIG_ALLOW_CROSS: "1"
-          PKG_CONFIG_SYSROOT_DIR: "/"
-          OPENSSL_DIR: "/usr"
-          PKG_CONFIG_PATH: "/usr/lib/pkgconfig"
         run: cargo build --release --target ${{ matrix.target }} --locked
+
       - name: Package
         shell: bash
         run: |
@@ -170,72 +161,12 @@ jobs:
             cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
             tar czf "${{ matrix.asset_name }}" "$staging"
           fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}
-          if-no-files-found: error
-
-  benchmark:
-    name: Benchmark
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        benchmark_group:
-          [
-            "SingleFile_ByteMode",
-            "SingleFile_ByteMode_Large",
-            "SingleFile_TokenMode_Large",
-            "MultipleFiles_Small",
-            "MultipleFiles_Medium",
-            "MultipleFiles_Large",
-            "MultipleFiles_TokenMode",
-            "CustomConfig",
-          ]
-      fail-fast: false
-
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Build benchmarks on target branch
-        run: |
-          git fetch origin ${{ github.base_ref }}
-          git checkout ${{ github.base_ref }}
-          cargo bench --bench serialization --no-run
-
-      - name: Run benchmark on target branch
-        run: |
-          cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }} '${{ matrix.benchmark_group }}/'
-
-      - name: Build benchmarks on PR branch
-        run: |
-          git checkout ${{ github.head_ref }}
-          cargo bench --bench serialization --no-run
-
-      - name: Compare benchmarks
-        run: |
-          cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 '${{ matrix.benchmark_group }}/' > benchmark_results.md
-          echo "## Benchmark Results for ${{ matrix.benchmark_group }}" >> $GITHUB_STEP_SUMMARY
-          cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
-        with:
-          name: criterion-${{ matrix.benchmark_group }}-results
-          path: |
-            target/criterion/${{ matrix.benchmark_group }}/
-            benchmark_results.md
           if-no-files-found: error
 
   release:
@@ -245,19 +176,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
       - uses: actions/download-artifact@v3
-        with:
-          path: artifacts
-      - name: Move artifacts
-        run: |
-          mv artifacts/*/*.tar.gz ./
-          mv artifacts/*/*.zip ./
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            *.tar.gz
-            *.zip
-          generate_release_notes: true
+          files: "yek-*"

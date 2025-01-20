@@ -28,7 +28,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 walkdir = "2.4"
 path-slash = "0.2.1"
-git2 = "0.18.2"
+git2 = { version = "0.18.2", features = ["vendored-openssl", "https"] }
 crossbeam-channel = "0.5"
 
 [dev-dependencies]
