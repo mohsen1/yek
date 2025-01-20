@@ -1,5 +1,6 @@
 use anyhow::Result;
 use ignore::gitignore::GitignoreBuilder;
+use ignore::WalkBuilder;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -8,7 +9,6 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as SysCommand, Stdio};
 use tracing::debug;
-use walkdir::WalkDir;
 mod parallel;
 use parallel::process_files_parallel;
 use path_slash::PathExt;
@@ -562,7 +562,7 @@ pub fn serialize_repo(
     if gitignore_path.exists() {
         builder.add(&gitignore_path);
     }
-    let gitignore = builder
+    let _gitignore = builder
         .build()
         .unwrap_or_else(|_| GitignoreBuilder::new(base_path).build().unwrap());
 
@@ -595,27 +595,20 @@ pub fn serialize_repo(
         // 1) Collect all FileEntry objects
         let mut files: Vec<FileEntry> = Vec::new();
 
-        for entry in WalkDir::new(base_path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        let mut builder = WalkBuilder::new(base_path);
+        builder
+            .follow_links(false)
+            .standard_filters(true)
+            .add_custom_ignore_filename(".gitignore")
+            .require_git(false);
+
+        for entry in builder.build().flatten() {
+            if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+                continue;
+            }
+
             let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-
-            // Get path relative to base
             let rel_str = normalize_path(base_path, path);
-
-            // Skip via .gitignore
-            if gitignore
-                .matched(path.strip_prefix(base_path).unwrap_or(path), false)
-                .is_ignore()
-            {
-                debug!("Skipping {} - matched by gitignore", rel_str);
-                continue;
-            }
 
             // Skip via our ignore regexes
             if final_config
