@@ -56,7 +56,9 @@ fn single_small_file_byte_mode(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_function("single_small_file", |b| {
         b.iter(|| {
-            serialize_repo(temp_dir.path(), None).unwrap();
+            let mut config = YekConfig::default();
+            config.output_dir = Some(output_dir.clone());
+            serialize_repo(temp_dir.path(), Some(&config)).unwrap();
             fs::remove_dir_all(&output_dir).ok();
         });
     });
@@ -75,7 +77,9 @@ fn single_large_file_byte_mode(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_function("single_large_file", |b| {
         b.iter(|| {
-            serialize_repo(temp_dir.path(), None).unwrap();
+            let mut config = YekConfig::default();
+            config.output_dir = Some(output_dir.clone());
+            serialize_repo(temp_dir.path(), Some(&config)).unwrap();
             fs::remove_dir_all(&output_dir).ok();
         });
     });
@@ -94,7 +98,9 @@ fn single_large_file_token_mode(c: &mut Criterion) {
     group.throughput(Throughput::Elements(token_count as u64));
     group.bench_function("single_large_token_file", |b| {
         b.iter(|| {
-            serialize_repo(temp_dir.path(), None).unwrap();
+            let mut config = YekConfig::default();
+            config.output_dir = Some(output_dir.clone());
+            serialize_repo(temp_dir.path(), Some(&config)).unwrap();
             fs::remove_dir_all(&output_dir).ok();
         });
     });
@@ -114,7 +120,9 @@ fn multiple_small_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                serialize_repo(temp_dir.path(), None).unwrap();
+                let mut config = YekConfig::default();
+                config.output_dir = Some(output_dir.clone());
+                serialize_repo(temp_dir.path(), Some(&config)).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
             BatchSize::SmallInput,
@@ -139,7 +147,9 @@ fn multiple_medium_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                serialize_repo(temp_dir.path(), None).unwrap();
+                let mut config = YekConfig::default();
+                config.output_dir = Some(output_dir.clone());
+                serialize_repo(temp_dir.path(), Some(&config)).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
             BatchSize::SmallInput,
@@ -161,7 +171,9 @@ fn multiple_large_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                serialize_repo(temp_dir.path(), None).unwrap();
+                let mut config = YekConfig::default();
+                config.output_dir = Some(output_dir.clone());
+                serialize_repo(temp_dir.path(), Some(&config)).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
             BatchSize::SmallInput,
@@ -183,7 +195,9 @@ fn multiple_token_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                serialize_repo(temp_dir.path(), None).unwrap();
+                let mut config = YekConfig::default();
+                config.output_dir = Some(output_dir.clone());
+                serialize_repo(temp_dir.path(), Some(&config)).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
             BatchSize::SmallInput,
@@ -213,6 +227,8 @@ fn custom_config_test(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
+                let mut config = YekConfig::default();
+                config.output_dir = Some(output_dir.clone());
                 serialize_repo(temp_dir.path(), Some(&config)).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
