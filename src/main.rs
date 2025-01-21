@@ -130,21 +130,9 @@ fn main() -> Result<()> {
         );
     }
 
-    // Are we writing chunk files or streaming?
-    // If --output-dir is given, we always write to that directory.
-    // Otherwise, if stdout is not a TTY, we stream. If it *is* a TTY, create a temp dir.
+    // Store command line output dir if specified
     if let Some(out_dir) = matches.get_one::<String>("output-dir") {
         yek_config.output_dir = Some(PathBuf::from(out_dir));
-    } else {
-        let stdout_is_tty = stdout().is_terminal();
-        if stdout_is_tty {
-            // Write chunk files to a temporary directory
-            let tmp = std::env::temp_dir().join("yek-serialize");
-            yek_config.output_dir = Some(tmp);
-        } else {
-            // Stream to stdout
-            yek_config.stream = true;
-        }
     }
 
     // Run serialize_repo for each directory
@@ -159,6 +147,19 @@ fn main() -> Result<()> {
             debug!("Found config file: {}", config_path.display());
             if let Some(file_config) = load_config_file(&config_path) {
                 merge_config(&mut config_for_this_dir, &file_config);
+            }
+        }
+
+        // Handle output directory determination AFTER config merge
+        if config_for_this_dir.output_dir.is_none() && !config_for_this_dir.stream {
+            let stdout_is_tty = stdout().is_terminal();
+            if stdout_is_tty {
+                // Write chunk files to a temporary directory
+                let tmp = std::env::temp_dir().join("yek-serialize");
+                config_for_this_dir.output_dir = Some(tmp);
+            } else {
+                // Stream to stdout
+                config_for_this_dir.stream = true;
             }
         }
 
