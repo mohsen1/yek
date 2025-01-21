@@ -125,10 +125,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev musl-tools gcc-aarch64-linux-gnu
 
+          # For MUSL builds
+          if [[ "${{ matrix.target }}" == *"musl"* ]]; then
+            sudo apt-get install -y musl-tools
+            # Install OpenSSL for MUSL
+            OPENSSL_VERSION=3.0.8
+            wget https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz
+            tar xvf openssl-$OPENSSL_VERSION.tar.gz
+            cd openssl-$OPENSSL_VERSION
+            if [[ "${{ matrix.target }}" == "x86_64-unknown-linux-musl" ]]; then
+              CC="musl-gcc" ./Configure no-shared no-async --prefix=/usr/local/musl --openssldir=/usr/local/musl linux-x86_64
+            else
+              CC="aarch64-linux-musl-gcc" ./Configure no-shared no-async --prefix=/usr/local/aarch64-linux-musl --openssldir=/usr/local/aarch64-linux-musl linux-aarch64
+            fi
+            make -j$(nproc)
+            sudo make install
+            cd ..
+          fi
+
           # Handle aarch64 targets
           if [[ "${{ matrix.target }}" == *"aarch64"* ]]; then
             # GNU targets
             if [[ "${{ matrix.target }}" == *"gnu"* ]]; then
+              sudo dpkg --add-architecture arm64
+              sudo apt-get update
               sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64
               echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
               echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
@@ -142,9 +162,6 @@ jobs:
               echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=/usr/local/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
               echo "PATH=/usr/local/bin:$PATH" >> $GITHUB_ENV
               echo "CC_aarch64_unknown_linux_musl=/usr/local/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
-              echo "OPENSSL_DIR=/usr/local/aarch64-linux-musl" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=/usr/local/aarch64-linux-musl/include" >> $GITHUB_ENV
-              echo "OPENSSL_LIB_DIR=/usr/local/aarch64-linux-musl/lib" >> $GITHUB_ENV
             fi
           fi
 
