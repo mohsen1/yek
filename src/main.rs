@@ -5,16 +5,19 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, subscriber, Level};
 use tracing_subscriber::fmt;
 use yek::{
-    find_config_file, load_config_file, merge_config, parse_size_input, serialize_repo,
-    validate_config, YekConfig, SUPPORTED_MODELS,
+    find_config_file, load_config_file, merge_config, model_manager, parse_size_input,
+    serialize_repo, validate_config, YekConfig,
 };
 
 fn main() -> Result<()> {
     let matches = Command::new("yek")
         .about("Repository content chunker and serializer for LLM consumption")
         .after_help(format!(
-            "SUPPORTED MODELS:\n\nUse with --tokens=MODEL\n\nAvailable models:\n  {}\n",
-            SUPPORTED_MODELS.join(", ")
+            "Repository content chunker and serializer for LLM consumption\n\n\
+            SUPPORTED MODELS:\n\n\
+            Use with --tokens=MODEL\n\n\
+            Available models:\n  {}",
+            model_manager::SUPPORTED_MODELS.join(", ")
         ))
         .arg(
             Arg::new("directories")
@@ -37,7 +40,7 @@ fn main() -> Result<()> {
                 .value_parser(move |s: &str| {
                     if s.is_empty() {
                         Ok(String::new()) // Empty string indicates no model specified
-                    } else if SUPPORTED_MODELS.contains(&s) {
+                    } else if model_manager::SUPPORTED_MODELS.contains(&s) {
                         Ok(s.to_string())
                     } else {
                         Err(format!(

@@ -1,8 +1,7 @@
 #[path = "integration_common.rs"]
 mod integration_common;
 use assert_cmd::Command;
-use integration_common::{create_file, ensure_empty_output_dir, setup_temp_repo};
-use std::fs;
+use integration_common::{create_file, setup_temp_repo};
 
 #[test]
 fn test_supported_models_list() {

@@ -90,66 +90,6 @@ impl PriorityRule {
     }
 }
 
-pub const SUPPORTED_MODELS: &[&str] = &[
-    // OpenAI models
-    "gpt-4o",
-    "gpt-4o-2024-08-06",
-    "chatgpt-4o-latest",
-    "gpt-4o-mini",
-    "gpt-4o-mini-2024-07-18",
-    "o1",
-    "o1-2024-12-17",
-    "o1-mini",
-    "o1-mini-2024-09-12",
-    "o1-preview",
-    "o1-preview-2024-09-12",
-    "gpt-4o-realtime-preview",
-    "gpt-4o-realtime-preview-2024-12-17",
-    "gpt-4o-mini-realtime-preview",
-    "gpt-4o-mini-realtime-preview-2024-12-17",
-    "gpt-4o-audio-preview",
-    "gpt-4o-audio-preview-2024-12-17",
-    // Claude models
-    "claude-3-5-sonnet-20241022",
-    "claude-3-5-sonnet-latest",
-    "claude-3-5-haiku-20241022",
-    "claude-3-5-haiku-latest",
-    "claude-3-opus-20240229",
-    "claude-3-opus-latest",
-    "claude-3-sonnet-20240229",
-    "claude-3-haiku-20240307",
-    // Mistral models
-    "mistral-7b-v0-3",
-    "mistral-nemo-12b",
-    "mistral-openorca-7b",
-    "mistral-large-123b",
-    "mistral-small-22b",
-    "mistrallite-7b",
-    "mixtral-8x7b",
-    "mixtral-8x22b",
-    // Llama models
-    "llama-3-3-70b",
-    "llama-3-2-1b",
-    "llama-3-2-3b",
-    "llama-3-2-vision-11b",
-    "llama-3-2-vision-90b",
-    "llama-3-1-8b",
-    "llama-3-1-70b",
-    "llama-3-1-405b",
-    "llama-3-8b",
-    "llama-3-70b",
-    "llama-2-7b",
-    "llama-2-13b",
-    "llama-2-70b",
-    // Code Llama models
-    "codellama-7b",
-    "codellama-13b",
-    "codellama-34b",
-    "codellama-70b",
-    // Tiny Llama models
-    "tinyllama-1-1b",
-];
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct YekConfig {
     #[serde(default)]
@@ -175,11 +115,11 @@ impl YekConfig {
         if self.token_mode {
             let model = self.tokenizer_model.as_deref().unwrap_or("gpt-4");
             debug!("Validating model: {}", model);
-            if !SUPPORTED_MODELS.contains(&model) {
+            if !model_manager::SUPPORTED_MODELS.contains(&model) {
                 return Err(anyhow!(
                     "Unsupported model '{}'. Supported models: {}",
                     model,
-                    SUPPORTED_MODELS.join(", ")
+                    model_manager::SUPPORTED_MODELS.join(", ")
                 ));
             }
         }
@@ -195,13 +135,13 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
         // In token mode, we always have a model (default or specified)
         let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
         debug!("Token mode enabled with model: {}", model);
-        if !SUPPORTED_MODELS.contains(&model) {
+        if !model_manager::SUPPORTED_MODELS.contains(&model) {
             errors.push(ConfigError {
                 field: "tokenizer_model".to_string(),
                 message: format!(
                     "Unsupported model '{}'. Supported models: {}",
                     model,
-                    SUPPORTED_MODELS.join(", ")
+                    model_manager::SUPPORTED_MODELS.join(", ")
                 ),
             });
         }

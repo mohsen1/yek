@@ -1,6 +1,7 @@
 use crate::{
-    get_file_priority, get_recent_commit_times, glob_to_regex, is_text_file, normalize_path,
-    Result, YekConfig, SUPPORTED_MODELS,
+    get_file_priority, get_recent_commit_times, glob_to_regex, is_text_file,
+    model_manager::{self},
+    normalize_path, Result, YekConfig,
 };
 use anyhow::anyhow;
 use crossbeam::channel::bounded;
@@ -26,9 +27,12 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
     // Validate token mode configuration first
     if config.token_mode {
         let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
-        debug!("Using tokenizer model: {}", model);
-        if !SUPPORTED_MODELS.contains(&model) {
-            return Err(anyhow!("Unsupported model: {}", model));
+        if !model_manager::SUPPORTED_MODELS.contains(&model) {
+            return Err(anyhow!(
+                "Unsupported model '{}'. Supported models: {}",
+                model,
+                model_manager::SUPPORTED_MODELS.join(", ")
+            ));
         }
     }
 
