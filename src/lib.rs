@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::io::{self, Write};
@@ -90,7 +91,7 @@ impl PriorityRule {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YekConfig {
     #[serde(default)]
     pub ignore_patterns: Vec<String>,
@@ -110,20 +111,34 @@ pub struct YekConfig {
     pub output_dir: Option<PathBuf>,
 }
 
-impl YekConfig {
-    pub fn validate_model(&self) -> Result<()> {
-        if self.token_mode {
-            let model = self.tokenizer_model.as_deref().unwrap_or("openai");
-            debug!("Validating model: {}", model);
-            if !model_manager::SUPPORTED_MODEL_FAMILIES.contains(&model) {
-                return Err(anyhow!(
-                    "Unsupported model '{}'. Supported models: {}",
-                    model,
-                    model_manager::SUPPORTED_MODEL_FAMILIES.join(", ")
-                ));
-            }
+impl Default for YekConfig {
+    fn default() -> Self {
+        Self {
+            stream: false,
+            output_dir: None,
+            priority_rules: vec![],
+            binary_extensions: vec![
+                "jpg".into(),
+                "jpeg".into(),
+                "png".into(),
+                "gif".into(),
+                "bin".into(),
+                "zip".into(),
+                "exe".into(),
+                "dll".into(),
+                "so".into(),
+                "dylib".into(),
+                "class".into(),
+                "jar".into(),
+                "pyc".into(),
+                "pyo".into(),
+                "pyd".into(),
+            ],
+            ignore_patterns: vec![],
+            token_mode: false,
+            tokenizer_model: None,
+            max_size: None,
         }
-        Ok(())
     }
 }
 
@@ -353,20 +368,31 @@ fn write_single_chunk(
     is_stream: bool,
 ) -> io::Result<()> {
     if is_stream {
-        let mut stdout = io::stdout();
-        write!(stdout, "{}", content)?;
-        stdout.flush()?;
+        // In stream mode, write directly to stdout
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        writeln!(handle, "{}", content)?;
+        Ok(())
     } else {
-        // Always use chunk index in filename
-        let mut file_name = format!("chunk-{}", index);
-        if let Some(part_i) = part_index {
-            file_name = format!("chunk-{}-part-{}", index, part_i);
-        }
-        let path = out_dir.join(format!("{}.txt", file_name));
-        fs::create_dir_all(path.parent().unwrap())?;
-        fs::write(path, content.as_bytes())?;
+        // In file mode, write to a file in the output directory
+        let file_name = match part_index {
+            Some(part) => format!("chunk-{}-part-{}.txt", index, part),
+            None => format!("chunk-{}.txt", index),
+        };
+
+        // Ensure output directory exists
+        std::fs::create_dir_all(out_dir)?;
+
+        let path = out_dir.join(file_name);
+        debug!("Writing chunk to {}", path.display());
+
+        // Write content with UTF-8 encoding
+        let mut file = fs::File::create(path)?;
+        file.write_all(content.as_bytes())?;
+        file.flush()?;
+
+        Ok(())
     }
-    Ok(())
 }
 
 /// Get the size of content in either bytes or tokens
@@ -385,106 +411,119 @@ fn write_chunks(
     config: &YekConfig,
     is_stream: bool,
 ) -> Result<usize> {
-    debug!("Starting write_chunks with {} entries", entries.len());
+    let mut total_chunks = 0;
+    let mut current_chunk = String::new();
+    let mut current_size = 0;
     let chunk_size = config.max_size.unwrap_or(DEFAULT_CHUNK_SIZE);
     let token_mode = config.token_mode;
 
-    // Sort entries by priority (ascending)
-    let mut sorted_entries = entries.to_vec();
-    sorted_entries.sort_by(|a, b| a.2.cmp(&b.2));
-
-    let out_dir = if !is_stream {
-        config
-            .output_dir
-            .as_ref()
-            .expect("output_dir is None but streaming is false")
-    } else {
-        Path::new(".")
-    };
-    debug!("Output directory: {:?}", out_dir);
-
-    let mut chunk_idx = 0;
-    let mut buffer = String::new();
-    let mut used_size = 0_usize;
-
-    for (path, content, _) in sorted_entries {
-        let _content_size = get_content_size(&content, config)?;
-        let entry = format!("\n>>>> {}\n{}", path, content);
-        let entry_size = if token_mode {
-            get_content_size(&entry, config)?
+    // Process each file
+    for (rel_path, content, _) in entries {
+        let header = format!("\n>>>> {}\n", rel_path);
+        let header_size = if token_mode {
+            get_content_size(&header, config)?
         } else {
-            entry.len()
+            header.len()
         };
 
-        // If this entry alone exceeds chunk size, split it
-        if entry_size > chunk_size {
-            debug!("File exceeds chunk size, splitting into multiple chunks");
-            let mut part_idx = 0;
+        // If content is larger than chunk size, split it into parts
+        if content.len() > chunk_size {
             let mut start = 0;
+            let mut part = 0;
 
             while start < content.len() {
-                let mut end = start + chunk_size;
-                if end > content.len() {
-                    end = content.len();
+                let mut current_size = 0;
+                let mut char_count = 0;
+
+                // Process content character by character
+                for c in content[start..].chars() {
+                    current_size += c.len_utf8();
+                    char_count += 1;
+
+                    if current_size >= chunk_size {
+                        break;
+                    }
                 }
 
-                let part = if is_stream {
-                    format!(
-                        ">>>> {} (part {})\n{}",
-                        path,
-                        part_idx,
-                        &content[start..end]
-                    )
-                } else {
-                    let chunk_header = format!("chunk {}\n\n", chunk_idx);
-                    format!(
-                        "{}>>>> {} (part {})\n{}",
-                        chunk_header,
-                        path,
-                        part_idx,
-                        &content[start..end]
-                    )
-                };
-                debug!("Writing large file part {}", part_idx);
-                write_single_chunk(&part, chunk_idx, Some(part_idx), out_dir, is_stream)?;
-                part_idx += 1;
+                // Convert character count to byte offset
+                let mut end = start
+                    + content[start..]
+                        .chars()
+                        .take(char_count)
+                        .map(|c| c.len_utf8())
+                        .sum::<usize>();
+
+                // Ensure we make progress even if a single character is too large
+                if end == start {
+                    end = start
+                        + content[start..]
+                            .chars()
+                            .next()
+                            .map(|c| c.len_utf8())
+                            .unwrap_or(1);
+                }
+
+                let part_header = format!("\n>>>> {} (part {})\n", rel_path, part);
+                let part_content = &content[start..end];
+
+                write_single_chunk(
+                    &format!("{}{}", part_header, part_content),
+                    total_chunks,
+                    Some(part),
+                    config
+                        .output_dir
+                        .as_deref()
+                        .unwrap_or_else(|| Path::new(".")),
+                    is_stream,
+                )?;
+
                 start = end;
+                part += 1;
+                total_chunks += 1;
             }
-            chunk_idx += 1;
-            continue;
-        }
-
-        // If adding this entry would exceed chunk size, write current buffer first
-        if used_size + entry_size > chunk_size && !buffer.is_empty() {
-            let final_chunk = if is_stream {
-                buffer.clone()
-            } else {
-                let chunk_header = format!("chunk {}\n", chunk_idx);
-                format!("{}{}", chunk_header, buffer)
-            };
-            write_single_chunk(&final_chunk, chunk_idx, None, out_dir, is_stream)?;
-            chunk_idx += 1;
-            buffer.clear();
-            used_size = 0;
-        }
-
-        buffer.push_str(&entry);
-        used_size += entry_size;
-    }
-
-    // Write any remaining content
-    if !buffer.is_empty() {
-        let final_chunk = if is_stream {
-            buffer
         } else {
-            let chunk_header = format!("chunk {}\n", chunk_idx);
-            format!("{}{}", chunk_header, buffer)
-        };
-        write_single_chunk(&final_chunk, chunk_idx, None, out_dir, is_stream)?;
-        chunk_idx += 1;
+            // Content fits in a single chunk
+            if current_size + header_size + content.len() > chunk_size && !current_chunk.is_empty()
+            {
+                // Write current chunk if it would overflow
+                write_single_chunk(
+                    &current_chunk,
+                    total_chunks,
+                    None,
+                    config
+                        .output_dir
+                        .as_deref()
+                        .unwrap_or_else(|| Path::new(".")),
+                    is_stream,
+                )?;
+                current_chunk.clear();
+                current_size = 0;
+                total_chunks += 1;
+            }
+
+            // Add content to current chunk
+            current_chunk.push_str(&header);
+            current_chunk.push_str(content);
+            current_size += header_size + content.len();
+        }
     }
 
-    Ok(chunk_idx)
+    // Write final chunk if not empty
+    if !current_chunk.is_empty() {
+        write_single_chunk(
+            &current_chunk,
+            total_chunks,
+            None,
+            config
+                .output_dir
+                .as_deref()
+                .unwrap_or_else(|| Path::new(".")),
+            is_stream,
+        )?;
+        total_chunks += 1;
+    }
+
+    Ok(total_chunks)
 }
 
 /// The main function that the tests call.
@@ -650,24 +689,34 @@ fn is_effectively_absolute(path: &std::path::Path) -> bool {
 
 /// Returns a relative, normalized path string (forward slashes on all platforms).
 pub fn normalize_path(path: &Path, base: &Path) -> String {
-    // Handle current directory specially
-    if path.to_str() == Some(".") {
-        return ".".to_string();
-    }
+    let abs_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.canonicalize()
+            .unwrap_or_else(|_| base.to_path_buf())
+            .join(path)
+    };
 
-    // Resolve both paths to their canonical forms to handle symlinks
-    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let canonical_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+    let abs_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
 
-    // Attempt to strip the base directory from the file path
-    match canonical_path.strip_prefix(&canonical_base) {
-        Ok(rel_path) => {
-            // Convert to forward slashes and return as relative path
-            rel_path.to_string_lossy().replace('\\', "/")
+    // Try to get the relative path
+    match abs_path.strip_prefix(&abs_base) {
+        Ok(rel) => {
+            let path_str = rel.to_string_lossy().replace('\\', "/");
+            if path_str.is_empty() || path_str == "." {
+                "./".to_string()
+            } else {
+                format!("./{}", path_str)
+            }
         }
         Err(_) => {
-            // Return the absolute path without adding an extra leading slash
-            canonical_path.to_string_lossy().replace('\\', "/")
+            // If strip_prefix fails, try a more manual approach
+            let path_str = path.to_string_lossy().replace('\\', "/");
+            if path_str.starts_with("./") || path_str.starts_with("../") {
+                path_str.to_string()
+            } else {
+                format!("./{}", path_str)
+            }
         }
     }
 }
@@ -731,52 +780,91 @@ pub fn parse_size_input(input: &str, is_tokens: bool) -> Result<usize> {
 }
 
 pub fn merge_config(dest: &mut YekConfig, other: &YekConfig) {
-    // Merge ignore patterns by appending
-    dest.ignore_patterns
-        .extend_from_slice(&other.ignore_patterns);
+    // Merge ignore patterns, removing duplicates
+    let mut seen_patterns = HashSet::new();
+    let mut merged_patterns = Vec::new();
 
-    // Merge priority rules by appending
-    dest.priority_rules.extend_from_slice(&other.priority_rules);
+    // Add patterns from dest first (base config)
+    for pattern in &dest.ignore_patterns {
+        if seen_patterns.insert(pattern.clone()) {
+            merged_patterns.push(pattern.clone());
+        }
+    }
 
-    // Merge binary extensions by appending
-    dest.binary_extensions
-        .extend_from_slice(&other.binary_extensions);
+    // Add patterns from other (overlay config)
+    for pattern in &other.ignore_patterns {
+        if seen_patterns.insert(pattern.clone()) {
+            merged_patterns.push(pattern.clone());
+        }
+    }
+    dest.ignore_patterns = merged_patterns;
 
-    // Respect whichever max_size is more specific
-    if dest.max_size.is_none() && other.max_size.is_some() {
+    // Merge binary extensions, removing duplicates
+    let mut seen_extensions = HashSet::new();
+    let mut merged_extensions = Vec::new();
+
+    // Add extensions from dest first
+    for ext in &dest.binary_extensions {
+        let normalized = ext.trim_start_matches('.').to_lowercase();
+        if seen_extensions.insert(normalized.clone()) {
+            merged_extensions.push(normalized);
+        }
+    }
+
+    // Add extensions from other
+    for ext in &other.binary_extensions {
+        let normalized = ext.trim_start_matches('.').to_lowercase();
+        if seen_extensions.insert(normalized.clone()) {
+            merged_extensions.push(normalized);
+        }
+    }
+    dest.binary_extensions = merged_extensions;
+
+    // Merge priority rules, keeping the highest score for each pattern
+    let mut priority_map = HashMap::new();
+
+    // Process rules from dest first
+    for rule in &dest.priority_rules {
+        priority_map
+            .entry(rule.pattern.clone())
+            .and_modify(|e: &mut i32| *e = (*e).max(rule.score))
+            .or_insert(rule.score);
+    }
+
+    // Process rules from other, keeping higher scores
+    for rule in &other.priority_rules {
+        priority_map
+            .entry(rule.pattern.clone())
+            .and_modify(|e| *e = (*e).max(rule.score))
+            .or_insert(rule.score);
+    }
+
+    // Convert back to Vec<PriorityRule>
+    dest.priority_rules = priority_map
+        .into_iter()
+        .map(|(pattern, score)| PriorityRule { pattern, score })
+        .collect();
+
+    // Take other config values if they're set
+    if other.max_size.is_some() {
         dest.max_size = other.max_size;
     }
-
-    // Handle token mode and model together
-    if dest.token_mode {
-        // If token mode is already enabled in dest, only update model if not set
-        if dest.tokenizer_model.is_none() {
-            dest.tokenizer_model = other.tokenizer_model.clone();
-        }
-    } else if other.token_mode || other.tokenizer_model.is_some() {
-        // If token mode is not enabled in dest but is in other, enable it
+    if other.token_mode {
         dest.token_mode = true;
+    }
+    if dest.token_mode {
+        dest.tokenizer_model
+            .get_or_insert_with(|| "openai".to_string());
+    }
+    if other.tokenizer_model.is_some() {
         dest.tokenizer_model = other.tokenizer_model.clone();
     }
-
-    // Apply default model if still missing
-    if dest.token_mode && dest.tokenizer_model.is_none() {
-        dest.tokenizer_model = Some("openai".to_string());
+    if other.stream {
+        dest.stream = true;
     }
-
-    debug!(
-        "Final merged config - Token mode: {}, Model: {}",
-        dest.token_mode,
-        dest.tokenizer_model.as_deref().unwrap_or("none")
-    );
-
-    // Handle output directory
-    if dest.output_dir.is_none() && other.output_dir.is_some() {
+    if other.output_dir.is_some() {
         dest.output_dir = other.output_dir.clone();
     }
-
-    // Handle stream mode
-    dest.stream |= other.stream;
 }
 
 #[derive(Debug)]

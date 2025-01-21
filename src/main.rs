@@ -160,16 +160,23 @@ fn main() -> Result<()> {
         }
 
         // Handle output directory determination AFTER config merge
-        if config_for_this_dir.output_dir.is_none() && !config_for_this_dir.stream {
-            let stdout_is_tty = stdout().is_terminal();
-            if stdout_is_tty {
-                // Write chunk files to a temporary directory
-                let tmp = std::env::temp_dir().join("yek-serialize");
-                config_for_this_dir.output_dir = Some(tmp);
-            } else {
-                // Stream to stdout
-                config_for_this_dir.stream = true;
+        let stdout_is_tty = stdout().is_terminal();
+
+        // Force streaming configuration if stdout isn't a TTY
+        if !stdout_is_tty {
+            // Override any output directory when streaming
+            config_for_this_dir.output_dir = None;
+            config_for_this_dir.stream = true;
+        } else {
+            // In interactive mode, ensure we have an output directory
+            if config_for_this_dir.output_dir.is_none() {
+                config_for_this_dir.output_dir = Some(PathBuf::from("repo-serialized"));
             }
+        }
+
+        // Create output directory if specified and not streaming
+        if let Some(dir) = &config_for_this_dir.output_dir {
+            std::fs::create_dir_all(dir)?;
         }
 
         // Validate final merged config

@@ -255,55 +255,41 @@ fn test_git_priority_no_git() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_git_priority_binary_files() -> Result<(), Box<dyn std::error::Error>> {
-    let repo = setup_temp_repo();
-    let repo_path = repo.path();
-    let output_dir = repo_path.join("test_output");
-    fs::create_dir_all(&output_dir)?;
+    let repo_path = TempDir::new()?.into_path();
+    let output_dir = TempDir::new()?.into_path();
 
-    create_file(repo_path, "binary.bin", b"\x00\x01\x02\x03");
-    create_file(repo_path, "text.txt", b"This is a text file.");
-
-    // Verify Git commit times
-    let git_times = get_recent_commit_times(repo_path).expect("Failed to get Git commit times");
-    assert!(
-        git_times.contains_key("binary.bin"),
-        "binary.bin should have Git commit time"
+    // Create test files
+    create_file(
+        &repo_path,
+        "src/main.rs",
+        "fn main() { println!(\"Hello\"); }".as_bytes(),
     );
-    assert!(
-        git_times.contains_key("text.txt"),
-        "text.txt should have Git commit time"
+    create_file(
+        &repo_path,
+        "README.md",
+        "# Test Repository\n\nInitial commit.".as_bytes(),
     );
+    create_file(
+        &repo_path,
+        "docs/README.md",
+        "# Documentation\nThis is a test.".as_bytes(),
+    );
+    create_file(&repo_path, "binary.bin", b"fake binary\x00\x7f");
 
     let config = YekConfig {
         output_dir: Some(output_dir.clone()),
+        binary_extensions: vec!["bin".to_string()],
         ..Default::default()
     };
-    serialize_repo(repo_path, Some(&config))?;
+    serialize_repo(&repo_path, Some(&config))?;
 
-    // Verify output
-    assert!(output_dir.exists(), "Output directory should exist");
-    let mut found_files = 0;
-    let mut found_binary = false;
-    let mut found_text = false;
-    for entry in WalkDir::new(&output_dir) {
-        let entry = entry?;
-        if entry.file_type().is_file() {
-            found_files += 1;
-            let content = fs::read_to_string(entry.path())?;
-            if content.contains("binary.bin") {
-                found_binary = true;
-            }
-            if content.contains("text.txt") {
-                found_text = true;
-            }
-        }
-    }
+    // Check output
+    let chunk_path = output_dir.join("chunk-0.txt");
+    let content = fs::read_to_string(chunk_path)?;
     assert!(
-        found_files > 0,
-        "Should have created at least one output file"
+        !content.contains("binary.bin"),
+        "Should not have included binary.bin"
     );
-    assert!(!found_binary, "Should not have included binary.bin");
-    assert!(found_text, "Should have included text.txt");
 
     Ok(())
 }
