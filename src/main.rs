@@ -12,6 +12,10 @@ use yek::{
 fn main() -> Result<()> {
     let matches = Command::new("yek")
         .about("Repository content chunker and serializer for LLM consumption")
+        .after_help(format!(
+            "SUPPORTED MODELS:\n\nUse with --tokens=MODEL\n\nAvailable models:\n  {}\n",
+            SUPPORTED_MODELS.join(", ")
+        ))
         .arg(
             Arg::new("directories")
                 .help("Directories to process")
@@ -27,10 +31,7 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("tokens")
                 .long("tokens")
-                .help(format!(
-                    "Count size in tokens using specified model (supported: {})",
-                    SUPPORTED_MODELS.join(", ")
-                ))
+                .help("Count size in tokens using specified model")
                 .value_name("MODEL")
                 .num_args(0..=1)
                 .value_parser(move |s: &str| {
@@ -40,9 +41,8 @@ fn main() -> Result<()> {
                         Ok(s.to_string())
                     } else {
                         Err(format!(
-                            "Unsupported model '{}'. Supported models: {}",
-                            s,
-                            SUPPORTED_MODELS.join(", ")
+                            "Unsupported model '{}'. Use --help to see supported models.",
+                            s
                         ))
                     }
                 })
