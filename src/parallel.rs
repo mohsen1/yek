@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
-use tracing::{debug, info};
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct ProcessedFile {
@@ -146,7 +146,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
         handle.join().unwrap()?;
     }
 
-    info!("Processed {} files in parallel", results.len());
+    debug!("Processed {} files in parallel", results.len());
 
     // Sort by priority (ascending) and file index (ascending)
     results.sort_by(|a, b| {

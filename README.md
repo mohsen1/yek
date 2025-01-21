@@ -151,8 +151,7 @@ This is optional, you can configure the `yek.toml` file at the root of your proj
 
 ```toml
 # Add patterns to ignore (in addition to .gitignore)
-[ignore_patterns]
-patterns = [
+ignore_patterns = [
   "node_modules/",
   "\\.next/",
   "my_custom_folder/"
@@ -165,15 +164,15 @@ git_boost_max = 50  # Maximum score boost based on Git history (default: 100)
 # Higher scores are processed first
 [[priority_rules]]
 score = 100
-patterns = ["^src/lib/"]
+pattern = "^src/lib/"
 
 [[priority_rules]]
 score = 90
-patterns = ["^src/"]
+pattern = "^src/"
 
 [[priority_rules]]
 score = 80
-patterns = ["^docs/"]
+pattern = "^docs/"
 
 # Add additional binary file extensions to ignore
 # These extend the built-in list (.jpg, .png, .exe, etc.)

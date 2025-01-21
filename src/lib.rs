@@ -337,6 +337,7 @@ fn write_chunks(
     debug!("Starting write_chunks with {} entries", entries.len());
     let chunk_size = config.max_size.unwrap_or(DEFAULT_CHUNK_SIZE);
     let token_mode = config.token_mode;
+    let mut total_chunks = 0;
 
     // Sort entries by priority (ascending)
     let mut sorted_entries = entries.to_vec();
@@ -374,6 +375,7 @@ fn write_chunks(
                 if !buffer.is_empty() {
                     debug!("Flushing buffer before large file");
                     write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
+                    total_chunks += 1;
                     buffer.clear();
                     used_size = 0;
                     chunk_idx += 1;
@@ -394,6 +396,7 @@ fn write_chunks(
                     );
                     debug!("Writing large file part {}", part);
                     write_single_chunk(&chunk_str, chunk_idx, Some(part), out_dir, is_stream)?;
+                    total_chunks += 1;
                     chunk_idx += 1;
                     part += 1;
                     start = end;
@@ -406,6 +409,7 @@ fn write_chunks(
                 if used_size + add_size > chunk_size && !buffer.is_empty() {
                     debug!("Flushing buffer due to size limit");
                     write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
+                    total_chunks += 1;
                     buffer.clear();
                     used_size = 0;
                     chunk_idx += 1;
@@ -429,6 +433,7 @@ fn write_chunks(
                 if !buffer.is_empty() {
                     debug!("Flushing buffer before large file");
                     write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
+                    total_chunks += 1;
                     buffer.clear();
                     used_size = 0;
                     chunk_idx += 1;
@@ -449,6 +454,7 @@ fn write_chunks(
                     );
                     debug!("Writing large file part {}", part);
                     write_single_chunk(&chunk_str, chunk_idx, Some(part), out_dir, is_stream)?;
+                    total_chunks += 1;
                     chunk_idx += 1;
                     part += 1;
                     start = end;
@@ -461,6 +467,7 @@ fn write_chunks(
                 if used_size + add_size > chunk_size && !buffer.is_empty() {
                     debug!("Flushing buffer due to size limit");
                     write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
+                    total_chunks += 1;
                     buffer.clear();
                     used_size = 0;
                     chunk_idx += 1;
@@ -479,6 +486,21 @@ fn write_chunks(
     if !buffer.is_empty() {
         debug!("Flushing final buffer");
         write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
+        total_chunks += 1;
+    }
+
+    // Print final output message
+    if !is_stream {
+        match total_chunks {
+            0 => {} // No files written (edge case)
+            1 => {
+                let path = out_dir.join("chunk-0.txt");
+                println!("Wrote: {}", path.display());
+            }
+            _ => {
+                println!("Wrote {} chunks in {}", total_chunks, out_dir.display());
+            }
+        }
     }
 
     debug!("Finished write_chunks");
