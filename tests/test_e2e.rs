@@ -604,6 +604,46 @@ fn respects_token_mode() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn streams_despite_config_output_dir() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = TempDir::new()?;
+
+    // Create config file specifying output directory
+    let config_content = "output_dir = \"./repo-serialized\"\n";
+    create_file(temp_dir.path(), "yek.toml", config_content.as_bytes());
+
+    // Create test file content
+    create_file(temp_dir.path(), "test.txt", "Hello, world!".as_bytes());
+
+    // Execute yek with simulated pipe (non-TTY)
+    let mut cmd = Command::cargo_bin("yek")?;
+    let output = cmd
+        .current_dir(temp_dir.path())
+        .env("TERM", "dumb") // Disable TTY detection
+        .env("NO_COLOR", "1") // Ensure clean output
+        .arg(".")
+        .output()?;
+
+    // Verify command success
+    assert!(output.status.success(), "Command should succeed");
+
+    // Check stdout contains expected content
+    let stdout = String::from_utf8(output.stdout)?;
+    assert!(
+        stdout.contains(">>>> test.txt\nHello, world!"),
+        "Should stream test.txt content to stdout"
+    );
+
+    // Ensure config-specified output directory wasn't created
+    let output_dir = temp_dir.path().join("repo-serialized");
+    assert!(
+        !output_dir.exists(),
+        "Should not create output directory when streaming"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn handles_empty_directory() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;
     let output_dir = TempDir::new()?;
