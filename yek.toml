@@ -1,5 +1,6 @@
 output_dir = "./repo-serialized"
 
+pattern = "default"
 ignore_patterns = [
     "^repo-serialized/",
     "^.*\\.txt$",
