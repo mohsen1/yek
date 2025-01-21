@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::sync::OnceLock;
+use tiktoken_rs::get_bpe_from_model;
 use tokenizers::Tokenizer;
 
 static MODEL_CACHE: OnceLock<HashMap<String, Tokenizer>> = OnceLock::new();
@@ -39,11 +40,42 @@ pub const SUPPORTED_MODELS: &[&str] = &[
     "deepseek-coder",
     "deepseek-reasoner",
     // Microsoft
-    "phi-3",
+    "phi3",
+    "phi4",
     // Mistral
-    "mistral-8x22b",
-    // Meta
+    "mistral-7b-v0-3",
+    "mistral-nemo-12b",
+    "mistral-openorca-7b",
+    "mistral-large-123b",
+    "mistral-small-22b",
+    "mistrallite-7b",
+    "mixtral-8x7b",
+    "mixtral-8x22b",
+    // Meta Llama 3.3
+    "llama-3-3-70b",
+    // Meta Llama 3.2
+    "llama-3-2-1b",
+    "llama-3-2-3b",
+    "llama-3-2-vision-11b",
+    "llama-3-2-vision-90b",
+    // Meta Llama 3.1
+    "llama-3-1-8b",
+    "llama-3-1-70b",
+    "llama-3-1-405b",
+    // Meta Llama 3
+    "llama-3-8b",
     "llama-3-70b",
+    // Meta Llama 2
+    "llama-2-7b",
+    "llama-2-13b",
+    "llama-2-70b",
+    // Code Llama
+    "codellama-7b",
+    "codellama-13b",
+    "codellama-34b",
+    "codellama-70b",
+    // Tiny Llama
+    "tinyllama-1-1b",
 ];
 
 fn load_tokenizer(path: &str) -> Result<Tokenizer> {
@@ -79,22 +111,8 @@ pub fn get_tokenizer(model: &str) -> Result<&'static Tokenizer> {
 }
 
 pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
-    let count = match model {
-        m if m.starts_with("gpt") || m.starts_with("o1") => {
-            use tiktoken_rs::get_bpe_from_model;
-            let encoding = get_bpe_from_model(m)
-                .or_else(|_| get_bpe_from_model("gpt-4o"))
-                .map_err(|e| anyhow!("Failed to get tiktoken encoding: {}", e))?;
-            encoding.encode_with_special_tokens(text).len()
-        }
-        _ => {
-            let tokenizer = get_tokenizer(model)?;
-            let encoded = tokenizer
-                .encode(text, true)
-                .map_err(|e| anyhow!("Failed to encode text: {}", e))?;
-            encoded.get_ids().len()
-        }
-    };
+    let encoding = get_bpe_from_model("gpt-4")
+        .map_err(|e| anyhow!("Failed to get tiktoken encoding: {}", e))?;
 
-    Ok(count)
+    Ok(encoding.encode_with_special_tokens(text).len())
 }
