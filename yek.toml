@@ -3,6 +3,7 @@ output_dir = "./repo-serialized"
 [ignore_patterns]
 patterns = [
     "^repo-serialized/",
+    "^tests/.*",
     "^.*\\.txt$",
     "^benchmarks/",
     "^src/defaults\\.rs$",
@@ -11,7 +12,6 @@ patterns = [
     "CHANGELOG.md",
     "^LICENSE$",
     "^README$",
-    "^askai.yaml$",
 ]
 
 [[priority_rules]]

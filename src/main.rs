@@ -2,11 +2,11 @@ use anyhow::Result;
 use clap::{Arg, Command};
 use std::io::{stdout, IsTerminal};
 use std::path::{Path, PathBuf};
-use tracing::{subscriber, Level};
+use tracing::{debug, subscriber, Level};
 use tracing_subscriber::fmt;
 use yek::{
-    find_config_file, load_config_file, parse_size_input, serialize_repo, YekConfig,
-    SUPPORTED_MODELS,
+    find_config_file, load_config_file, merge_config, parse_size_input, serialize_repo,
+    validate_config, YekConfig, SUPPORTED_MODELS,
 };
 
 fn main() -> Result<()> {
@@ -29,8 +29,13 @@ fn main() -> Result<()> {
                 .long("tokens")
                 .help(format!("Count size in tokens instead of bytes using specified model (supported models: {})", SUPPORTED_MODELS.join(", ")))
                 .value_name("model")
+                .action(clap::ArgAction::Set)
                 .num_args(0..=1)
-                .default_missing_value("gpt-4"),
+                .default_missing_value("gpt-4")
+                .value_parser(clap::builder::NonEmptyStringValueParser::new())
+                .allow_hyphen_values(true)
+                .required(false)
+                .hide_default_value(true),
         )
         .arg(
             Arg::new("debug")
@@ -88,9 +93,29 @@ fn main() -> Result<()> {
     }
 
     // Handle token mode and model
-    if let Some(model) = matches.get_one::<String>("tokens") {
+    if matches.contains_id("tokens") {
         yek_config.token_mode = true;
-        yek_config.tokenizer_model = Some(model.to_string());
+        // Get model from argument or use default
+        let model = matches
+            .get_one::<String>("tokens")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "gpt-4".to_string());
+
+        // Validate model early
+        if !SUPPORTED_MODELS.contains(&model.as_str()) {
+            eprintln!(
+                "Error: Unsupported model '{}'. Supported models: {}",
+                model,
+                SUPPORTED_MODELS.join(", ")
+            );
+            std::process::exit(1);
+        }
+
+        yek_config.tokenizer_model = Some(model);
+        debug!(
+            "Token mode enabled with model: {:?}",
+            yek_config.tokenizer_model
+        );
     }
 
     // Are we writing chunk files or streaming?
@@ -117,57 +142,26 @@ fn main() -> Result<()> {
         // Make a per-directory clone of base config
         let mut config_for_this_dir = yek_config.clone();
 
-        // Look up any local yek.toml
-        if let Some(toml_path) = find_config_file(path) {
-            if let Some(file_cfg) = load_config_file(&toml_path) {
-                // Merge file_cfg into config_for_this_dir
-                merge_config(&mut config_for_this_dir, &file_cfg);
+        // Load config file if it exists
+        if let Some(config_path) = find_config_file(path) {
+            debug!("Found config file: {}", config_path.display());
+            if let Some(file_config) = load_config_file(&config_path) {
+                merge_config(&mut config_for_this_dir, &file_config);
             }
         }
 
+        // Validate config
+        let errors = validate_config(&config_for_this_dir);
+        if !errors.is_empty() {
+            for error in errors {
+                eprintln!("Error in {}: {}", error.field, error.message);
+            }
+            return Err(anyhow::anyhow!("Invalid configuration"));
+        }
+
+        // Run serialize_repo
         serialize_repo(path, Some(&config_for_this_dir))?;
     }
 
     Ok(())
-}
-
-/// Merge the fields of `other` into `dest`.
-fn merge_config(dest: &mut YekConfig, other: &YekConfig) {
-    // Merge ignore patterns
-    dest.ignore_patterns
-        .extend_from_slice(&other.ignore_patterns);
-    // Merge priority rules
-    dest.priority_rules.extend_from_slice(&other.priority_rules);
-    // Merge binary extensions
-    dest.binary_extensions
-        .extend_from_slice(&other.binary_extensions);
-
-    // Respect whichever max_size is more specific
-    if dest.max_size.is_none() && other.max_size.is_some() {
-        dest.max_size = other.max_size;
-    }
-
-    // token_mode: if `other` is true, set it
-    if other.token_mode {
-        dest.token_mode = true;
-    }
-
-    // tokenizer_model: CLI takes precedence over config file
-    if dest.tokenizer_model.is_none() && other.tokenizer_model.is_some() {
-        dest.tokenizer_model = other.tokenizer_model.clone();
-    }
-
-    // If `other.output_dir` is set, we can choose to override or not. Usually the CLI
-    // argument has higher precedence, so we only override if `dest.output_dir` is None:
-    if dest.output_dir.is_none() && other.output_dir.is_some() {
-        dest.output_dir = other.output_dir.clone();
-    }
-
-    // Similarly for stream
-    if !dest.stream && other.stream {
-        // only override if CLI didn't force an output dir
-        if dest.output_dir.is_none() {
-            dest.stream = true;
-        }
-    }
 }

@@ -1,4 +1,8 @@
-use crate::{get_file_priority, glob_to_regex, is_text_file, normalize_path, Result, YekConfig};
+use crate::{
+    get_file_priority, glob_to_regex, is_text_file, normalize_path, Result, YekConfig,
+    SUPPORTED_MODELS,
+};
+use anyhow::anyhow;
 use crossbeam::channel::bounded;
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
@@ -19,6 +23,15 @@ pub struct ProcessedFile {
 }
 
 pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec<ProcessedFile>> {
+    // Validate token mode configuration first
+    if config.token_mode {
+        let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
+        debug!("Using tokenizer model: {}", model);
+        if !SUPPORTED_MODELS.contains(&model) {
+            return Err(anyhow!("Unsupported model: {}", model));
+        }
+    }
+
     let (tx, rx) = bounded(1024);
     let num_threads = num_cpus::get().min(16); // Cap at 16 threads
 

@@ -10,8 +10,6 @@ fn priority_rules_are_applied() {
         repo.path(),
         "yek.toml",
         r#"
-git_boost_max = 0
-
 [[priority_rules]]
 score = 10
 pattern = "^very_important/"

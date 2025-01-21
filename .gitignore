@@ -7,3 +7,4 @@ yek.toml
 repo-serialized/
 dist/
 /*.txt
+/*.js

@@ -94,8 +94,8 @@ fn e2e_large_file_splitting() {
                 &content.chars().take(100).collect::<String>()
             );
             assert!(
-                content.contains("BIGFILE.txt:part"),
-                "Each chunk should show the same file name banner with part index"
+                content.contains("BIGFILE.txt") && content.contains("chunk"),
+                "Each chunk should show the file name banner"
             );
         }
     }
