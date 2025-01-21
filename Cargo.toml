@@ -12,7 +12,7 @@ categories = ["command-line-utilities", "development-tools"]
 [dependencies]
 anyhow = "1.0"
 byte-unit = "4.0"
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 crossbeam = "0.8"
 ignore = "0.4"
 indicatif = "0.17"
