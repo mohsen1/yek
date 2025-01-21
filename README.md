@@ -107,6 +107,9 @@ Do actual token counting and use the `deepseek` model tokenizer:
 yek --max-size 128K --tokens deepseek
 ```
 
+> [!NOTE]
+> Token counting can be slow, so it's disabled by default.
+
 Cap the max size to 100KB and only process the `src` directory, writing to a specific directory:
 
 ```bash
