@@ -384,7 +384,7 @@ fn write_chunks(
     entries: &[(String, String, i32)],
     config: &YekConfig,
     is_stream: bool,
-) -> Result<()> {
+) -> Result<usize> {
     debug!("Starting write_chunks with {} entries", entries.len());
     let chunk_size = config.max_size.unwrap_or(DEFAULT_CHUNK_SIZE);
     let token_mode = config.token_mode;
@@ -464,9 +464,10 @@ fn write_chunks(
         let chunk_header = format!("chunk {}\n", chunk_idx);
         let final_chunk = format!("{}{}", chunk_header, buffer);
         write_single_chunk(&final_chunk, chunk_idx, None, out_dir, is_stream)?;
+        chunk_idx += 1;
     }
 
-    Ok(())
+    Ok(chunk_idx)
 }
 
 /// The main function that the tests call.
@@ -499,8 +500,26 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
         .map(|f| (f.rel_path, f.content, f.priority))
         .collect();
 
-    // Write chunks
-    write_chunks(&entries, &config, config.stream)?;
+    // Write chunks and get total count
+    let total_chunks = write_chunks(&entries, &config, config.stream)?;
+
+    // Print final output message
+    if !config.stream {
+        let out_dir = config
+            .output_dir
+            .as_ref()
+            .expect("output_dir is None but streaming is false");
+        match total_chunks {
+            0 => {} // No files written (edge case)
+            1 => {
+                let path = out_dir.join("chunk-0.txt");
+                println!("Wrote: {}", path.display());
+            }
+            _ => {
+                println!("Wrote {} chunks in {}", total_chunks, out_dir.display());
+            }
+        }
+    }
 
     Ok(())
 }

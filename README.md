@@ -158,8 +158,7 @@ This is optional, you can configure the `yek.toml` file at the root of your proj
 
 ```toml
 # Add patterns to ignore (in addition to .gitignore)
-[ignore_patterns]
-patterns = [
+ignore_patterns = [
   "node_modules/",
   "\\.next/",
   "my_custom_folder/"
@@ -175,15 +174,15 @@ tokenizer_model = "deepseek-reasoner"  # Supported models: deepseek-reasoner, o1
 # Higher scores are processed first
 [[priority_rules]]
 score = 100
-patterns = ["^src/lib/"]
+pattern = "^src/lib/"
 
 [[priority_rules]]
 score = 90
-patterns = ["^src/"]
+pattern = "^src/"
 
 [[priority_rules]]
 score = 80
-patterns = ["^docs/"]
+pattern = "^docs/"
 
 # Add additional binary file extensions to ignore
 # These extend the built-in list (.jpg, .png, .exe, etc.)
