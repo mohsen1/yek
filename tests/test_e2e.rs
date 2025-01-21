@@ -1,6 +1,7 @@
 mod integration_common;
 use assert_cmd::Command;
 use integration_common::{create_file, ensure_empty_output_dir, setup_temp_repo};
+use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
 
@@ -457,4 +458,150 @@ fn e2e_many_small_files_parallel() {
 
     assert!(found_first, "file_000.txt must appear in some chunk");
     assert!(found_last, "file_199.txt must appear in some chunk");
+}
+
+#[test]
+fn streams_content_when_piped() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = TempDir::new()?;
+
+    // Create test repository structure
+    fs::write(temp_dir.path().join("main.rs"), "fn main() {}")?;
+    fs::create_dir(temp_dir.path().join("src"))?;
+    fs::write(
+        temp_dir.path().join("src/lib.rs"),
+        "pub fn magic() -> i32 { 42 }",
+    )?;
+
+    let mut cmd = Command::cargo_bin("yek")?;
+
+    // Capture output from piped execution - using TERM=dumb to force streaming
+    let output = cmd
+        .arg(temp_dir.path())
+        .env("TERM", "dumb")
+        .env("NO_COLOR", "1") // Disable color output
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone())?;
+
+    // In streaming mode, we still get chunk headers
+    assert!(
+        stdout.contains(">>>> main.rs\nfn main() {}"),
+        "Missing main.rs content"
+    );
+    assert!(
+        stdout.contains(">>>> src/lib.rs\npub fn magic() -> i32 { 42 }"),
+        "Missing lib.rs content"
+    );
+
+    // Verify no files were created
+    assert!(!temp_dir.path().join("chunk-0.txt").exists());
+    Ok(())
+}
+
+#[test]
+fn writes_files_when_interactive() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = TempDir::new()?;
+    let output_dir = TempDir::new()?;
+
+    // Create test file
+    fs::write(temp_dir.path().join("config.yml"), "key: value")?;
+
+    let mut cmd = Command::cargo_bin("yek")?;
+
+    // Simulate interactive terminal by forcing file output
+    cmd.arg("--output-dir")
+        .arg(output_dir.path())
+        .arg(temp_dir.path())
+        .assert()
+        .success();
+
+    // Verify file output
+    let chunk_path = output_dir.path().join("chunk-0.txt");
+    let content = fs::read_to_string(chunk_path)?;
+
+    assert!(content.starts_with("chunk 0\n"), "Missing chunk header");
+    assert!(
+        content.contains(">>>> config.yml\nkey: value"),
+        "Missing config content"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn handles_large_files_with_splitting() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = TempDir::new()?;
+
+    // Create 2MB test file
+    let large_content = "a".repeat(2_000_000);
+    fs::write(temp_dir.path().join("big.txt"), &large_content)?;
+
+    let mut cmd = Command::cargo_bin("yek")?;
+    let output = cmd
+        .arg("--max-size=1M") // Changed from 1MB to 1M
+        .env("TERM", "dumb") // Force streaming
+        .arg(temp_dir.path())
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone())?;
+
+    // Verify splitting occurred
+    assert!(stdout.contains(">>>> big.txt (part 0)"));
+    assert!(stdout.contains(">>>> big.txt (part 1)"));
+    assert!(!stdout.contains("chunk 0"));
+
+    Ok(())
+}
+
+#[test]
+fn respects_token_mode() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = TempDir::new()?;
+    let output_dir = TempDir::new()?;
+
+    // Create test files with known token counts
+    fs::write(temp_dir.path().join("test1.txt"), "Hello world")?;
+    fs::write(
+        temp_dir.path().join("test2.txt"),
+        "This is a longer test sentence.",
+    )?;
+
+    let mut cmd = Command::cargo_bin("yek")?;
+
+    cmd.arg("--tokens") // Changed from --token-mode
+        .arg("--max-size=10") // Small token limit to force splitting
+        .arg("--output-dir")
+        .arg(output_dir.path())
+        .arg(temp_dir.path())
+        .assert()
+        .success();
+
+    // Verify files were split based on token count
+    let files: Vec<_> = fs::read_dir(output_dir.path())?.collect();
+    assert!(
+        files.len() > 1,
+        "Files should be split based on token count"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn handles_empty_directory() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = TempDir::new()?;
+    let output_dir = TempDir::new()?;
+
+    let mut cmd = Command::cargo_bin("yek")?;
+
+    cmd.arg("--output-dir")
+        .arg(output_dir.path())
+        .arg(temp_dir.path())
+        .assert()
+        .success();
+
+    // Verify no output files were created for empty directory
+    assert!(fs::read_dir(output_dir.path())?.count() == 0);
+
+    Ok(())
 }
