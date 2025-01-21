@@ -61,7 +61,7 @@ fn e2e_small_repo_basic() {
 /// do indeed get split into multiple chunks on Windows and Unix.
 #[test]
 fn e2e_large_file_splitting() {
-    let repo = setup_temp_repo();
+    let repo = TempDir::new().unwrap();
 
     // 1 MB worth of text
     let big_content = "test content ".repeat(100_000);

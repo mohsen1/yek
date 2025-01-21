@@ -2,9 +2,10 @@ mod integration_common;
 
 use integration_common::{create_file, setup_temp_repo};
 use std::fs;
+use std::process::Command;
 use tempfile::TempDir;
 use walkdir::WalkDir;
-use yek::{serialize_repo, PriorityRule, YekConfig};
+use yek::{get_recent_commit_times, serialize_repo, PriorityRule, YekConfig};
 
 #[test]
 fn test_git_priority_basic() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,6 +18,17 @@ fn test_git_priority_basic() -> Result<(), Box<dyn std::error::Error>> {
     create_file(repo_path, "src/main.rs", b"fn main() {}");
     create_file(repo_path, "docs/README.md", b"# Documentation");
 
+    // Verify Git commit times
+    let git_times = get_recent_commit_times(repo_path).expect("Failed to get Git commit times");
+    assert!(
+        git_times.contains_key("src/main.rs"),
+        "src/main.rs should have Git commit time"
+    );
+    assert!(
+        git_times.contains_key("docs/README.md"),
+        "docs/README.md should have Git commit time"
+    );
+
     // Run serialization
     let mut config = YekConfig::default();
     config.output_dir = Some(output_dir.clone());
@@ -25,16 +37,27 @@ fn test_git_priority_basic() -> Result<(), Box<dyn std::error::Error>> {
     // Verify output
     assert!(output_dir.exists(), "Output directory should exist");
     let mut found_files = 0;
+    let mut found_main = false;
+    let mut found_readme = false;
     for entry in WalkDir::new(&output_dir) {
         let entry = entry?;
         if entry.file_type().is_file() {
             found_files += 1;
+            let content = fs::read_to_string(entry.path())?;
+            if content.contains("src/main.rs") {
+                found_main = true;
+            }
+            if content.contains("docs/README.md") {
+                found_readme = true;
+            }
         }
     }
     assert!(
         found_files > 0,
         "Should have created at least one output file"
     );
+    assert!(found_main, "Should have included src/main.rs");
+    assert!(found_readme, "Should have included docs/README.md");
 
     Ok(())
 }
@@ -54,6 +77,17 @@ fn test_git_priority_stream() -> Result<(), Box<dyn std::error::Error>> {
         repo_path,
         "docs/README.md",
         b"# Documentation\nThis is a test.",
+    );
+
+    // Verify Git commit times
+    let git_times = get_recent_commit_times(repo_path).expect("Failed to get Git commit times");
+    assert!(
+        git_times.contains_key("src/main.rs"),
+        "src/main.rs should have Git commit time"
+    );
+    assert!(
+        git_times.contains_key("docs/README.md"),
+        "docs/README.md should have Git commit time"
     );
 
     // Run serialization in stream mode
@@ -83,6 +117,17 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
         b"# Documentation\nThis is a test.",
     );
 
+    // Verify Git commit times
+    let git_times = get_recent_commit_times(repo_path).expect("Failed to get Git commit times");
+    assert!(
+        git_times.contains_key("src/main.rs"),
+        "src/main.rs should have Git commit time"
+    );
+    assert!(
+        git_times.contains_key("docs/README.md"),
+        "docs/README.md should have Git commit time"
+    );
+
     // Run serialization with custom config
     let config = YekConfig {
         priority_rules: vec![
@@ -103,26 +148,73 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
     // Verify output
     assert!(output_dir.exists(), "Output directory should exist");
     let mut found_files = 0;
+    let mut found_main = false;
+    let mut found_readme = false;
     for entry in WalkDir::new(&output_dir) {
         let entry = entry?;
         if entry.file_type().is_file() {
             found_files += 1;
+            let content = fs::read_to_string(entry.path())?;
+            if content.contains("src/main.rs") {
+                found_main = true;
+            }
+            if content.contains("docs/README.md") {
+                found_readme = true;
+            }
         }
     }
     assert!(
         found_files > 0,
         "Should have created at least one output file"
     );
+    assert!(found_main, "Should have included src/main.rs");
+    assert!(found_readme, "Should have included docs/README.md");
 
     Ok(())
 }
 
 #[test]
 fn test_git_priority_empty_repo() -> Result<(), Box<dyn std::error::Error>> {
-    let repo = setup_temp_repo();
+    let repo = TempDir::new()?;
     let repo_path = repo.path();
     let output_dir = repo_path.join("test_output");
     fs::create_dir_all(&output_dir)?;
+
+    // Initialize empty git repo without any commits
+    Command::new("git")
+        .args(["init", "--quiet", repo_path.to_str().unwrap()])
+        .status()
+        .expect("Failed to run git init");
+
+    // Configure git user info
+    Command::new("git")
+        .args([
+            "-C",
+            repo_path.to_str().unwrap(),
+            "config",
+            "user.name",
+            "test-user",
+        ])
+        .status()
+        .expect("Failed to set git user.name");
+
+    Command::new("git")
+        .args([
+            "-C",
+            repo_path.to_str().unwrap(),
+            "config",
+            "user.email",
+            "test@example.com",
+        ])
+        .status()
+        .expect("Failed to set git user.email");
+
+    // Verify Git commit times
+    let git_times = get_recent_commit_times(repo_path);
+    assert!(
+        git_times.is_none(),
+        "Empty repo should return None for Git commit times"
+    );
 
     let mut config = YekConfig::default();
     config.output_dir = Some(output_dir);
@@ -142,6 +234,10 @@ fn test_git_priority_no_git() -> Result<(), Box<dyn std::error::Error>> {
         b"This is a test file without git.",
     );
 
+    // Verify Git commit times
+    let git_times = get_recent_commit_times(temp.path());
+    assert!(git_times.is_none(), "No Git repo should return None");
+
     let mut config = YekConfig::default();
     config.output_dir = Some(output_dir);
     serialize_repo(temp.path(), Some(&config))?;
@@ -158,8 +254,45 @@ fn test_git_priority_binary_files() -> Result<(), Box<dyn std::error::Error>> {
     create_file(repo_path, "binary.bin", b"\x00\x01\x02\x03");
     create_file(repo_path, "text.txt", b"This is a text file.");
 
+    // Verify Git commit times
+    let git_times = get_recent_commit_times(repo_path).expect("Failed to get Git commit times");
+    assert!(
+        git_times.contains_key("binary.bin"),
+        "binary.bin should have Git commit time"
+    );
+    assert!(
+        git_times.contains_key("text.txt"),
+        "text.txt should have Git commit time"
+    );
+
     let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir);
+    config.output_dir = Some(output_dir.clone());
     serialize_repo(repo_path, Some(&config))?;
+
+    // Verify output
+    assert!(output_dir.exists(), "Output directory should exist");
+    let mut found_files = 0;
+    let mut found_binary = false;
+    let mut found_text = false;
+    for entry in WalkDir::new(&output_dir) {
+        let entry = entry?;
+        if entry.file_type().is_file() {
+            found_files += 1;
+            let content = fs::read_to_string(entry.path())?;
+            if content.contains("binary.bin") {
+                found_binary = true;
+            }
+            if content.contains("text.txt") {
+                found_text = true;
+            }
+        }
+    }
+    assert!(
+        found_files > 0,
+        "Should have created at least one output file"
+    );
+    assert!(!found_binary, "Should not have included binary.bin");
+    assert!(found_text, "Should have included text.txt");
+
     Ok(())
 }

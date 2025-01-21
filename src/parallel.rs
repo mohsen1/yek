@@ -1,6 +1,6 @@
 use crate::{
-    get_file_priority, glob_to_regex, is_text_file, normalize_path, Result, YekConfig,
-    SUPPORTED_MODELS,
+    get_file_priority, get_recent_commit_times, glob_to_regex, is_text_file, normalize_path,
+    Result, YekConfig, SUPPORTED_MODELS,
 };
 use anyhow::anyhow;
 use crossbeam::channel::bounded;
@@ -32,12 +32,17 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
         }
     }
 
+    // Get Git commit times for prioritization
+    let git_times = get_recent_commit_times(base_dir);
+    debug!("Git commit times: {:?}", git_times);
+
     let (tx, rx) = bounded(1024);
     let num_threads = num_cpus::get().min(16); // Cap at 16 threads
 
     let config = Arc::new(config.clone());
     let base_dir = Arc::new(base_dir.to_path_buf());
     let processed_files = Arc::new(Mutex::new(HashSet::new()));
+    let git_times = Arc::new(git_times);
 
     // Spawn worker threads
     let mut handles = Vec::new();
@@ -46,6 +51,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
         let config = Arc::clone(&config);
         let base_dir = Arc::clone(&base_dir);
         let processed_files = Arc::clone(&processed_files);
+        let git_times = Arc::clone(&git_times);
 
         let handle = thread::spawn(move || -> Result<()> {
             let file_index = Arc::new(Mutex::new(0_usize));
@@ -69,6 +75,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
                 let base_dir = Arc::clone(&base_dir);
                 let file_index = Arc::clone(&file_index);
                 let processed_files = Arc::clone(&processed_files);
+                let git_times = Arc::clone(&git_times);
 
                 Box::new(move |entry| {
                     let entry = match entry {
@@ -121,7 +128,33 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
 
                     // Read and process file
                     if let Ok(content) = std::fs::read_to_string(&path) {
-                        let priority = get_file_priority(&rel_path, &config.priority_rules);
+                        let mut priority = get_file_priority(&rel_path, &config.priority_rules);
+
+                        // Boost priority based on Git commit time if available
+                        if let Some(git_times) = &*git_times {
+                            if let Some(commit_time) = git_times.get(&rel_path) {
+                                // Boost priority for recently committed files
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_secs();
+                                let age = now.saturating_sub(*commit_time);
+                                let boost = if age < 86400 {
+                                    // 24 hours
+                                    100 // High boost for very recent commits
+                                } else if age < 604800 {
+                                    // 1 week
+                                    50 // Medium boost for recent commits
+                                } else if age < 2592000 {
+                                    // 30 days
+                                    25 // Small boost for somewhat recent commits
+                                } else {
+                                    0 // No boost for old commits
+                                };
+                                priority += boost;
+                                debug!("Boosted priority for {} by {}", rel_path, boost);
+                            }
+                        }
 
                         let mut index = file_index.lock().unwrap();
                         let processed = ProcessedFile {

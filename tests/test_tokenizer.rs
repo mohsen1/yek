@@ -32,7 +32,10 @@ fn accepts_model_via_tokens_flag() {
     println!("debug log: {}", debug_log);
 
     // Verify token mode is enabled
-    assert!(debug_log.contains("Token mode:"), "Should be in token mode");
+    assert!(
+        debug_log.contains("Token mode enabled"),
+        "Should be in token mode"
+    );
 }
 
 #[test]
@@ -73,7 +76,10 @@ tokenizer_model = "gpt-3.5-turbo"
     println!("debug log: {}", debug_log);
 
     // Verify token mode is enabled
-    assert!(debug_log.contains("Token mode:"), "Should be in token mode");
+    assert!(
+        debug_log.contains("Token mode enabled"),
+        "Should be in token mode"
+    );
 }
 
 #[test]
@@ -114,7 +120,10 @@ tokenizer_model = "gpt-3.5-turbo"
     println!("debug log: {}", debug_log);
 
     // Verify token mode is enabled with CLI model
-    assert!(debug_log.contains("Token mode:"), "Should be in token mode");
+    assert!(
+        debug_log.contains("Token mode enabled with model: gpt-4"),
+        "Should enable token mode with specified model"
+    );
 }
 
 #[test]
@@ -145,7 +154,10 @@ fn defaults_to_gpt4_when_no_model_specified() {
     println!("debug log: {}", debug_log);
 
     // Verify token mode is enabled
-    assert!(debug_log.contains("Token mode:"), "Should be in token mode");
+    assert!(
+        debug_log.contains("Token mode enabled with default model: gpt-4"),
+        "Should use default GPT-4 model"
+    );
 }
 
 #[test]

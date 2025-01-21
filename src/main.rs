@@ -21,21 +21,32 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("max-size")
                 .long("max-size")
-                .help("Maximum size per chunk (e.g. '10MB', '128KB', '1GB')")
-                .default_value("10MB"),
+                .help("Maximum size per chunk (defaults to '10000' in token mode, '10MB' in byte mode)")
+                .required(false),
         )
         .arg(
             Arg::new("tokens")
                 .long("tokens")
-                .help(format!("Count size in tokens instead of bytes using specified model (supported models: {})", SUPPORTED_MODELS.join(", ")))
-                .value_name("model")
-                .action(clap::ArgAction::Set)
+                .help(format!(
+                    "Count size in tokens using specified model (supported: {})",
+                    SUPPORTED_MODELS.join(", ")
+                ))
+                .value_name("MODEL")
                 .num_args(0..=1)
-                .default_missing_value("gpt-4")
-                .value_parser(clap::builder::NonEmptyStringValueParser::new())
-                .allow_hyphen_values(true)
-                .required(false)
-                .hide_default_value(true),
+                .value_parser(move |s: &str| {
+                    if s.is_empty() {
+                        Ok(String::new()) // Empty string indicates no model specified
+                    } else if SUPPORTED_MODELS.contains(&s) {
+                        Ok(s.to_string())
+                    } else {
+                        Err(format!(
+                            "Unsupported model '{}'. Supported models: {}",
+                            s,
+                            SUPPORTED_MODELS.join(", ")
+                        ))
+                    }
+                })
+                .required(false),
         )
         .arg(
             Arg::new("debug")
@@ -88,33 +99,31 @@ fn main() -> Result<()> {
     let mut yek_config = YekConfig::default();
 
     // Possibly parse max size
-    if let Some(size_str) = matches.get_one::<String>("max-size") {
-        yek_config.max_size = Some(parse_size_input(size_str, matches.contains_id("tokens"))?);
-    }
+    let in_token_mode = matches.contains_id("tokens");
+    let max_size_str = matches
+        .get_one::<String>("max-size")
+        .map(|s| s.as_str())
+        .unwrap_or(if in_token_mode {
+            "10000" // Default to 10k tokens
+        } else {
+            "10MB" // Default to 10MB in byte mode
+        });
+    yek_config.max_size = Some(parse_size_input(max_size_str, in_token_mode)?);
 
     // Handle token mode and model
     if matches.contains_id("tokens") {
         yek_config.token_mode = true;
-        // Get model from argument or use default
-        let model = matches
-            .get_one::<String>("tokens")
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "gpt-4".to_string());
-
-        // Validate model early
-        if !SUPPORTED_MODELS.contains(&model.as_str()) {
-            eprintln!(
-                "Error: Unsupported model '{}'. Supported models: {}",
-                model,
-                SUPPORTED_MODELS.join(", ")
-            );
-            std::process::exit(1);
+        if let Some(model) = matches.get_one::<String>("tokens") {
+            if !model.is_empty() {
+                yek_config.tokenizer_model = Some(model.to_string());
+            }
         }
-
-        yek_config.tokenizer_model = Some(model);
         debug!(
-            "Token mode enabled with model: {:?}",
-            yek_config.tokenizer_model
+            "Token mode enabled{}",
+            yek_config.tokenizer_model.as_ref().map_or_else(
+                || " with default model: gpt-4".to_string(),
+                |m| format!(" with model: {}", m)
+            )
         );
     }
 
@@ -150,13 +159,14 @@ fn main() -> Result<()> {
             }
         }
 
-        // Validate config
+        // Validate final merged config
         let errors = validate_config(&config_for_this_dir);
         if !errors.is_empty() {
             for error in errors {
                 eprintln!("Error in {}: {}", error.field, error.message);
             }
-            return Err(anyhow::anyhow!("Invalid configuration"));
+            eprintln!("Error: Invalid configuration");
+            std::process::exit(1);
         }
 
         // Run serialize_repo

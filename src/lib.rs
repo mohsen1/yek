@@ -96,7 +96,7 @@ impl PriorityRule {
 
 pub const SUPPORTED_MODELS: &[&str] = &["gpt-4", "gpt-3.5-turbo", "claude-2", "bert-base-uncased"];
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YekConfig {
     #[serde(default)]
     pub ignore_patterns: Vec<String>,
@@ -116,11 +116,28 @@ pub struct YekConfig {
     pub output_dir: Option<PathBuf>,
 }
 
+impl Default for YekConfig {
+    fn default() -> Self {
+        Self {
+            ignore_patterns: Vec::new(),
+            priority_rules: Vec::new(),
+            binary_extensions: Vec::new(),
+            max_size: None,
+            token_mode: false,
+            tokenizer_model: None,
+            stream: false,
+            output_dir: None,
+        }
+    }
+}
+
 impl YekConfig {
     pub fn validate_model(&self) -> Result<()> {
-        if let Some(model) = &self.tokenizer_model {
-            if !SUPPORTED_MODELS.contains(&model.as_str()) {
-                return Err(anyhow::anyhow!(
+        if self.token_mode {
+            let model = self.tokenizer_model.as_deref().unwrap_or("gpt-4");
+            debug!("Validating model: {}", model);
+            if !SUPPORTED_MODELS.contains(&model) {
+                return Err(anyhow!(
                     "Unsupported model '{}'. Supported models: {}",
                     model,
                     SUPPORTED_MODELS.join(", ")
@@ -138,7 +155,7 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
     if config.token_mode {
         // In token mode, we always have a model (default or specified)
         let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
-        debug!("Validating model: {}", model);
+        debug!("Token mode enabled with model: {}", model);
         if !SUPPORTED_MODELS.contains(&model) {
             errors.push(ConfigError {
                 field: "tokenizer_model".to_string(),
@@ -149,12 +166,6 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
                 ),
             });
         }
-    } else if config.tokenizer_model.is_some() {
-        // If model is specified but token mode is not enabled, that's an error
-        errors.push(ConfigError {
-            field: "tokenizer_model".to_string(),
-            message: "Tokenizer model specified but token mode is not enabled".to_string(),
-        });
     }
 
     // Validate priority rules
@@ -292,19 +303,19 @@ pub fn get_recent_commit_times(repo_path: &Path) -> Option<HashMap<String, u64>>
         return None;
     }
 
-    // Get all files and their timestamps using bash with proper UTF-8 handling
-    let output = SysCommand::new("bash")
+    // Get all files and their timestamps using git log
+    let output = SysCommand::new("git")
         .args([
-            "-c",
-            "export LC_ALL=en_US.UTF-8; export LANG=en_US.UTF-8; \
-             git -c core.quotepath=false log \
-             --format=%ct \
-             --name-only \
-             --no-merges \
-             --no-renames \
-             -- . | tr -cd '[:print:]\n' | iconv -f utf-8 -t utf-8 -c",
+            "-C",
+            repo_path.to_str()?,
+            "log",
+            "--format=%ct",
+            "--name-only",
+            "--no-merges",
+            "--no-renames",
+            "--",
+            ".",
         ])
-        .current_dir(repo_path)
         .stderr(Stdio::null())
         .output()
         .ok()?;
@@ -314,10 +325,10 @@ pub fn get_recent_commit_times(repo_path: &Path) -> Option<HashMap<String, u64>>
         return None;
     }
 
-    let mut git_times = HashMap::new();
+    let mut git_times: HashMap<String, u64> = HashMap::new();
     let mut current_timestamp = 0_u64;
 
-    // Process output line by line with UTF-8 conversion
+    // Process output line by line
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
         if line.is_empty() {
@@ -329,7 +340,11 @@ pub fn get_recent_commit_times(repo_path: &Path) -> Option<HashMap<String, u64>>
             debug!("Found timestamp: {}", ts);
         } else {
             debug!("Found file: {} with timestamp {}", line, current_timestamp);
-            git_times.insert(line.to_string(), current_timestamp);
+            // Only update the timestamp if it's more recent than what we have
+            git_times
+                .entry(line.to_string())
+                .and_modify(|e| *e = (*e).max(current_timestamp))
+                .or_insert(current_timestamp);
         }
     }
 
@@ -375,6 +390,25 @@ fn write_single_chunk(
     Ok(())
 }
 
+/// Simple token counting implementation based on whitespace and punctuation
+fn count_tokens(text: &str, model: &str) -> usize {
+    // For now, we'll use a simple whitespace-based tokenization
+    // This is a naive implementation and should be replaced with proper model-specific tokenizers
+    debug!("Counting tokens using model: {}", model);
+    text.split_whitespace().count()
+}
+
+/// Get the size of content in either bytes or tokens
+fn get_content_size(content: &str, config: &YekConfig) -> usize {
+    if config.token_mode {
+        let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
+        debug!("Getting content size in tokens using model: {}", model);
+        count_tokens(content, model)
+    } else {
+        content.len()
+    }
+}
+
 /// The aggregator that writes chunk-* files or streams to stdout.
 fn write_chunks(
     entries: &[(String, String, i32)],
@@ -403,128 +437,63 @@ fn write_chunks(
     let mut buffer = String::new();
     let mut used_size = 0_usize;
 
-    for (rel_path, content, _prio) in sorted_entries {
-        debug!("Processing file: {}", rel_path);
-        if token_mode {
-            let tokens: Vec<&str> = content.split_whitespace().collect();
-            let file_tokens = tokens.len();
-            debug!("Token mode: {} tokens in file", file_tokens);
-
-            if file_tokens >= chunk_size {
-                debug!("File exceeds chunk size, splitting into multiple chunks");
-                if !buffer.is_empty() {
-                    debug!("Flushing buffer before large file");
-                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
-                    buffer.clear();
-                    used_size = 0;
-                    chunk_idx += 1;
-                }
-
-                let initial_chunk_idx = chunk_idx;
-                let mut start = 0;
-                let mut part = 0;
-                while start < file_tokens {
-                    let end = (start + chunk_size).min(file_tokens);
-                    let chunk_tokens: Vec<&str> = tokens[start..end].to_vec();
-                    let chunk_str = chunk_tokens.join(" ");
-                    let header = format!("chunk {}\n>>>> {}\n", initial_chunk_idx, rel_path);
-                    let mut final_chunk = String::new();
-                    final_chunk.push_str(&header);
-                    final_chunk.push_str(&chunk_str);
-                    final_chunk.push('\n');
-
-                    write_single_chunk(
-                        &final_chunk,
-                        initial_chunk_idx,
-                        Some(part),
-                        out_dir,
-                        is_stream,
-                    )?;
-                    debug!("Writing large file part {}", part);
-                    part += 1;
-                    start = end;
-                }
-                chunk_idx = initial_chunk_idx + 1;
-            } else {
-                let header = format!("chunk {}\n>>>> {}\n", chunk_idx, rel_path);
-                let header_tokens: Vec<&str> = header.split_whitespace().collect();
-                let header_token_count = header_tokens.len();
-                let add_size = file_tokens + header_token_count;
-
-                if used_size + add_size > chunk_size && !buffer.is_empty() {
-                    debug!("Flushing buffer due to size limit");
-                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
-                    buffer.clear();
-                    used_size = 0;
-                    chunk_idx += 1;
-                }
-
-                buffer.push_str(&header);
-                buffer.push_str(&content);
-                buffer.push('\n');
-                used_size += add_size;
-            }
+    for (path, content, _) in sorted_entries {
+        let content_size = get_content_size(&content, config);
+        let entry = format!("\n>>>> {}\n{}", path, content);
+        let entry_size = if token_mode {
+            get_content_size(&entry, config)
         } else {
-            let file_len = content.len();
-            debug!("Byte mode: {} bytes in file", file_len);
+            entry.len()
+        };
 
-            if file_len >= chunk_size {
-                debug!("File exceeds chunk size, splitting into multiple chunks");
-                if !buffer.is_empty() {
-                    debug!("Flushing buffer before large file");
-                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
-                    buffer.clear();
-                    used_size = 0;
-                    chunk_idx += 1;
+        // If this entry alone exceeds chunk size, split it
+        if entry_size > chunk_size {
+            debug!("File exceeds chunk size, splitting into multiple chunks");
+            let mut part_idx = 0;
+            let mut start = 0;
+
+            while start < content.len() {
+                let mut end = start + chunk_size;
+                if end > content.len() {
+                    end = content.len();
                 }
 
-                let initial_chunk_idx = chunk_idx;
-                let mut start = 0;
-                let mut part = 0;
-                while start < file_len {
-                    let end = (start + chunk_size).min(file_len);
-                    let chunk_str = &content[start..end];
-                    let header = format!("chunk {}\n>>>> {}\n", initial_chunk_idx, rel_path);
-                    let mut final_chunk = String::new();
-                    final_chunk.push_str(&header);
-                    final_chunk.push_str(chunk_str);
-                    final_chunk.push('\n');
-
-                    write_single_chunk(
-                        &final_chunk,
-                        initial_chunk_idx,
-                        Some(part),
-                        out_dir,
-                        is_stream,
-                    )?;
-                    debug!("Writing large file part {}", part);
-                    part += 1;
-                    start = end;
-                }
-                chunk_idx = initial_chunk_idx + 1;
-            } else {
-                let header = format!("chunk {}\n>>>> {}\n", chunk_idx, rel_path);
-                let add_size = file_len + header.len();
-
-                if used_size + add_size > chunk_size && !buffer.is_empty() {
-                    debug!("Flushing buffer due to size limit");
-                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
-                    buffer.clear();
-                    used_size = 0;
-                    chunk_idx += 1;
-                }
-
-                buffer.push_str(&header);
-                buffer.push_str(&content);
-                buffer.push('\n');
-                used_size += add_size;
+                let chunk_header = format!("chunk {}\n\n", chunk_idx);
+                let part = format!(
+                    "{}>>>> {} (part {})\n{}",
+                    chunk_header,
+                    path,
+                    part_idx,
+                    &content[start..end]
+                );
+                debug!("Writing large file part {}", part_idx);
+                write_single_chunk(&part, chunk_idx, Some(part_idx), out_dir, is_stream)?;
+                part_idx += 1;
+                start = end;
             }
+            chunk_idx += 1;
+            continue;
         }
+
+        // If adding this entry would exceed chunk size, write current buffer first
+        if used_size + entry_size > chunk_size && !buffer.is_empty() {
+            let chunk_header = format!("chunk {}\n", chunk_idx);
+            let final_chunk = format!("{}{}", chunk_header, buffer);
+            write_single_chunk(&final_chunk, chunk_idx, None, out_dir, is_stream)?;
+            chunk_idx += 1;
+            buffer.clear();
+            used_size = 0;
+        }
+
+        buffer.push_str(&entry);
+        used_size += entry_size;
     }
 
-    // Flush any remaining content
+    // Write any remaining content
     if !buffer.is_empty() {
-        write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
+        let chunk_header = format!("chunk {}\n", chunk_idx);
+        let final_chunk = format!("{}{}", chunk_header, buffer);
+        write_single_chunk(&final_chunk, chunk_idx, None, out_dir, is_stream)?;
     }
 
     Ok(())
@@ -610,17 +579,7 @@ pub fn load_config_file(path: &Path) -> Option<YekConfig> {
     match toml::from_str::<YekConfig>(&content) {
         Ok(cfg) => {
             debug!("Successfully loaded config");
-            // Validate the config
-            let errors = validate_config(&cfg);
-            if !errors.is_empty() {
-                eprintln!("Invalid configuration in {}:", path.display());
-                for error in errors {
-                    eprintln!("  {}: {}", error.field, error.message);
-                }
-                None
-            } else {
-                Some(cfg)
-            }
+            Some(cfg)
         }
         Err(e) => {
             eprintln!("Failed to parse config file: {}", e);
@@ -772,28 +731,33 @@ pub fn merge_config(dest: &mut YekConfig, other: &YekConfig) {
     }
 
     // Handle token mode and model together
-    if other.token_mode || other.tokenizer_model.is_some() {
-        dest.token_mode = true;
-        // If we don't have a model set yet, use the one from config or default to gpt-4
+    if dest.token_mode {
+        // If token mode is already enabled in dest, only update model if not set
         if dest.tokenizer_model.is_none() {
-            dest.tokenizer_model = other
-                .tokenizer_model
-                .clone()
-                .or_else(|| Some("gpt-4".to_string()));
+            dest.tokenizer_model = other.tokenizer_model.clone();
         }
+    } else if other.token_mode || other.tokenizer_model.is_some() {
+        // If token mode is not enabled in dest but is in other, enable it
+        dest.token_mode = true;
+        dest.tokenizer_model = other.tokenizer_model.clone();
     }
 
-    // If `other.output_dir` is set, we can choose to override or not. Usually the CLI
-    // argument has higher precedence, so we only override if `dest.output_dir` is None:
+    // Apply default model if still missing
+    if dest.token_mode && dest.tokenizer_model.is_none() {
+        dest.tokenizer_model = Some("gpt-4".to_string());
+    }
+
+    debug!(
+        "Final merged config - Token mode: {}, Model: {}",
+        dest.token_mode,
+        dest.tokenizer_model.as_deref().unwrap_or("none")
+    );
+
+    // Handle output directory
     if dest.output_dir.is_none() && other.output_dir.is_some() {
         dest.output_dir = other.output_dir.clone();
     }
 
-    // Similarly for stream
-    if !dest.stream && other.stream {
-        // only override if CLI didn't force an output dir
-        if dest.output_dir.is_none() {
-            dest.stream = true;
-        }
-    }
+    // Handle stream mode
+    dest.stream |= other.stream;
 }
