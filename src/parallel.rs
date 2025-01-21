@@ -8,6 +8,7 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct ProcessedFile {
@@ -91,12 +92,14 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
                             false
                         }
                     }) {
+                        debug!("Skipping {} - matched ignore pattern", rel_path);
                         return WalkState::Continue;
                     }
 
                     // Skip binary files unless explicitly allowed
                     match is_text_file(&path, &config.binary_extensions) {
                         Ok(is_text) if !is_text => {
+                            debug!("Skipping binary file: {}", rel_path);
                             return WalkState::Continue;
                         }
                         Err(_) => return WalkState::Continue,
@@ -142,6 +145,8 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
     for handle in handles {
         handle.join().unwrap()?;
     }
+
+    debug!("Processed {} files in parallel", results.len());
 
     // Sort by priority (ascending) and file index (ascending)
     results.sort_by(|a, b| {

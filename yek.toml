@@ -3,6 +3,7 @@ output_dir = "./repo-serialized"
 ignore_patterns = [
     "^repo-serialized/",
     "^.*\\.txt$",
+    "^tests/.*",
     "^benchmarks/",
     "^src/defaults\\.rs$",
     "^\\.github/.*$",

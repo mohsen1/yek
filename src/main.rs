@@ -101,13 +101,6 @@ fn main() -> Result<()> {
         }
     }
 
-    // Print output directory if not streaming
-    if !yek_config.stream {
-        if let Some(dir) = &yek_config.output_dir {
-            tracing::info!("Output directory: {}", dir.display());
-        }
-    }
-
     // Run serialize_repo for each directory
     for dir in directories {
         let path = Path::new(dir);
