@@ -94,6 +94,8 @@ impl PriorityRule {
     }
 }
 
+pub const SUPPORTED_MODELS: &[&str] = &["gpt-4", "gpt-3.5-turbo", "claude-2", "bert-base-uncased"];
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct YekConfig {
     #[serde(default)]
@@ -105,13 +107,129 @@ pub struct YekConfig {
     #[serde(default)]
     pub max_size: Option<usize>,
     #[serde(default)]
-    pub output_dir: Option<PathBuf>,
-    #[serde(default)]
-    pub stream: bool,
-    #[serde(default)]
     pub token_mode: bool,
     #[serde(default)]
     pub tokenizer_model: Option<String>,
+    #[serde(default)]
+    pub stream: bool,
+    #[serde(default)]
+    pub output_dir: Option<PathBuf>,
+}
+
+impl YekConfig {
+    pub fn validate_model(&self) -> Result<()> {
+        if let Some(model) = &self.tokenizer_model {
+            if !SUPPORTED_MODELS.contains(&model.as_str()) {
+                return Err(anyhow::anyhow!(
+                    "Unsupported model '{}'. Supported models: {}",
+                    model,
+                    SUPPORTED_MODELS.join(", ")
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
+    let mut errors = Vec::new();
+
+    // Validate tokenizer model if specified or in token mode
+    if config.token_mode {
+        // In token mode, we always have a model (default or specified)
+        let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
+        debug!("Validating model: {}", model);
+        if !SUPPORTED_MODELS.contains(&model) {
+            errors.push(ConfigError {
+                field: "tokenizer_model".to_string(),
+                message: format!(
+                    "Unsupported model '{}'. Supported models: {}",
+                    model,
+                    SUPPORTED_MODELS.join(", ")
+                ),
+            });
+        }
+    } else if config.tokenizer_model.is_some() {
+        // If model is specified but token mode is not enabled, that's an error
+        errors.push(ConfigError {
+            field: "tokenizer_model".to_string(),
+            message: "Tokenizer model specified but token mode is not enabled".to_string(),
+        });
+    }
+
+    // Validate priority rules
+    for rule in &config.priority_rules {
+        if rule.score < 0 || rule.score > 1000 {
+            errors.push(ConfigError {
+                field: "priority_rules".to_string(),
+                message: format!("Priority score {} must be between 0 and 1000", rule.score),
+            });
+        }
+        if rule.pattern.is_empty() {
+            errors.push(ConfigError {
+                field: "priority_rules".to_string(),
+                message: "Priority rule must have a pattern".to_string(),
+            });
+        }
+        // Validate regex pattern
+        if let Err(e) = Regex::new(&rule.pattern) {
+            errors.push(ConfigError {
+                field: "priority_rules".to_string(),
+                message: format!("Invalid regex pattern '{}': {}", rule.pattern, e),
+            });
+        }
+    }
+
+    // Validate ignore patterns
+    for pattern in &config.ignore_patterns {
+        let regex_pattern = if pattern.starts_with('^') || pattern.ends_with('$') {
+            // Already a regex pattern
+            pattern.to_string()
+        } else {
+            // Convert glob pattern to regex
+            glob_to_regex(pattern)
+        };
+
+        if let Err(e) = Regex::new(&regex_pattern) {
+            errors.push(ConfigError {
+                field: "ignore_patterns".to_string(),
+                message: format!("Invalid pattern '{}': {}", pattern, e),
+            });
+        }
+    }
+
+    // Validate max_size
+    if let Some(size) = config.max_size {
+        if size == 0 {
+            errors.push(ConfigError {
+                field: "max_size".to_string(),
+                message: "Max size cannot be 0".to_string(),
+            });
+        }
+    }
+
+    // Validate output directory if specified
+    if let Some(dir) = &config.output_dir {
+        let path = Path::new(dir);
+        if path.exists() && !path.is_dir() {
+            errors.push(ConfigError {
+                field: "output_dir".to_string(),
+                message: format!(
+                    "Output path '{}' exists but is not a directory",
+                    dir.display()
+                ),
+            });
+        }
+
+        if let Err(e) = std::fs::create_dir_all(path) {
+            errors.push(ConfigError {
+                field: "output_dir".to_string(),
+                message: format!("Cannot create output directory '{}': {}", dir.display(), e),
+            });
+        }
+    }
+
+    errors
 }
 
 /// Check if file is text by extension or scanning first chunk for null bytes.
@@ -228,109 +346,6 @@ pub fn get_recent_commit_times(repo_path: &Path) -> Option<HashMap<String, u64>>
 pub struct ConfigError {
     pub field: String,
     pub message: String,
-}
-
-pub const SUPPORTED_MODELS: &[&str] = &["gpt-4", "gpt-3.5-turbo", "claude-2", "bert-base-uncased"];
-
-pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
-    let mut errors = Vec::new();
-
-    // Validate tokenizer model if specified or in token mode
-    if config.token_mode {
-        // In token mode, we always have a model (default or specified)
-        let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
-        debug!("Validating model: {}", model);
-        if !SUPPORTED_MODELS.contains(&model) {
-            errors.push(ConfigError {
-                field: "tokenizer_model".to_string(),
-                message: format!(
-                    "Unsupported model '{}'. Supported models: {}",
-                    model,
-                    SUPPORTED_MODELS.join(", ")
-                ),
-            });
-        }
-    } else if config.tokenizer_model.is_some() {
-        // If model is specified but token mode is not enabled, that's an error
-        errors.push(ConfigError {
-            field: "tokenizer_model".to_string(),
-            message: "Tokenizer model specified but token mode is not enabled".to_string(),
-        });
-    }
-
-    // Validate priority rules
-    for rule in &config.priority_rules {
-        if rule.score < 0 || rule.score > 1000 {
-            errors.push(ConfigError {
-                field: "priority_rules".to_string(),
-                message: format!("Priority score {} must be between 0 and 1000", rule.score),
-            });
-        }
-        if rule.pattern.is_empty() {
-            errors.push(ConfigError {
-                field: "priority_rules".to_string(),
-                message: "Priority rule must have a pattern".to_string(),
-            });
-        }
-        // Validate regex pattern
-        if let Err(e) = Regex::new(&rule.pattern) {
-            errors.push(ConfigError {
-                field: "priority_rules".to_string(),
-                message: format!("Invalid regex pattern '{}': {}", rule.pattern, e),
-            });
-        }
-    }
-
-    // Validate ignore patterns
-    for pattern in &config.ignore_patterns {
-        let regex_pattern = if pattern.starts_with('^') || pattern.ends_with('$') {
-            // Already a regex pattern
-            pattern.to_string()
-        } else {
-            // Convert glob pattern to regex
-            glob_to_regex(pattern)
-        };
-
-        if let Err(e) = Regex::new(&regex_pattern) {
-            errors.push(ConfigError {
-                field: "ignore_patterns".to_string(),
-                message: format!("Invalid pattern '{}': {}", pattern, e),
-            });
-        }
-    }
-
-    // Validate max_size
-    if let Some(size) = config.max_size {
-        if size == 0 {
-            errors.push(ConfigError {
-                field: "max_size".to_string(),
-                message: "Max size cannot be 0".to_string(),
-            });
-        }
-    }
-
-    // Validate output directory if specified
-    if let Some(dir) = &config.output_dir {
-        let path = Path::new(dir);
-        if path.exists() && !path.is_dir() {
-            errors.push(ConfigError {
-                field: "output_dir".to_string(),
-                message: format!(
-                    "Output path '{}' exists but is not a directory",
-                    dir.display()
-                ),
-            });
-        }
-
-        if let Err(e) = std::fs::create_dir_all(path) {
-            errors.push(ConfigError {
-                field: "output_dir".to_string(),
-                message: format!("Cannot create output directory '{}': {}", dir.display(), e),
-            });
-        }
-    }
-
-    errors
 }
 
 pub const DEFAULT_CHUNK_SIZE: usize = 10 * 1024 * 1024; // 10MB in README
