@@ -4421,6 +4421,7 @@ dependencies = [
  "tiktoken-rs",
  "time",
  "tokenizers",
+ "tokio",
  "toml",
  "tracing",
  "tracing-subscriber",

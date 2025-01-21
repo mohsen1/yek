@@ -4,14 +4,13 @@ use crate::{
     normalize_path, Result, YekConfig,
 };
 use anyhow::anyhow;
-use crossbeam::channel::bounded;
+use crossbeam::channel::{bounded, Sender};
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
 use std::{
     collections::HashSet,
     path::Path,
     sync::{Arc, Mutex},
-    thread,
 };
 use tracing::debug;
 
@@ -46,159 +45,117 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
     let config = Arc::new(config.clone());
     let base_dir = Arc::new(base_dir.to_path_buf());
     let processed_files = Arc::new(Mutex::new(HashSet::new()));
+    let file_counter = Arc::new(Mutex::new(0_usize));
+
+    let walker = WalkBuilder::new(&*base_dir)
+        .hidden(true)
+        .git_ignore(true)
+        .follow_links(false)
+        .standard_filters(true)
+        .require_git(false)
+        .build_parallel();
+
+    let config = Arc::new(config.clone());
     let git_times = Arc::new(git_times);
 
-    // Spawn worker threads
-    let mut handles = Vec::new();
-    for _ in 0..num_threads {
+    walker.run(|| {
         let tx = tx.clone();
         let config = Arc::clone(&config);
-        let base_dir = Arc::clone(&base_dir);
         let processed_files = Arc::clone(&processed_files);
         let git_times = Arc::clone(&git_times);
+        let file_counter = Arc::clone(&file_counter);
+        let base_dir = base_dir.to_path_buf();
 
-        let handle = thread::spawn(move || -> Result<()> {
-            let file_index = Arc::new(Mutex::new(0_usize));
+        Box::new(move |entry_result| {
+            let entry = match entry_result {
+                Ok(e) => e,
+                Err(_) => return WalkState::Continue,
+            };
 
-            // Configure walker for this thread
-            let mut builder = WalkBuilder::new(&*base_dir);
-            builder
-                .hidden(true)
-                .git_ignore(true)
-                .follow_links(false)
-                .standard_filters(true)
-                .require_git(false)
-                .threads(1); // Single thread per walker
+            if !entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                return WalkState::Continue;
+            }
 
-            let walker = builder.build_parallel();
+            let path = entry.path();
+            let rel_path = normalize_path(path, &base_dir);
 
-            let file_index = Arc::clone(&file_index);
-            walker.run(|| {
-                let tx = tx.clone();
-                let config = Arc::clone(&config);
-                let base_dir = Arc::clone(&base_dir);
-                let file_index = Arc::clone(&file_index);
-                let processed_files = Arc::clone(&processed_files);
-                let git_times = Arc::clone(&git_times);
+            // Check if file has been processed
+            {
+                let mut processed = processed_files.lock().unwrap();
+                if !processed.insert(rel_path.clone()) {
+                    return WalkState::Continue;
+                }
+            }
 
-                Box::new(move |entry| {
-                    let entry = match entry {
-                        Ok(e) => e,
-                        Err(_) => return WalkState::Continue,
+            // Check ignore patterns
+            if config.ignore_patterns.iter().any(|p| {
+                let pattern = if p.starts_with('^') || p.ends_with('$') {
+                    p.to_string()
+                } else {
+                    glob_to_regex(p)
+                };
+                Regex::new(&pattern).map_or(false, |re| re.is_match(&rel_path))
+            }) {
+                debug!("Skipping {} - matched ignore pattern", rel_path);
+                return WalkState::Continue;
+            }
+
+            // Check binary files
+            match is_text_file(path, &config.binary_extensions) {
+                Ok(false) => {
+                    debug!("Skipping binary file: {}", rel_path);
+                    return WalkState::Continue;
+                }
+                Err(_) => return WalkState::Continue,
+                _ => {}
+            }
+
+            // Read file content
+            let content = match std::fs::read_to_string(path) {
+                Ok(c) => c,
+                Err(_) => return WalkState::Continue,
+            };
+
+            // Calculate priority
+            let mut priority = get_file_priority(&rel_path, &config.priority_rules);
+            if let Some(git_times) = &*git_times {
+                if let Some(&commit_time) = git_times.get(&rel_path) {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    let age = now.saturating_sub(commit_time);
+                    priority += match age {
+                        a if a < 86400 => 100,
+                        a if a < 604800 => 50,
+                        a if a < 2592000 => 25,
+                        _ => 0,
                     };
+                }
+            }
 
-                    if !entry.file_type().is_some_and(|ft| ft.is_file()) {
-                        return WalkState::Continue;
-                    }
+            // Get file index
+            let file_index = {
+                let mut counter = file_counter.lock().unwrap();
+                *counter += 1;
+                *counter - 1
+            };
 
-                    let path = entry.path().to_path_buf();
-                    let rel_path = normalize_path(&path, &base_dir);
+            let processed = ProcessedFile {
+                priority,
+                file_index,
+                rel_path,
+                content,
+            };
 
-                    // Check if file has already been processed
-                    {
-                        let mut processed = processed_files.lock().unwrap();
-                        if !processed.insert(rel_path.clone()) {
-                            // File was already processed
-                            return WalkState::Continue;
-                        }
-                    }
+            let _ = tx.send(processed);
+            WalkState::Continue
+        })
+    });
 
-                    // Skip files matching ignore patterns from yek.toml
-                    if config.ignore_patterns.iter().any(|p| {
-                        let pattern = if p.starts_with('^') || p.ends_with('$') {
-                            p.to_string()
-                        } else {
-                            glob_to_regex(p)
-                        };
-                        if let Ok(re) = Regex::new(&pattern) {
-                            re.is_match(&rel_path)
-                        } else {
-                            false
-                        }
-                    }) {
-                        debug!("Skipping {} - matched ignore pattern", rel_path);
-                        return WalkState::Continue;
-                    }
+    drop(tx); // Close sender channel when all walkers are done
 
-                    // Skip binary files unless explicitly allowed
-                    match is_text_file(&path, &config.binary_extensions) {
-                        Ok(is_text) if !is_text => {
-                            debug!("Skipping binary file: {}", rel_path);
-                            return WalkState::Continue;
-                        }
-                        Err(_) => return WalkState::Continue,
-                        _ => {}
-                    }
-
-                    // Read and process file
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        let mut priority = get_file_priority(&rel_path, &config.priority_rules);
-
-                        // Boost priority based on Git commit time if available
-                        if let Some(git_times) = &*git_times {
-                            if let Some(commit_time) = git_times.get(&rel_path) {
-                                // Boost priority for recently committed files
-                                let now = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs();
-                                let age = now.saturating_sub(*commit_time);
-                                let boost = if age < 86400 {
-                                    // 24 hours
-                                    100 // High boost for very recent commits
-                                } else if age < 604800 {
-                                    // 1 week
-                                    50 // Medium boost for recent commits
-                                } else if age < 2592000 {
-                                    // 30 days
-                                    25 // Small boost for somewhat recent commits
-                                } else {
-                                    0 // No boost for old commits
-                                };
-                                priority += boost;
-                                debug!("Boosted priority for {} by {}", rel_path, boost);
-                            }
-                        }
-
-                        let mut index = file_index.lock().unwrap();
-                        let processed = ProcessedFile {
-                            priority,
-                            file_index: *index,
-                            rel_path,
-                            content,
-                        };
-
-                        if tx.send(processed).is_ok() {
-                            *index += 1;
-                        }
-                    }
-
-                    WalkState::Continue
-                })
-            });
-
-            Ok(())
-        });
-        handles.push(handle);
-    }
-
-    // Drop original sender
-    drop(tx);
-
-    // Collect results
-    let mut results = Vec::new();
-    while let Ok(processed) = rx.recv() {
-        results.push(processed);
-    }
-
-    // Wait for all threads
-    for handle in handles {
-        handle.join().unwrap()?;
-    }
-
-    debug!("Processed {} files in parallel", results.len());
-
-    // Sort by priority (ascending) and file index (ascending)
+    let mut results: Vec<_> = rx.iter().collect();
     results.sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)

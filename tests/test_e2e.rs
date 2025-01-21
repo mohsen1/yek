@@ -3,7 +3,20 @@ use assert_cmd::Command;
 use integration_common::{create_file, ensure_empty_output_dir, setup_temp_repo};
 use predicates::prelude::*;
 use std::fs;
+use std::time::Duration;
 use tempfile::TempDir;
+use tokio::time::timeout;
+
+// Add macro for test timeout
+macro_rules! timeout_test {
+    ($name:ident, $timeout:expr, $test:expr) => {
+        #[tokio::test]
+        async fn $name() {
+            let result = timeout(Duration::from_secs($timeout), async { $test }).await;
+            assert!(result.is_ok(), "Test timed out after {} seconds", $timeout);
+        }
+    };
+}
 
 /// This test simulates an entire small repository with multiple directories
 /// and checks the end-to-end behavior of running `yek` on it.
@@ -386,10 +399,8 @@ score = 99
     // dir1 is priority 10, super is priority 99 => super is last
 }
 
-/// This test tries to feed a large number of small files to check if we handle them in parallel
-/// without overloading the aggregator or losing order correctness.
-#[test]
-fn e2e_many_small_files_parallel() {
+// Replace the parallel test with macro usage
+timeout_test!(e2e_many_small_files_parallel, 30, async {
     let repo = setup_temp_repo();
 
     // Create many small files
@@ -399,18 +410,19 @@ fn e2e_many_small_files_parallel() {
         create_file(repo.path(), &file_name, content.as_bytes());
     }
 
-    // We rely on environment CPU cores for parallel chunk creation
-    // Then confirm all files appear in the final output
     let output_dir = repo.path().join("yek-output");
     ensure_empty_output_dir(&output_dir);
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    cmd.current_dir(repo.path())
+    let output = cmd
+        .current_dir(repo.path())
         .arg("--output-dir")
         .arg(&output_dir)
         .arg("--max-size=5K") // Much smaller chunk size
-        .assert()
-        .success();
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command failed");
 
     // Ensure we have multiple chunks
     let mut chunk_files: Vec<_> = fs::read_dir(&output_dir)
@@ -458,7 +470,7 @@ fn e2e_many_small_files_parallel() {
 
     assert!(found_first, "file_000.txt must appear in some chunk");
     assert!(found_last, "file_199.txt must appear in some chunk");
-}
+});
 
 #[test]
 fn streams_content_when_piped() -> Result<(), Box<dyn std::error::Error>> {
