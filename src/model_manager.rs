@@ -102,19 +102,28 @@ pub fn get_tokenizer(model: &str) -> Result<&'static Tokenizer> {
 
 pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
     match model {
-        // OpenAI models use tiktoken
+        // OpenAI models use o200k_base
         m if m.starts_with("gpt-4o") || m.starts_with("o1") => {
             let encoding =
                 o200k_base().map_err(|e| anyhow!("Failed to get o200k_base encoding: {}", e))?;
             Ok(encoding.encode_with_special_tokens(text).len())
         }
-        // Other models use Hugging Face tokenizers
+        // Try Hugging Face tokenizers first, fallback to tiktoken BPE
         _ => {
-            let tokenizer = get_tokenizer(model)?;
-            let encoded = tokenizer
-                .encode(text, true)
-                .map_err(|e| anyhow!("Failed to encode text: {}", e))?;
-            Ok(encoded.get_ids().len())
+            match get_tokenizer(model) {
+                Ok(tokenizer) => {
+                    let encoded = tokenizer
+                        .encode(text, true)
+                        .map_err(|e| anyhow!("Failed to encode text with HF tokenizer: {}", e))?;
+                    Ok(encoded.get_ids().len())
+                }
+                Err(_) => {
+                    // Fallback to tiktoken BPE
+                    let encoding = get_bpe_from_model("gpt-4")
+                        .map_err(|e| anyhow!("Failed to get tiktoken BPE encoding: {}", e))?;
+                    Ok(encoding.encode_with_special_tokens(text).len())
+                }
+            }
         }
     }
 }
