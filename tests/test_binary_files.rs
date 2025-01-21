@@ -19,8 +19,10 @@ fn skips_known_binary_files() {
     fs::write(&text_file, "text content").unwrap();
 
     // Run serialization
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
+    let config = YekConfig {
+        output_dir: Some(output_dir.clone()),
+        ..Default::default()
+    };
     serialize_repo(temp.path(), Some(&config)).unwrap();
 
     // Check that the first chunk exists and contains only the text file
@@ -52,9 +54,11 @@ fn respects_custom_binary_extensions() {
     fs::write(&text_file, "text content").unwrap();
 
     // Run serialization with custom config
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
-    config.binary_extensions = vec!["dat".to_string()];
+    let config = YekConfig {
+        output_dir: Some(output_dir.clone()),
+        binary_extensions: vec!["dat".to_string()],
+        ..Default::default()
+    };
     serialize_repo(temp.path(), Some(&config)).unwrap();
 
     // Check that the first chunk exists and contains only the text file

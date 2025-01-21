@@ -7,6 +7,7 @@ use tempfile::TempDir;
 
 /// Creates a temporary directory and initializes a `.git` repo inside it.
 /// Returns a `TempDir` whose path is a fresh Git repository directory.
+#[allow(dead_code)]
 pub fn setup_temp_repo() -> TempDir {
     let repo_dir = TempDir::new().expect("Failed to create temp dir for repo");
     init_git_repo(repo_dir.path());
@@ -23,6 +24,7 @@ pub fn setup_temp_repo() -> TempDir {
 
 /// Initializes a new Git repository in the given directory.
 /// Configures user.name and user.email so commits will succeed without prompts.
+#[allow(dead_code)]
 fn init_git_repo(path: &Path) {
     let repo_str = path.to_str().expect("Non-UTF8 path to temp dir?");
     // 1. git init
@@ -77,6 +79,7 @@ fn init_git_repo(path: &Path) {
 /// Creates (or overwrites) a file at `[repo_dir]/[file_path]` with `content`.
 /// If `repo_dir` contains `.git`, automatically `git add` and `git commit`.
 /// This function handles large or binary data (including `\0`) without shell expansions.
+#[allow(dead_code)]
 pub fn create_file(repo_dir: &Path, file_path: &str, content: &[u8]) {
     // Ensure parent directories exist
     let full_path = repo_dir.join(file_path);
@@ -104,11 +107,23 @@ pub fn create_file(repo_dir: &Path, file_path: &str, content: &[u8]) {
                 }
                 // Very basic glob matching - just checks if pattern is a prefix or suffix
                 if pattern.ends_with('/') {
-                    file_path.starts_with(&pattern[..pattern.len() - 1])
+                    if let Some(stripped) = pattern.strip_suffix('/') {
+                        file_path.starts_with(stripped)
+                    } else {
+                        false
+                    }
                 } else if pattern.starts_with('*') {
-                    file_path.ends_with(&pattern[1..])
+                    if let Some(stripped) = pattern.strip_prefix('*') {
+                        file_path.ends_with(stripped)
+                    } else {
+                        false
+                    }
                 } else if pattern.ends_with('*') {
-                    file_path.starts_with(&pattern[..pattern.len() - 1])
+                    if let Some(stripped) = pattern.strip_suffix('*') {
+                        file_path.starts_with(stripped)
+                    } else {
+                        false
+                    }
                 } else {
                     file_path == pattern || file_path.starts_with(pattern)
                 }
@@ -168,6 +183,7 @@ pub fn create_file(repo_dir: &Path, file_path: &str, content: &[u8]) {
 
 /// Ensures an output directory exists and is empty.
 /// Creates it if it doesn't exist, cleans it if it does.
+#[allow(dead_code)]
 pub fn ensure_empty_output_dir(path: &Path) {
     if path.exists() {
         if path.is_dir() {

@@ -9,9 +9,14 @@ use yek::{get_recent_commit_times, serialize_repo, PriorityRule, YekConfig};
 
 #[test]
 fn test_git_priority_basic() -> Result<(), Box<dyn std::error::Error>> {
+    let tempdir = tempfile::tempdir().unwrap();
+    let output_dir = tempdir.path().to_path_buf();
+    let config = YekConfig {
+        output_dir: Some(output_dir.clone()),
+        ..Default::default()
+    };
     let repo = setup_temp_repo();
     let repo_path = repo.path();
-    let output_dir = repo_path.join("test_output");
     fs::create_dir_all(&output_dir)?;
 
     // Create test files and commit them
@@ -30,8 +35,6 @@ fn test_git_priority_basic() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Run serialization
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
     serialize_repo(repo_path, Some(&config))?;
 
     // Verify output
@@ -91,8 +94,10 @@ fn test_git_priority_stream() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Run serialization in stream mode
-    let mut config = YekConfig::default();
-    config.stream = true;
+    let config = YekConfig {
+        stream: true,
+        ..Default::default()
+    };
     serialize_repo(repo_path, Some(&config))?;
 
     Ok(())
@@ -216,8 +221,10 @@ fn test_git_priority_empty_repo() -> Result<(), Box<dyn std::error::Error>> {
         "Empty repo should return None for Git commit times"
     );
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir);
+    let config = YekConfig {
+        output_dir: Some(output_dir),
+        ..Default::default()
+    };
     serialize_repo(repo_path, Some(&config))?;
     Ok(())
 }
@@ -238,8 +245,10 @@ fn test_git_priority_no_git() -> Result<(), Box<dyn std::error::Error>> {
     let git_times = get_recent_commit_times(temp.path());
     assert!(git_times.is_none(), "No Git repo should return None");
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir);
+    let config = YekConfig {
+        output_dir: Some(output_dir),
+        ..Default::default()
+    };
     serialize_repo(temp.path(), Some(&config))?;
     Ok(())
 }
@@ -265,8 +274,10 @@ fn test_git_priority_binary_files() -> Result<(), Box<dyn std::error::Error>> {
         "text.txt should have Git commit time"
     );
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
+    let config = YekConfig {
+        output_dir: Some(output_dir.clone()),
+        ..Default::default()
+    };
     serialize_repo(repo_path, Some(&config))?;
 
     // Verify output

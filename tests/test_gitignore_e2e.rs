@@ -5,6 +5,7 @@ use std::fs;
 use yek::{find_config_file, load_config_file, serialize_repo, YekConfig};
 
 /// Helper to run yek in streaming mode (pipe to stdout)
+#[allow(dead_code)]
 fn run_stream_mode(dir: &std::path::Path) -> String {
     let output = Command::cargo_bin("yek")
         .unwrap()
@@ -19,6 +20,7 @@ fn run_stream_mode(dir: &std::path::Path) -> String {
 }
 
 /// Helper to run yek in file mode (write to output directory)
+#[allow(dead_code)]
 fn run_file_mode(dir: &std::path::Path) -> String {
     let output_dir = dir.join("output");
     let _ = Command::cargo_bin("yek")
@@ -56,14 +58,16 @@ fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;
@@ -118,14 +122,16 @@ fn test_gitignore_subdirectory() -> Result<(), Box<dyn std::error::Error>> {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;
@@ -187,14 +193,16 @@ temp/*
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;
@@ -268,14 +276,16 @@ fn test_gitignore_and_yek_toml() -> Result<(), Box<dyn std::error::Error>> {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;
@@ -328,14 +338,16 @@ fn test_gitignore_binary_files() -> Result<(), Box<dyn std::error::Error>> {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;

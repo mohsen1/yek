@@ -15,8 +15,10 @@ fn basic_file_output_test() {
     fs::write(&test_file, "test content").unwrap();
 
     // Run serialization
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
+    let config = YekConfig {
+        output_dir: Some(output_dir.clone()),
+        ..Default::default()
+    };
     serialize_repo(temp.path(), Some(&config)).unwrap();
 
     // Verify output
@@ -48,8 +50,10 @@ fn basic_pipe_test() {
     fs::write(&test_file, "test content").unwrap();
 
     // Run serialization in stream mode
-    let mut config = YekConfig::default();
-    config.stream = true;
+    let config = YekConfig {
+        stream: true,
+        ..Default::default()
+    };
     serialize_repo(temp.path(), Some(&config)).unwrap();
 
     // The output should be written to stdout, which we can't easily capture in a test

@@ -1,6 +1,4 @@
 use anyhow::{anyhow, Result};
-use crossbeam::channel;
-use rayon::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -9,10 +7,7 @@ use std::io::Read;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as SysCommand, Stdio};
-use std::sync::Arc;
 use tracing::debug;
-use walkdir::DirEntry;
-use walkdir::WalkDir;
 
 mod defaults;
 mod parallel;
@@ -96,7 +91,7 @@ impl PriorityRule {
 
 pub const SUPPORTED_MODELS: &[&str] = &["gpt-4", "gpt-3.5-turbo", "claude-2", "bert-base-uncased"];
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct YekConfig {
     #[serde(default)]
     pub ignore_patterns: Vec<String>,
@@ -114,21 +109,6 @@ pub struct YekConfig {
     pub stream: bool,
     #[serde(default)]
     pub output_dir: Option<PathBuf>,
-}
-
-impl Default for YekConfig {
-    fn default() -> Self {
-        Self {
-            ignore_patterns: Vec::new(),
-            priority_rules: Vec::new(),
-            binary_extensions: Vec::new(),
-            max_size: None,
-            token_mode: false,
-            tokenizer_model: None,
-            stream: false,
-            output_dir: None,
-        }
-    }
 }
 
 impl YekConfig {
@@ -438,7 +418,7 @@ fn write_chunks(
     let mut used_size = 0_usize;
 
     for (path, content, _) in sorted_entries {
-        let content_size = get_content_size(&content, config);
+        let _content_size = get_content_size(&content, config);
         let entry = format!("\n>>>> {}\n{}", path, content);
         let entry_size = if token_mode {
             get_content_size(&entry, config)
