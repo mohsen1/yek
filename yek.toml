@@ -1,6 +1,5 @@
 output_dir = "./repo-serialized"
 
-pattern = "default"
 ignore_patterns = [
     "^repo-serialized/",
     "^.*\\.txt$",
@@ -16,16 +15,20 @@ ignore_patterns = [
 
 [[priority_rules]]
 score = 100
-patterns = ["^src/"]
+pattern = "^src/"
 
 [[priority_rules]]
 score = 70
-patterns = ["^src/lib/", "^test/"]
+pattern = "^src/lib/"
+
+[[priority_rules]]
+score = 70
+pattern = "^test/"
 
 [[priority_rules]]
 score = 30
-patterns = ["^scripts/"]
+pattern = "^scripts/"
 
 [[priority_rules]]
 score = 10
-patterns = ["^src/defaults\\.rs$"] 
+pattern = "^src/defaults\\.rs$" 
