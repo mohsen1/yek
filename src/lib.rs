@@ -713,32 +713,23 @@ pub fn parse_size_input(input: &str, is_tokens: bool) -> Result<usize> {
     } else {
         // Byte-based suffix
         let s = s.to_uppercase();
-        if s.ends_with("KB") || s.ends_with("K") {
-            let val = if s.ends_with("KB") {
-                s[..s.len() - 2].trim()
-            } else {
-                s[..s.len() - 1].trim()
-            }
-            .parse::<usize>()
-            .map_err(|_| anyhow!("Invalid size: {}", input))?;
+        if s.ends_with("KB") {
+            let val = s[..s.len() - 2]
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| anyhow!("Invalid size: {}", input))?;
             Ok(val * 1024)
-        } else if s.ends_with("MB") || s.ends_with("M") {
-            let val = if s.ends_with("MB") {
-                s[..s.len() - 2].trim()
-            } else {
-                s[..s.len() - 1].trim()
-            }
-            .parse::<usize>()
-            .map_err(|_| anyhow!("Invalid size: {}", input))?;
+        } else if s.ends_with("MB") {
+            let val = s[..s.len() - 2]
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| anyhow!("Invalid size: {}", input))?;
             Ok(val * 1024 * 1024)
-        } else if s.ends_with("GB") || s.ends_with("G") {
-            let val = if s.ends_with("GB") {
-                s[..s.len() - 2].trim()
-            } else {
-                s[..s.len() - 1].trim()
-            }
-            .parse::<usize>()
-            .map_err(|_| anyhow!("Invalid size: {}", input))?;
+        } else if s.ends_with("GB") {
+            let val = s[..s.len() - 2]
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| anyhow!("Invalid size: {}", input))?;
             Ok(val * 1024 * 1024 * 1024)
         } else {
             // Plain bytes
