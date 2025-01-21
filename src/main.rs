@@ -104,7 +104,7 @@ fn main() -> Result<()> {
     // Print output directory if not streaming
     if !yek_config.stream {
         if let Some(dir) = &yek_config.output_dir {
-            println!("Output directory: {}", dir.display());
+            tracing::info!("Output directory: {}", dir.display());
         }
     }
 
