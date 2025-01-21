@@ -1,6 +1,6 @@
 # `yek`
 
-A [fast](#performance) Rust based tool to read text-based files in a repository or directory, chunk them, and serialize them for LLM consumption. By default, the tool:
+A [fast](#performance) Rust based tool to read text-based files in a repository or directory and serialize them for LLM consumption. By default, the tool:
 
 - Uses `.gitignore` rules to skip unwanted files.
 - Uses the Git history to infer what files are important.
@@ -8,6 +8,7 @@ A [fast](#performance) Rust based tool to read text-based files in a repository 
 - Splits content into chunks based on either approximate "token" count or byte size.
 - Automatically detects if output is being piped and streams content instead of writing to files.
 - Supports processing multiple directories in a single command.
+- Produces multiple chunks if the content is too large to fit in the LLM context window.
 - Configurable via a `yek.toml` file.
 
 Yek <a href="https://fa.wikipedia.org/wiki/۱">يک</a> means "One" in Farsi/Persian.
@@ -97,17 +98,23 @@ yek src/ | pbcopy
 Cap the max size to 128K tokens and only process the `src` directory:
 
 ```bash
-yek --max-size 128K --tokens=deepseek-reasoner src/
+yek --max-size 128K src/
 ```
 
-> [!NOTE]
-> When multiple chunks are written, the last chunk will contain the highest-priority files.
+Do actual token counting and use the `deepseek` model tokenizer:
+
+```bash
+yek --max-size 128K --tokens deepseek
+```
 
 Cap the max size to 100KB and only process the `src` directory, writing to a specific directory:
 
 ```bash
 yek --max-size 100KB --output-dir /tmp/yek src/
 ```
+
+> [!NOTE]
+> When multiple chunks are written, the last chunk will contain the highest-priority files.
 
 Process multiple directories:
 
@@ -120,7 +127,7 @@ yek src/ tests/
 ```bash
 yek --help
 
-Repository content chunker and serializer for LLM consumption
+Repository content serializer for LLM consumption
 
 Usage: yek [OPTIONS] [directories]...
 
@@ -129,17 +136,11 @@ Arguments:
 
 Options:
       --max-size <max-size>      Maximum size per chunk (defaults to '10000' in token mode, '10MB' in byte mode)
-      --tokens [<MODEL>]         Count size in tokens using specified model
+      --tokens [<MODEL_FAMILY>]  Count size in tokens using specified model family.
+                                 Options: openai, claude, mistral, deepseek, llama [default: openai]
       --debug                    Enable debug output
       --output-dir <output-dir>  Output directory for chunks
   -h, --help                     Print help
-
-SUPPORTED MODELS:
-
-Use with --tokens=MODEL
-
-Available models:
-  gpt-4o, gpt-4o-2024-08-06, chatgpt-4o-latest, gpt-4o-mini, gpt-4o-mini-2024-07-18, o1, o1-2024-12-17, o1-mini, o1-mini-2024-09-12, o1-preview, o1-preview-2024-09-12, gpt-4o-realtime-preview, gpt-4o-realtime-preview-2024-12-17, gpt-4o-mini-realtime-preview, gpt-4o-mini-realtime-preview-2024-12-17, gpt-4o-audio-preview, gpt-4o-audio-preview-2024-12-17, claude-3-5-sonnet-20241022, claude-3-5-sonnet-latest, claude-3-5-haiku-20241022, claude-3-5-haiku-latest, claude-3-opus-20240229, claude-3-opus-latest, claude-3-sonnet-20240229, claude-3-haiku-20240307, mistral-7b-v0-3, mistral-nemo-12b, mistral-openorca-7b, mistral-large-123b, mistral-small-22b, mistrallite-7b, mixtral-8x7b, mixtral-8x22b, llama-3-3-70b, llama-3-2-1b, llama-3-2-3b, llama-3-2-vision-11b, llama-3-2-vision-90b, llama-3-1-8b, llama-3-1-70b, llama-3-1-405b, llama-3-8b, llama-3-70b, llama-2-7b, llama-2-13b, llama-2-70b, codellama-7b, codellama-13b, codellama-34b, codellama-70b, tinyllama-1-1b
 ```
 
 ## Configuration File
@@ -157,6 +158,15 @@ You can place a file called `yek.toml` at your project root or pass a custom pat
 This is optional, you can configure the `yek.toml` file at the root of your project.
 
 ```toml
+# Output directory for chunks when not using --output-dir and not streaming
+output_dir = "yek-output"
+
+# Maximum size per chunk (defaults to '10000' in token mode, '10MB' in byte mode)
+max_size = "128K"
+
+# Tokenizer model for token counting (defaults to 'deepseek-reasoner')
+tokens = "deepseek"
+
 # Add patterns to ignore (in addition to .gitignore)
 ignore_patterns = [
   "node_modules/",
@@ -166,9 +176,6 @@ ignore_patterns = [
 
 # Configure Git-based priority boost (optional)
 git_boost_max = 50  # Maximum score boost based on Git history (default: 100)
-
-# Configure default tokenizer model (optional, can be overridden via --tokens=<model>)
-tokenizer_model = "deepseek-reasoner"  # Supported models: deepseek-reasoner, o1, claud
 
 # Define priority rules for processing order
 # Higher scores are processed first

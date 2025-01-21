@@ -113,7 +113,7 @@ pub struct YekConfig {
 impl YekConfig {
     pub fn validate_model(&self) -> Result<()> {
         if self.token_mode {
-            let model = self.tokenizer_model.as_deref().unwrap_or("gpt-4");
+            let model = self.tokenizer_model.as_deref().unwrap_or("openai");
             debug!("Validating model: {}", model);
             if !model_manager::SUPPORTED_MODEL_FAMILIES.contains(&model) {
                 return Err(anyhow!(
@@ -664,15 +664,26 @@ pub fn parse_size_input(input: &str, is_tokens: bool) -> Result<usize> {
 
     if is_tokens {
         // If user typed "128K", interpret as 128000 tokens
-        if s.to_lowercase().ends_with('k') {
+        let s = s.to_lowercase();
+        if s.ends_with('k') {
             let val = s[..s.len() - 1]
                 .trim()
                 .parse::<usize>()
                 .map_err(|_| anyhow!("Invalid token size: {}", s))?;
             return Ok(val * 1000);
+        } else if s.ends_with('m') {
+            let val = s[..s.len() - 1]
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| anyhow!("Invalid token size: {}", s))?;
+            return Ok(val * 1000 * 1000);
+        } else {
+            // Plain number
+            let val = s
+                .parse::<usize>()
+                .map_err(|_| anyhow!("Invalid token size: {}", s))?;
+            return Ok(val);
         }
-        s.parse::<usize>()
-            .map_err(|_| anyhow!("Invalid token size: {}", s))
     } else {
         // Byte-based suffix
         let s = s.to_uppercase();

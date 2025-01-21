@@ -11,7 +11,7 @@ use yek::{
 
 fn main() -> Result<()> {
     let matches = Command::new("yek")
-        .about("Repository content chunker and serializer for LLM consumption")
+        .about("Repository content serializer for LLM consumption")
         .arg(
             Arg::new("directories")
                 .help("Directories to process")
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
                     if s.is_empty() {
                         Ok(String::new()) // Empty string indicates no model family specified
                     } else if model_manager::SUPPORTED_MODEL_FAMILIES.contains(&s) {
-                        Ok("openai".to_string())
+                        Ok(s.to_string())
                     } else {
                         Err(format!(
                             "Unsupported model family '{}'. Use --help to see supported model families.",
@@ -99,21 +99,9 @@ fn main() -> Result<()> {
     // Gather config
     let mut yek_config = YekConfig::default();
 
-    // Possibly parse max size
-    let in_token_mode = matches.contains_id("tokens");
-    let max_size_str = matches
-        .get_one::<String>("max-size")
-        .map(|s| s.as_str())
-        .unwrap_or(if in_token_mode {
-            "10000" // Default to 10k tokens
-        } else {
-            "10MB" // Default to 10MB in byte mode
-        });
-    yek_config.max_size = Some(parse_size_input(max_size_str, in_token_mode)?);
-
-    // Handle token mode and model
-    if matches.contains_id("tokens") {
-        yek_config.token_mode = true;
+    // Handle token mode and model first
+    yek_config.token_mode = matches.contains_id("tokens");
+    if yek_config.token_mode {
         if let Some(model) = matches.get_one::<String>("tokens") {
             if !model.is_empty() {
                 yek_config.tokenizer_model = Some(model.to_string());
@@ -126,6 +114,11 @@ fn main() -> Result<()> {
                 |m| format!(" with model: {}", m)
             )
         );
+    }
+
+    // Only parse max_size if provided as argument
+    if let Some(size_str) = matches.get_one::<String>("max-size") {
+        yek_config.max_size = Some(parse_size_input(size_str, yek_config.token_mode)?);
     }
 
     // Store command line output dir if specified
