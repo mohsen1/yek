@@ -46,7 +46,7 @@ fn e2e_small_repo_basic() {
     cmd.current_dir(repo.path())
         .arg("--output-dir")
         .arg(&output_dir)
-        .arg("--max-size=200K") // Large enough to include all files in one chunk
+        .arg("--max-size=200KB") // Large enough to include all files in one chunk
         .assert()
         .success();
 
@@ -87,7 +87,7 @@ fn e2e_large_file_splitting() {
     // We set chunk limit to ~100 KB so that 1 MB file is forced into ~10 parts
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.current_dir(repo.path())
-        .arg("--max-size=50K") // Much smaller chunk size
+        .arg("--max-size=50KB") // Much smaller chunk size
         .arg("--output-dir")
         .arg(&output_dir)
         .assert()
@@ -154,7 +154,7 @@ fn e2e_nested_paths() {
     cmd.current_dir(repo.path())
         .arg("--output-dir")
         .arg(&output_dir)
-        .arg("--max-size=50K")
+        .arg("--max-size=50KB")
         .assert()
         .success();
 
@@ -282,7 +282,7 @@ score = 1
         .arg("--output-dir")
         .arg(&output_dir)
         .arg("--debug")
-        .arg("--max-size=10K")
+        .arg("--max-size=10KB")
         .output()
         .expect("Failed to execute command");
 
@@ -376,7 +376,7 @@ score = 99
         .arg(repo2.path())
         .arg("--output-dir")
         .arg(out_str)
-        .arg("--max-size=5K")
+        .arg("--max-size=5KB")
         .assert()
         .success();
 
@@ -418,7 +418,7 @@ timeout_test!(e2e_many_small_files_parallel, 30, async {
         .current_dir(repo.path())
         .arg("--output-dir")
         .arg(&output_dir)
-        .arg("--max-size=5K") // Much smaller chunk size
+        .arg("--max-size=5KB") // Much smaller chunk size
         .output()
         .expect("Failed to execute command");
 
@@ -551,8 +551,8 @@ fn handles_large_files_with_splitting() -> Result<(), Box<dyn std::error::Error>
 
     let mut cmd = Command::cargo_bin("yek")?;
     let output = cmd
-        .arg("--max-size=1M") // Changed from 1MB to 1M
-        .env("TERM", "dumb") // Force streaming
+        .arg("--max-size=1MB")
+        .env("TERM", "dumb")
         .arg(temp_dir.path())
         .assert()
         .success();

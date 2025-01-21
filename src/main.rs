@@ -32,7 +32,6 @@ fn main() -> Result<()> {
                     Options: {}",
                     model_manager::SUPPORTED_MODEL_FAMILIES.join(", ")
                 ))
-                .default_value("openai")
                 .value_name("MODEL_FAMILY")
                 .num_args(0..=1)
                 .value_parser(move |s: &str| {
