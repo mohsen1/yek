@@ -7,7 +7,8 @@ use tokenizers::Tokenizer;
 static MODEL_CACHE: OnceLock<HashMap<String, Tokenizer>> = OnceLock::new();
 
 pub const SUPPORTED_MODELS: &[&str] = &[
-    // OpenAI (using tiktoken)
+    // OpenAI models
+    "gpt-4",
     "gpt-4o",
     "gpt-4o-2024-08-06",
     "chatgpt-4o-latest",
@@ -25,18 +26,16 @@ pub const SUPPORTED_MODELS: &[&str] = &[
     "gpt-4o-mini-realtime-preview-2024-12-17",
     "gpt-4o-audio-preview",
     "gpt-4o-audio-preview-2024-12-17",
-    // Rest using Hugging Face tokenizers
-    // Anthropic Claude 3.5 (BPE)
+    // Claude models
     "claude-3-5-sonnet-20241022",
     "claude-3-5-sonnet-latest",
     "claude-3-5-haiku-20241022",
     "claude-3-5-haiku-latest",
-    // Anthropic Claude 3 (BPE)
     "claude-3-opus-20240229",
     "claude-3-opus-latest",
     "claude-3-sonnet-20240229",
     "claude-3-haiku-20240307",
-    // Mistral (BPE)
+    // Mistral models
     "mistral-7b-v0-3",
     "mistral-nemo-12b",
     "mistral-openorca-7b",
@@ -45,7 +44,18 @@ pub const SUPPORTED_MODELS: &[&str] = &[
     "mistrallite-7b",
     "mixtral-8x7b",
     "mixtral-8x22b",
-    // Meta Llama Models (BPE)
+    // DeepSeek models
+    "deepseek-coder-1b",
+    "deepseek-coder-6b",
+    "deepseek-coder-33b",
+    "deepseek-reasoner-1b",
+    "deepseek-reasoner-6b",
+    "deepseek-reasoner-33b",
+    "deepseek-math-7b",
+    "deepseek-math-33b",
+    "deepseek-vision-7b",
+    "deepseek-vision-33b",
+    // Llama models
     "llama-3-3-70b",
     "llama-3-2-1b",
     "llama-3-2-3b",
@@ -59,12 +69,12 @@ pub const SUPPORTED_MODELS: &[&str] = &[
     "llama-2-7b",
     "llama-2-13b",
     "llama-2-70b",
-    // Code Llama (BPE)
+    // Code Llama models
     "codellama-7b",
     "codellama-13b",
     "codellama-34b",
     "codellama-70b",
-    // Tiny Llama (BPE)
+    // Tiny Llama models
     "tinyllama-1-1b",
 ];
 
@@ -89,6 +99,7 @@ pub fn get_tokenizer(model: &str) -> Result<&'static Tokenizer> {
             m if m.starts_with("llama") || m.starts_with("codellama") => {
                 load_tokenizer("models/llama/tokenizer.json")?
             }
+            m if m.starts_with("deepseek") => load_tokenizer("models/deepseek/tokenizer.json")?,
             _ => return Err(anyhow!("Unsupported model: {}", model)),
         };
 

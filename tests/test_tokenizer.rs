@@ -49,7 +49,7 @@ fn accepts_model_from_config() {
         repo.path(),
         "yek.toml",
         r#"
-tokenizer_model = "gpt-3.5-turbo"
+tokenizer_model = "gpt-4"
 "#
         .as_bytes(),
     );
@@ -93,7 +93,7 @@ fn cli_model_overrides_config() {
         repo.path(),
         "yek.toml",
         r#"
-tokenizer_model = "gpt-3.5-turbo"
+tokenizer_model = "gpt-4"
 "#
         .as_bytes(),
     );
