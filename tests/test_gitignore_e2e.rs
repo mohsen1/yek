@@ -1,4 +1,5 @@
 mod integration_common;
+use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
 use std::fs;
 use yek::{find_config_file, load_config_file, serialize_repo, YekConfig};
