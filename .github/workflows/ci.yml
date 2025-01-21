@@ -163,7 +163,9 @@ jobs:
             --params "--add Microsoft.VisualStudio.Component.VC.Tools.ARM64"
 
       - name: Build target
-        run: cargo build --release --target ${{ matrix.target }} --locked
+        run: |
+          rustup target add ${{ matrix.target }}
+          cargo build --release --target ${{ matrix.target }} --locked
 
       - name: Package
         shell: bash
