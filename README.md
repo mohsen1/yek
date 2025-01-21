@@ -97,7 +97,7 @@ yek src/ | pbcopy
 Cap the max size to 128K tokens and only process the `src` directory:
 
 ```bash
-yek --max-size 128K --tokens=gpt-4 src/
+yek --max-size 128K --tokens=deepseek-reasoner src/
 ```
 
 > [!NOTE]
