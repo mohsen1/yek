@@ -210,7 +210,7 @@ jobs:
           path: ${{ matrix.asset_name }}
 
   benchmark:
-    name: Benchmark - ${{ matrix.benchmark_group.name }}
+    name: Benchmark / ${{ matrix.benchmark_group.name }}
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     strategy:
