@@ -2,6 +2,7 @@ target/
 *.log
 *.tmp
 *.tar.gz
+/*.js
 .DS_Store
 yek.toml
 repo-serialized/

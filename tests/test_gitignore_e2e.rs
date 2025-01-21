@@ -1,42 +1,7 @@
 mod integration_common;
-use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
 use std::fs;
 use yek::{find_config_file, load_config_file, serialize_repo, YekConfig};
-
-/// Helper to run yek in streaming mode (pipe to stdout)
-fn run_stream_mode(dir: &std::path::Path) -> String {
-    let output = Command::cargo_bin("yek")
-        .unwrap()
-        .current_dir(dir)
-        .env("TERM", "dumb") // Force non-interactive mode
-        .env("NO_COLOR", "1") // Disable color output
-        .env("CI", "1") // Force CI mode
-        .output()
-        .expect("Failed to execute command");
-
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
-/// Helper to run yek in file mode (write to output directory)
-fn run_file_mode(dir: &std::path::Path) -> String {
-    let output_dir = dir.join("output");
-    let _ = Command::cargo_bin("yek")
-        .unwrap()
-        .current_dir(dir)
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .assert()
-        .success();
-
-    // Read all chunk files
-    let mut content = String::new();
-    for entry in fs::read_dir(output_dir).unwrap() {
-        let path = entry.unwrap().path();
-        content.push_str(&fs::read_to_string(path).unwrap());
-    }
-    content
-}
 
 #[test]
 fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
