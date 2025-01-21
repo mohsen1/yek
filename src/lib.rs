@@ -551,10 +551,23 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     let processed_files = process_files_parallel(repo_path, &config)?;
 
     // Convert to the format expected by write_chunks
-    let entries: Vec<(String, String, i32)> = processed_files
+    let mut entries: Vec<(String, String, i32)> = processed_files
         .into_iter()
         .map(|f| (f.rel_path, f.content, f.priority))
         .collect();
+
+    // Print priorities before sorting
+    for (path, _, priority) in &entries {
+        debug!("Before sort - File: {} Priority: {}", path, priority);
+    }
+
+    // Sort entries by ascending priority (lower priorities come first)
+    entries.sort_by_key(|(_, _, priority)| *priority);
+
+    // Print priorities after sorting
+    for (path, _, priority) in &entries {
+        debug!("After sort - File: {} Priority: {}", path, priority);
+    }
 
     // Write chunks and get total count
     let total_chunks = write_chunks(&entries, &config, config.stream)?;

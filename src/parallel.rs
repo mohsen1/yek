@@ -167,13 +167,9 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
 
     drop(tx); // Close sender channel when all walkers are done
 
-    // Sort by priority (high to low) and then by file index for stability
+    // Sort by priority (low to high) and then by file index for stability
     let mut results: Vec<_> = rx.iter().collect();
-    results.sort_by(|a, b| {
-        b.priority
-            .cmp(&a.priority)
-            .then_with(|| a.file_index.cmp(&b.file_index))
-    });
+    results.sort_by_key(|f| (f.priority, f.file_index));
 
     Ok(results)
 }
