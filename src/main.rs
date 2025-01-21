@@ -12,6 +12,18 @@ use yek::{
 fn main() -> Result<()> {
     let matches = Command::new("yek")
         .about("Repository content serializer for LLM consumption")
+        .after_help(format!(
+            "SUPPORTED MODELS:\n\
+            Use with --tokens=MODEL\n\
+            Available models:\n\
+            {}\n\
+            Each model family supports different token counting methods.",
+            model_manager::SUPPORTED_MODEL_FAMILIES
+                .iter()
+                .map(|m| format!("  {} - {} models", m, m))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ))
         .arg(
             Arg::new("directories")
                 .help("Directories to process")

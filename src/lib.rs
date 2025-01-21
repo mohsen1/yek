@@ -428,14 +428,23 @@ fn write_chunks(
                     end = content.len();
                 }
 
-                let chunk_header = format!("chunk {}\n\n", chunk_idx);
-                let part = format!(
-                    "{}>>>> {} (part {})\n{}",
-                    chunk_header,
-                    path,
-                    part_idx,
-                    &content[start..end]
-                );
+                let part = if is_stream {
+                    format!(
+                        ">>>> {} (part {})\n{}",
+                        path,
+                        part_idx,
+                        &content[start..end]
+                    )
+                } else {
+                    let chunk_header = format!("chunk {}\n\n", chunk_idx);
+                    format!(
+                        "{}>>>> {} (part {})\n{}",
+                        chunk_header,
+                        path,
+                        part_idx,
+                        &content[start..end]
+                    )
+                };
                 debug!("Writing large file part {}", part_idx);
                 write_single_chunk(&part, chunk_idx, Some(part_idx), out_dir, is_stream)?;
                 part_idx += 1;
@@ -447,8 +456,12 @@ fn write_chunks(
 
         // If adding this entry would exceed chunk size, write current buffer first
         if used_size + entry_size > chunk_size && !buffer.is_empty() {
-            let chunk_header = format!("chunk {}\n", chunk_idx);
-            let final_chunk = format!("{}{}", chunk_header, buffer);
+            let final_chunk = if is_stream {
+                buffer.clone()
+            } else {
+                let chunk_header = format!("chunk {}\n", chunk_idx);
+                format!("{}{}", chunk_header, buffer)
+            };
             write_single_chunk(&final_chunk, chunk_idx, None, out_dir, is_stream)?;
             chunk_idx += 1;
             buffer.clear();
@@ -461,8 +474,12 @@ fn write_chunks(
 
     // Write any remaining content
     if !buffer.is_empty() {
-        let chunk_header = format!("chunk {}\n", chunk_idx);
-        let final_chunk = format!("{}{}", chunk_header, buffer);
+        let final_chunk = if is_stream {
+            buffer
+        } else {
+            let chunk_header = format!("chunk {}\n", chunk_idx);
+            format!("{}{}", chunk_header, buffer)
+        };
         write_single_chunk(&final_chunk, chunk_idx, None, out_dir, is_stream)?;
         chunk_idx += 1;
     }

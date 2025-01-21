@@ -63,9 +63,9 @@ fn splits_large_file_in_chunks_token_mode() {
     let mut cmd = Command::cargo_bin("yek").unwrap();
     let output = cmd
         .current_dir(repo.path())
-        .arg("openai")
+        .arg("--tokens")
         .arg("--max-size")
-        .arg("150K")
+        .arg("150000")
         .arg("--debug")
         .arg("--output-dir")
         .arg(&output_dir)
