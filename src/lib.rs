@@ -115,11 +115,11 @@ impl YekConfig {
         if self.token_mode {
             let model = self.tokenizer_model.as_deref().unwrap_or("gpt-4");
             debug!("Validating model: {}", model);
-            if !model_manager::SUPPORTED_MODELS.contains(&model) {
+            if !model_manager::SUPPORTED_MODEL_FAMILIES.contains(&model) {
                 return Err(anyhow!(
                     "Unsupported model '{}'. Supported models: {}",
                     model,
-                    model_manager::SUPPORTED_MODELS.join(", ")
+                    model_manager::SUPPORTED_MODEL_FAMILIES.join(", ")
                 ));
             }
         }
@@ -133,15 +133,15 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
     // Validate tokenizer model if specified or in token mode
     if config.token_mode {
         // In token mode, we always have a model (default or specified)
-        let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
+        let model = config.tokenizer_model.as_deref().unwrap_or("openai");
         debug!("Token mode enabled with model: {}", model);
-        if !model_manager::SUPPORTED_MODELS.contains(&model) {
+        if !model_manager::SUPPORTED_MODEL_FAMILIES.contains(&model) {
             errors.push(ConfigError {
                 field: "tokenizer_model".to_string(),
                 message: format!(
                     "Unsupported model '{}'. Supported models: {}",
                     model,
-                    model_manager::SUPPORTED_MODELS.join(", ")
+                    model_manager::SUPPORTED_MODEL_FAMILIES.join(", ")
                 ),
             });
         }

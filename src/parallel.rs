@@ -26,12 +26,12 @@ pub struct ProcessedFile {
 pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec<ProcessedFile>> {
     // Validate token mode configuration first
     if config.token_mode {
-        let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
-        if !model_manager::SUPPORTED_MODELS.contains(&model) {
+        let model = config.tokenizer_model.as_deref().unwrap_or("openai");
+        if !model_manager::SUPPORTED_MODEL_FAMILIES.contains(&model) {
             return Err(anyhow!(
                 "Unsupported model '{}'. Supported models: {}",
                 model,
-                model_manager::SUPPORTED_MODELS.join(", ")
+                model_manager::SUPPORTED_MODEL_FAMILIES.join(", ")
             ));
         }
     }

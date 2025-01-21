@@ -6,76 +6,12 @@ use tokenizers::Tokenizer;
 
 static MODEL_CACHE: OnceLock<HashMap<String, Tokenizer>> = OnceLock::new();
 
-pub const SUPPORTED_MODELS: &[&str] = &[
-    // OpenAI models
-    "gpt-4",
-    "gpt-4o",
-    "gpt-4o-2024-08-06",
-    "chatgpt-4o-latest",
-    "gpt-4o-mini",
-    "gpt-4o-mini-2024-07-18",
-    "o1",
-    "o1-2024-12-17",
-    "o1-mini",
-    "o1-mini-2024-09-12",
-    "o1-preview",
-    "o1-preview-2024-09-12",
-    "gpt-4o-realtime-preview",
-    "gpt-4o-realtime-preview-2024-12-17",
-    "gpt-4o-mini-realtime-preview",
-    "gpt-4o-mini-realtime-preview-2024-12-17",
-    "gpt-4o-audio-preview",
-    "gpt-4o-audio-preview-2024-12-17",
-    // Claude models
-    "claude-3-5-sonnet-20241022",
-    "claude-3-5-sonnet-latest",
-    "claude-3-5-haiku-20241022",
-    "claude-3-5-haiku-latest",
-    "claude-3-opus-20240229",
-    "claude-3-opus-latest",
-    "claude-3-sonnet-20240229",
-    "claude-3-haiku-20240307",
-    // Mistral models
-    "mistral-7b-v0-3",
-    "mistral-nemo-12b",
-    "mistral-openorca-7b",
-    "mistral-large-123b",
-    "mistral-small-22b",
-    "mistrallite-7b",
-    "mixtral-8x7b",
-    "mixtral-8x22b",
-    // DeepSeek models
-    "deepseek-coder-1b",
-    "deepseek-coder-6b",
-    "deepseek-coder-33b",
-    "deepseek-reasoner-1b",
-    "deepseek-reasoner-6b",
-    "deepseek-reasoner-33b",
-    "deepseek-math-7b",
-    "deepseek-math-33b",
-    "deepseek-vision-7b",
-    "deepseek-vision-33b",
-    // Llama models
-    "llama-3-3-70b",
-    "llama-3-2-1b",
-    "llama-3-2-3b",
-    "llama-3-2-vision-11b",
-    "llama-3-2-vision-90b",
-    "llama-3-1-8b",
-    "llama-3-1-70b",
-    "llama-3-1-405b",
-    "llama-3-8b",
-    "llama-3-70b",
-    "llama-2-7b",
-    "llama-2-13b",
-    "llama-2-70b",
-    // Code Llama models
-    "codellama-7b",
-    "codellama-13b",
-    "codellama-34b",
-    "codellama-70b",
-    // Tiny Llama models
-    "tinyllama-1-1b",
+pub const SUPPORTED_MODEL_FAMILIES: &[&str] = &[
+    "openai",   // All OpenAI models
+    "claude",   // All Anthropic Claude models
+    "mistral",  // All Mistral models
+    "deepseek", // All DeepSeek models
+    "llama",    // All Meta Llama models
 ];
 
 fn load_tokenizer(path: &str) -> Result<Tokenizer> {

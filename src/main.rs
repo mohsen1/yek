@@ -12,13 +12,6 @@ use yek::{
 fn main() -> Result<()> {
     let matches = Command::new("yek")
         .about("Repository content chunker and serializer for LLM consumption")
-        .after_help(format!(
-            "Repository content chunker and serializer for LLM consumption\n\n\
-            SUPPORTED MODELS:\n\n\
-            Use with --tokens=MODEL\n\n\
-            Available models:\n  {}",
-            model_manager::SUPPORTED_MODELS.join(", ")
-        ))
         .arg(
             Arg::new("directories")
                 .help("Directories to process")
@@ -34,17 +27,22 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("tokens")
                 .long("tokens")
-                .help("Count size in tokens using specified model")
-                .value_name("MODEL")
+                .help(format!(
+                    "Count size in tokens using specified model family.\n\
+                    Options: {}",
+                    model_manager::SUPPORTED_MODEL_FAMILIES.join(", ")
+                ))
+                .default_value("openai")
+                .value_name("MODEL_FAMILY")
                 .num_args(0..=1)
                 .value_parser(move |s: &str| {
                     if s.is_empty() {
-                        Ok(String::new()) // Empty string indicates no model specified
-                    } else if model_manager::SUPPORTED_MODELS.contains(&s) {
-                        Ok(s.to_string())
+                        Ok(String::new()) // Empty string indicates no model family specified
+                    } else if model_manager::SUPPORTED_MODEL_FAMILIES.contains(&s) {
+                        Ok("openai".to_string())
                     } else {
                         Err(format!(
-                            "Unsupported model '{}'. Use --help to see supported models.",
+                            "Unsupported model family '{}'. Use --help to see supported model families.",
                             s
                         ))
                     }
