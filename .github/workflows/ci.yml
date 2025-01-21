@@ -123,22 +123,24 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev musl-tools
+          sudo apt-get install -y pkg-config libssl-dev musl-tools gcc-aarch64-linux-gnu
 
           # Handle aarch64 targets
           if [[ "${{ matrix.target }}" == *"aarch64"* ]]; then
             # GNU targets
             if [[ "${{ matrix.target }}" == *"gnu"* ]]; then
               sudo apt-get install -y gcc-aarch64-linux-gnu
-              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
             # MUSL targets
-            else
-              # Install musl-cross compiler
+            elif [[ "${{ matrix.target }}" == *"musl"* ]]; then
               wget https://musl.cc/aarch64-linux-musl-cross.tgz
               sudo tar -xzf aarch64-linux-musl-cross.tgz -C /usr/local --strip-components=1
-              echo "${{ matrix.target }}" >> targets.txt
-              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc
-              export PATH=/usr/local/bin:$PATH
+              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=/usr/local/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
+              echo "PATH=/usr/local/bin:$PATH" >> $GITHUB_ENV
+              echo "CC_aarch64_unknown_linux_musl=/usr/local/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
+              echo "OPENSSL_DIR=/usr/local/aarch64-linux-musl" >> $GITHUB_ENV
+              echo "OPENSSL_INCLUDE_DIR=/usr/local/aarch64-linux-musl/include" >> $GITHUB_ENV
+              echo "OPENSSL_LIB_DIR=/usr/local/aarch64-linux-musl/lib" >> $GITHUB_ENV
             fi
           fi
 
