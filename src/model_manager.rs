@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::sync::OnceLock;
-use tiktoken_rs::get_bpe_from_model;
+use tiktoken_rs::{get_bpe_from_model, o200k_base};
 use tokenizers::Tokenizer;
 
 static MODEL_CACHE: OnceLock<HashMap<String, Tokenizer>> = OnceLock::new();
@@ -111,8 +111,15 @@ pub fn get_tokenizer(model: &str) -> Result<&'static Tokenizer> {
 }
 
 pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
-    let encoding = get_bpe_from_model("gpt-4")
-        .map_err(|e| anyhow!("Failed to get tiktoken encoding: {}", e))?;
+    let encoding = match model {
+        // GPT-4o and o1 models use o200k_base
+        m if m.starts_with("gpt-4o") || m.starts_with("o1") => {
+            o200k_base().map_err(|e| anyhow!("Failed to get o200k_base encoding: {}", e))?
+        }
+        // For other models, use a default encoding
+        _ => get_bpe_from_model("gpt-4")
+            .map_err(|e| anyhow!("Failed to get tiktoken encoding: {}", e))?,
+    };
 
     Ok(encoding.encode_with_special_tokens(text).len())
 }
