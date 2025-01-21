@@ -32,7 +32,7 @@ fn e2e_small_repo_basic() {
     cmd.current_dir(repo.path())
         .arg("--output-dir")
         .arg(&output_dir)
-        .arg("--max-size=200KB") // Large enough to include all files in one chunk
+        .arg("--max-size=200K") // Large enough to include all files in one chunk
         .assert()
         .success();
 
@@ -73,7 +73,7 @@ fn e2e_large_file_splitting() {
     // We set chunk limit to ~100 KB so that 1 MB file is forced into ~10 parts
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.current_dir(repo.path())
-        .arg("--max-size=50KB") // Much smaller chunk size
+        .arg("--max-size=50K") // Much smaller chunk size
         .arg("--output-dir")
         .arg(&output_dir)
         .assert()
@@ -140,7 +140,7 @@ fn e2e_nested_paths() {
     cmd.current_dir(repo.path())
         .arg("--output-dir")
         .arg(&output_dir)
-        .arg("--max-size=50KB")
+        .arg("--max-size=50K")
         .assert()
         .success();
 
@@ -268,7 +268,7 @@ score = 1
         .arg("--output-dir")
         .arg(&output_dir)
         .arg("--debug")
-        .arg("--max-size=10KB")
+        .arg("--max-size=10K")
         .output()
         .expect("Failed to execute command");
 
@@ -362,7 +362,7 @@ score = 99
         .arg(repo2.path())
         .arg("--output-dir")
         .arg(out_str)
-        .arg("--max-size=5KB")
+        .arg("--max-size=5K")
         .assert()
         .success();
 
@@ -407,7 +407,7 @@ fn e2e_many_small_files_parallel() {
     cmd.current_dir(repo.path())
         .arg("--output-dir")
         .arg(&output_dir)
-        .arg("--max-size=5KB") // Much smaller chunk size
+        .arg("--max-size=5K") // Much smaller chunk size
         .assert()
         .success();
 
