@@ -1,7 +1,6 @@
 mod integration_common;
 use assert_cmd::Command;
 use integration_common::{create_file, ensure_empty_output_dir, setup_temp_repo};
-use predicates::prelude::*;
 use std::fs;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -400,77 +399,82 @@ score = 99
 }
 
 // Replace the parallel test with macro usage
-timeout_test!(e2e_many_small_files_parallel, 30, async {
-    let repo = setup_temp_repo();
+timeout_test!(
+    e2e_many_small_files_parallel,
+    30,
+    async {
+        let repo = setup_temp_repo();
 
-    // Create many small files
-    for i in 0..200 {
-        let file_name = format!("file_{:03}.txt", i);
-        let content = "some small content\n".repeat(100);
-        create_file(repo.path(), &file_name, content.as_bytes());
-    }
+        // Create many small files
+        for i in 0..200 {
+            let file_name = format!("file_{:03}.txt", i);
+            let content = "some small content\n".repeat(100);
+            create_file(repo.path(), &file_name, content.as_bytes());
+        }
 
-    let output_dir = repo.path().join("yek-output");
-    ensure_empty_output_dir(&output_dir);
+        let output_dir = repo.path().join("yek-output");
+        ensure_empty_output_dir(&output_dir);
 
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .arg("--max-size=5KB") // Much smaller chunk size
-        .output()
-        .expect("Failed to execute command");
+        let mut cmd = Command::cargo_bin("yek").unwrap();
+        let output = cmd
+            .current_dir(repo.path())
+            .arg("--output-dir")
+            .arg(&output_dir)
+            .arg("--max-size=5KB") // Much smaller chunk size
+            .output()
+            .expect("Failed to execute command");
 
-    assert!(output.status.success(), "Command failed");
+        assert!(output.status.success(), "Command failed");
 
-    // Ensure we have multiple chunks
-    let mut chunk_files: Vec<_> = fs::read_dir(&output_dir)
-        .unwrap()
-        .filter_map(|e| {
-            let p = e.ok()?.path();
-            if p.extension()? == "txt" {
-                // Extract chunk index from filename "chunk-{index}.txt"
-                let index = p
-                    .file_stem()?
-                    .to_str()?
-                    .strip_prefix("chunk-")?
-                    .split("-part-") // Handle split parts if any
-                    .next()?
-                    .parse::<usize>()
-                    .ok()?;
-                Some((index, p))
-            } else {
-                None
+        // Ensure we have multiple chunks
+        let mut chunk_files: Vec<_> = fs::read_dir(&output_dir)
+            .unwrap()
+            .filter_map(|e| {
+                let p = e.ok()?.path();
+                if p.extension()? == "txt" {
+                    // Extract chunk index from filename "chunk-{index}.txt"
+                    let index = p
+                        .file_stem()?
+                        .to_str()?
+                        .strip_prefix("chunk-")?
+                        .split("-part-") // Handle split parts if any
+                        .next()?
+                        .parse::<usize>()
+                        .ok()?;
+                    Some((index, p))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        // Sort by chunk index
+        chunk_files.sort_by_key(|(index, _)| *index);
+        let chunk_files: Vec<_> = chunk_files.into_iter().map(|(_, p)| p).collect();
+
+        assert!(
+            chunk_files.len() > 1,
+            "Must produce multiple chunks with 200 small files"
+        );
+
+        // Check if files appear in any chunk
+        let mut found_first = false;
+        let mut found_last = false;
+
+        for chunk_file in &chunk_files {
+            let content = fs::read_to_string(chunk_file).unwrap();
+            if content.contains(">>>> file_000.txt") {
+                found_first = true;
             }
-        })
-        .collect();
-    // Sort by chunk index
-    chunk_files.sort_by_key(|(index, _)| *index);
-    let chunk_files: Vec<_> = chunk_files.into_iter().map(|(_, p)| p).collect();
-
-    assert!(
-        chunk_files.len() > 1,
-        "Must produce multiple chunks with 200 small files"
-    );
-
-    // Check if files appear in any chunk
-    let mut found_first = false;
-    let mut found_last = false;
-
-    for chunk_file in &chunk_files {
-        let content = fs::read_to_string(chunk_file).unwrap();
-        if content.contains(">>>> file_000.txt") {
-            found_first = true;
+            if content.contains(">>>> file_199.txt") {
+                found_last = true;
+            }
         }
-        if content.contains(">>>> file_199.txt") {
-            found_last = true;
-        }
+
+        assert!(found_first, "file_000.txt must appear in some chunk");
+        assert!(found_last, "file_199.txt must appear in some chunk");
     }
-
-    assert!(found_first, "file_000.txt must appear in some chunk");
-    assert!(found_last, "file_199.txt must appear in some chunk");
-});
+    .await
+);
 
 #[test]
 fn streams_content_when_piped() -> Result<(), Box<dyn std::error::Error>> {

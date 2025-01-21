@@ -687,7 +687,7 @@ pub fn parse_size_input(input: &str, is_tokens: bool) -> Result<usize> {
                 .trim()
                 .parse::<usize>()
                 .map_err(|_| anyhow!("Invalid token size: {}", s))?;
-            return Ok(val * 1000);
+            Ok(val * 1000)
         } else if s.ends_with('m') {
             let val = s[..s.len() - 1]
                 .trim()

@@ -4,7 +4,7 @@ use crate::{
     normalize_path, Result, YekConfig,
 };
 use anyhow::anyhow;
-use crossbeam::channel::{bounded, Sender};
+use crossbeam::channel::bounded;
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
 use std::{
@@ -40,7 +40,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
     debug!("Git commit times: {:?}", git_times);
 
     let (tx, rx) = bounded(1024);
-    let num_threads = num_cpus::get().min(16); // Cap at 16 threads
+    let _num_threads = num_cpus::get().min(16); // Cap at 16 threads
 
     let config = Arc::new(config.clone());
     let base_dir = Arc::new(base_dir.to_path_buf());
@@ -94,7 +94,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
                 } else {
                     glob_to_regex(p)
                 };
-                Regex::new(&pattern).map_or(false, |re| re.is_match(&rel_path))
+                Regex::new(&pattern).is_ok_and(|re| re.is_match(&rel_path))
             }) {
                 debug!("Skipping {} - matched ignore pattern", rel_path);
                 return WalkState::Continue;

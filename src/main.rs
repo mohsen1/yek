@@ -108,16 +108,23 @@ fn main() -> Result<()> {
         .collect();
 
     // Gather config
-    let mut yek_config = YekConfig::default();
+    let mut yek_config = YekConfig {
+        token_mode: matches.contains_id("tokens"),
+        tokenizer_model: if matches.contains_id("tokens") {
+            matches.get_one::<String>("tokens").and_then(|model| {
+                if !model.is_empty() {
+                    Some(model.to_string())
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        },
+        ..Default::default()
+    };
 
-    // Handle token mode and model first
-    yek_config.token_mode = matches.contains_id("tokens");
     if yek_config.token_mode {
-        if let Some(model) = matches.get_one::<String>("tokens") {
-            if !model.is_empty() {
-                yek_config.tokenizer_model = Some(model.to_string());
-            }
-        }
         debug!(
             "Token mode enabled{}",
             yek_config.tokenizer_model.as_ref().map_or_else(
