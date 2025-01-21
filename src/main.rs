@@ -110,7 +110,7 @@ fn main() -> Result<()> {
         debug!(
             "Token mode enabled{}",
             yek_config.tokenizer_model.as_ref().map_or_else(
-                || " with default model: gpt-4".to_string(),
+                || " with default model: openai".to_string(),
                 |m| format!(" with model: {}", m)
             )
         );

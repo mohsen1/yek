@@ -49,7 +49,7 @@ fn test_model_validation() {
     let mut cmd = Command::cargo_bin("yek").unwrap();
     let output = cmd
         .current_dir(repo.path())
-        .arg("--tokens=gpt-4o")
+        .arg("--tokens=openai")
         .output()
         .expect("Failed to execute command");
 
@@ -88,7 +88,7 @@ fn test_model_from_config() {
         repo.path(),
         "yek.toml",
         r#"
-tokenizer_model = "gpt-4o"
+tokenizer_model = "openai"
 token_mode = true
 "#
         .as_bytes(),

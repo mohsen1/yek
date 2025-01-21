@@ -372,7 +372,7 @@ fn write_single_chunk(
 /// Get the size of content in either bytes or tokens
 fn get_content_size(content: &str, config: &YekConfig) -> Result<usize> {
     if config.token_mode {
-        let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
+        let model = config.tokenizer_model.as_deref().unwrap_or("openai");
         model_manager::count_tokens(content, model)
     } else {
         Ok(content.len())
@@ -478,7 +478,7 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     if config.token_mode {
         debug!(
             "Token mode enabled with model: {:?}",
-            config.tokenizer_model.as_deref().unwrap_or("gpt-4")
+            config.tokenizer_model.as_deref().unwrap_or("openai")
         );
     }
 
@@ -744,7 +744,7 @@ pub fn merge_config(dest: &mut YekConfig, other: &YekConfig) {
 
     // Apply default model if still missing
     if dest.token_mode && dest.tokenizer_model.is_none() {
-        dest.tokenizer_model = Some("gpt-4".to_string());
+        dest.tokenizer_model = Some("openai".to_string());
     }
 
     debug!(

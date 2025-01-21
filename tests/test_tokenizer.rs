@@ -17,7 +17,7 @@ fn accepts_model_via_tokens_flag() {
     let mut cmd = Command::cargo_bin("yek").unwrap();
     let output = cmd
         .current_dir(repo.path())
-        .arg("--tokens=gpt-4")
+        .arg("--tokens=openai")
         .arg("--debug")
         .arg("--output-dir")
         .arg(&output_dir)
@@ -49,7 +49,7 @@ fn accepts_model_from_config() {
         repo.path(),
         "yek.toml",
         r#"
-tokenizer_model = "gpt-4"
+tokenizer_model = "openai"
 "#
         .as_bytes(),
     );
@@ -93,7 +93,7 @@ fn cli_model_overrides_config() {
         repo.path(),
         "yek.toml",
         r#"
-tokenizer_model = "gpt-4"
+tokenizer_model = "openai"
 "#
         .as_bytes(),
     );
@@ -105,7 +105,7 @@ tokenizer_model = "gpt-4"
     let mut cmd = Command::cargo_bin("yek").unwrap();
     let output = cmd
         .current_dir(repo.path())
-        .arg("--tokens=gpt-4") // Override config model
+        .arg("--tokens=openai") // Override config model
         .arg("--debug")
         .arg("--output-dir")
         .arg(&output_dir)
@@ -121,13 +121,13 @@ tokenizer_model = "gpt-4"
 
     // Verify token mode is enabled with CLI model
     assert!(
-        debug_log.contains("Token mode enabled with model: gpt-4"),
+        debug_log.contains("Token mode enabled with model: openai"),
         "Should enable token mode with specified model"
     );
 }
 
 #[test]
-fn defaults_to_gpt4_when_no_model_specified() {
+fn defaults_to_openai_when_no_model_specified() {
     let repo = setup_temp_repo();
     let content = "This is a test file with some content.";
     create_file(repo.path(), "test.txt", content.as_bytes());
@@ -155,8 +155,8 @@ fn defaults_to_gpt4_when_no_model_specified() {
 
     // Verify token mode is enabled
     assert!(
-        debug_log.contains("Token mode enabled with default model: gpt-4"),
-        "Should use default GPT-4 model"
+        debug_log.contains("Token mode enabled with default model: openai"),
+        "Should use default openai model"
     );
 }
 

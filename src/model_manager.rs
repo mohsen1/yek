@@ -24,7 +24,7 @@ pub fn get_tokenizer(model: &str) -> Result<&'static Tokenizer> {
     if !cache.contains_key(model) {
         let tokenizer = match model {
             // OpenAI models use tiktoken instead
-            m if m.starts_with("gpt") || m.starts_with("o1") => {
+            m if m == "openai" => {
                 return Err(anyhow!("OpenAI models should use tiktoken-rs instead"));
             }
             // BPE models
@@ -50,7 +50,7 @@ pub fn get_tokenizer(model: &str) -> Result<&'static Tokenizer> {
 pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
     match model {
         // OpenAI models use o200k_base
-        m if m.starts_with("gpt-4o") || m.starts_with("o1") => {
+        m if m == "openai" => {
             let encoding =
                 o200k_base().map_err(|e| anyhow!("Failed to get o200k_base encoding: {}", e))?;
             Ok(encoding.encode_with_special_tokens(text).len())
@@ -66,7 +66,7 @@ pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
                 }
                 Err(_) => {
                     // Fallback to tiktoken BPE
-                    let encoding = get_bpe_from_model("gpt-4")
+                    let encoding = get_bpe_from_model("openai")
                         .map_err(|e| anyhow!("Failed to get tiktoken BPE encoding: {}", e))?;
                     Ok(encoding.encode_with_special_tokens(text).len())
                 }
