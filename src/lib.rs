@@ -10,6 +10,7 @@ use std::process::{Command as SysCommand, Stdio};
 use tracing::debug;
 
 mod defaults;
+pub mod model_manager;
 mod parallel;
 
 use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
@@ -370,22 +371,13 @@ fn write_single_chunk(
     Ok(())
 }
 
-/// Simple token counting implementation based on whitespace and punctuation
-fn count_tokens(text: &str, model: &str) -> usize {
-    // For now, we'll use a simple whitespace-based tokenization
-    // This is a naive implementation and should be replaced with proper model-specific tokenizers
-    debug!("Counting tokens using model: {}", model);
-    text.split_whitespace().count()
-}
-
 /// Get the size of content in either bytes or tokens
-fn get_content_size(content: &str, config: &YekConfig) -> usize {
+fn get_content_size(content: &str, config: &YekConfig) -> Result<usize> {
     if config.token_mode {
         let model = config.tokenizer_model.as_deref().unwrap_or("gpt-4");
-        debug!("Getting content size in tokens using model: {}", model);
-        count_tokens(content, model)
+        model_manager::count_tokens(content, model)
     } else {
-        content.len()
+        Ok(content.len())
     }
 }
 
@@ -418,10 +410,10 @@ fn write_chunks(
     let mut used_size = 0_usize;
 
     for (path, content, _) in sorted_entries {
-        let _content_size = get_content_size(&content, config);
+        let _content_size = get_content_size(&content, config)?;
         let entry = format!("\n>>>> {}\n{}", path, content);
         let entry_size = if token_mode {
-            get_content_size(&entry, config)
+            get_content_size(&entry, config)?
         } else {
             entry.len()
         };
@@ -740,4 +732,13 @@ pub fn merge_config(dest: &mut YekConfig, other: &YekConfig) {
 
     // Handle stream mode
     dest.stream |= other.stream;
+}
+
+#[derive(Debug)]
+pub struct ProcessedFile {
+    pub priority: i32,
+    pub file_index: usize,
+    pub rel_path: String,
+    pub content: String,
+    pub token_count: Option<usize>, // Add this field
 }

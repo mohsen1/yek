@@ -73,7 +73,7 @@ fn load_tokenizer(path: &str) -> Result<Tokenizer> {
 }
 
 pub fn get_tokenizer(model: &str) -> Result<&'static Tokenizer> {
-    let cache = MODEL_CACHE.get_or_init(|| HashMap::new());
+    let cache = MODEL_CACHE.get_or_init(HashMap::new);
 
     if !cache.contains_key(model) {
         let tokenizer = match model {
