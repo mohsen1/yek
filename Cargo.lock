@@ -4407,6 +4407,7 @@ dependencies = [
  "git2",
  "ignore",
  "indicatif",
+ "lazy_static",
  "num_cpus",
  "path-slash",
  "predicates",

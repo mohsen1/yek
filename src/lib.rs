@@ -43,9 +43,14 @@ fn truncate_bytes(s: &str, max_bytes: usize) -> String {
 
 /// Convert a glob pattern to a regex pattern
 fn glob_to_regex(pattern: &str) -> String {
-    let mut regex = String::with_capacity(pattern.len() * 2);
+    let adjusted_pattern = if pattern.ends_with('/') {
+        format!("{}**", pattern)
+    } else {
+        pattern.to_string()
+    };
+    let mut regex = String::with_capacity(adjusted_pattern.len() * 2);
     regex.push('^');
-    let mut chars = pattern.chars().peekable();
+    let mut chars = adjusted_pattern.chars().peekable();
 
     while let Some(c) = chars.next() {
         match c {
@@ -437,25 +442,137 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
         .map(|f| (f.rel_path, f.content, f.priority))
         .collect();
 
-    // Sort by descending priority (higher priority first) to ensure truncation retains important content
+    // Sort by descending priority (higher priority first)
     entries.sort_by(|a, b| b.2.cmp(&a.2));
 
-    // Build single output content
-    let mut content = String::new();
+    // Prepare content chunks
+    let max_size = config.max_size.unwrap_or(usize::MAX);
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    let mut current_size = 0;
+
     for (rel_path, file_content, _) in entries {
-        content.push_str(&format!(">>>> {}\n{}\n", rel_path, file_content));
+        let model = config.tokenizer_model.as_deref().unwrap_or("openai");
+        let entry = format!(">>>> {}\n{}\n", rel_path, file_content);
+        let entry_size = if config.token_mode {
+            model_manager::count_tokens(&entry, model).unwrap_or_else(|_| entry.len())
+        } else {
+            entry.len()
+        };
+
+        // Check if entry exceeds max_size on its own
+        if entry_size > max_size {
+            let mut start = 0;
+            let mut part = 0;
+
+            while start < file_content.len() {
+                let part_header = format!(">>>> {} (part {})\n", rel_path, part);
+                let header_size = if config.token_mode {
+                    model_manager::count_tokens(&part_header, model)
+                        .unwrap_or_else(|_| part_header.len())
+                } else {
+                    part_header.len()
+                };
+
+                let available_size = max_size.saturating_sub(header_size);
+                if available_size <= 0 {
+                    break; // Can't even fit the header
+                }
+
+                let end = if config.token_mode {
+                    // Tokenize the remaining content
+                    let tokens = model_manager::tokenize(&file_content[start..], model)
+                        .unwrap_or_else(|_| vec![]);
+                    let mut token_count = 0;
+                    let mut char_pos = start;
+
+                    for token in tokens.iter() {
+                        let token_text =
+                            model_manager::decode_tokens(&[*token], model).unwrap_or_default();
+                        token_count += 1;
+                        char_pos += token_text.len();
+
+                        if token_count > available_size {
+                            break;
+                        }
+                    }
+
+                    (start + char_pos).min(file_content.len())
+                } else {
+                    // Byte mode handling
+                    (start + available_size).min(file_content.len())
+                };
+
+                let part_content = &file_content[start..end];
+                let full_part = format!("{}{}\n", part_header, part_content);
+                chunks.push(full_part);
+
+                start = end;
+                part += 1;
+            }
+            continue;
+        }
+
+        // For non-split files, check if adding entry would exceed max_size
+        let header_size = if config.token_mode {
+            model_manager::count_tokens(&format!(">>>> {}\n", rel_path), model)
+                .unwrap_or_else(|_| rel_path.len() + 6)
+        } else {
+            rel_path.len() + 6 // ">>>> " + "\n"
+        };
+
+        let content_size = if config.token_mode {
+            model_manager::count_tokens(&file_content, model).unwrap_or_else(|_| file_content.len())
+        } else {
+            file_content.len()
+        };
+
+        let total_size = header_size + content_size;
+
+        if current_size + total_size > max_size && !current_chunk.is_empty() {
+            chunks.push(current_chunk);
+            current_chunk = String::new();
+            current_size = 0;
+        }
+
+        current_chunk.push_str(&format!(">>>> {}\n{}\n", rel_path, file_content));
+        current_size += total_size;
     }
 
-    // Apply max_size truncation
-    let max_size = config.max_size.unwrap_or(usize::MAX);
-    let truncated_content = truncate_bytes(&content, max_size);
+    // Add remaining content
+    if !current_chunk.is_empty() {
+        chunks.push(current_chunk);
+    }
 
-    // Write to output.txt or stdout
-    write_output(
-        &truncated_content,
-        config.output_dir.as_deref(),
-        config.stream,
-    )?;
+    // Handle empty repo case
+    if chunks.is_empty() {
+        chunks.push(String::new());
+    }
+
+    // Write each chunk to a separate file or combine for streaming
+    if config.stream {
+        write_output(&chunks.join(""), config.output_dir.as_deref(), true)?;
+    } else {
+        let out_dir = config
+            .output_dir
+            .as_deref()
+            .map(|d| {
+                std::fs::create_dir_all(d).unwrap_or_else(|e| {
+                    debug!("Failed to create output directory: {}", e);
+                });
+                d
+            })
+            .expect("output dir required for file mode");
+
+        if chunks.len() == 1 {
+            fs::write(out_dir.join("output.txt"), &chunks[0])?;
+        } else {
+            for (i, chunk) in chunks.iter().enumerate() {
+                fs::write(out_dir.join(format!("part-{}.txt", i)), chunk)?;
+            }
+            debug!("Wrote {} parts", chunks.len());
+        }
+    }
 
     Ok(())
 }
@@ -569,44 +686,19 @@ fn is_effectively_absolute(path: &std::path::Path) -> bool {
 
 /// Returns a relative, normalized path string (forward slashes on all platforms).
 pub fn normalize_path(path: &Path, base: &Path) -> String {
-    let abs_path = if path.is_absolute() {
-        path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
-    } else {
-        let canonical_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
-        canonical_base
-            .join(path)
-            .canonicalize()
-            .unwrap_or_else(|_| base.to_path_buf())
-    };
+    // Use the original base path without canonicalization
+    let base = base.as_ref();
+    let path = path.as_ref();
 
-    let abs_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
-
-    // Try to get the relative path
-    match abs_path.strip_prefix(&abs_base) {
-        Ok(rel) => {
-            let path_str = rel.to_string_lossy().replace('\\', "/");
-            let path_str = if path_str.starts_with("./") {
-                path_str.replacen("./", "", 1)
-            } else {
-                path_str.to_string()
-            };
-            if path_str.is_empty() || path_str == "." {
-                // Handle root directory case
-                ".".to_string()
-            } else {
-                path_str
-            }
+    // Attempt to get relative path directly without canonicalization
+    match path.strip_prefix(base) {
+        Ok(rel_path) => {
+            let path_str = rel_path.to_string_lossy().replace('\\', "/");
+            path_str.trim_start_matches("./").to_string()
         }
         Err(_) => {
-            // If strip_prefix fails, try a more manual approach
-            let path_str = path.to_string_lossy().replace('\\', "/");
-            if path_str.starts_with("./") {
-                path_str.replacen("./", "", 1)
-            } else if path_str.starts_with('/') || path_str.starts_with('\\') {
-                format!(".{}", path_str)
-            } else {
-                path_str.to_string()
-            }
+            // Fallback to using path as-is but normalize slashes
+            path.to_string_lossy().replace('\\', "/")
         }
     }
 }
