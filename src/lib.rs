@@ -424,9 +424,9 @@ fn write_chunks(
         debug!("Before sort - File: {} Priority: {}", path, priority);
     }
 
-    // Sort by descending priority (higher priority first)
+    // Sort by ascending priority (lower priority first)
     let mut sorted_entries = entries.to_vec();
-    sorted_entries.sort_by(|a, b| b.2.cmp(&a.2));
+    sorted_entries.sort_by(|a, b| a.2.cmp(&b.2));
 
     // Print entries after sorting
     for (path, _, priority) in &sorted_entries {
@@ -572,8 +572,8 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
         .map(|f| (f.rel_path, f.content, f.priority))
         .collect();
 
-    // Sort by descending priority (higher priority first)
-    entries.sort_by(|a, b| b.2.cmp(&a.2));
+    // Sort by ascending priority (lower priority first)
+    entries.sort_by(|a, b| a.2.cmp(&b.2));
 
     // Write chunks and get total count
     let total_chunks = write_chunks(&entries, &config, config.stream)?;
