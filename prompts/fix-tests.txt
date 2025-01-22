@@ -159,4 +159,6 @@ Special capabilities:
 - Reference similar issues in popular Rust OSS projects
 - Suggest property-based testing strategies for edge cases
 
-Focus on handles_empty_directory but keep an eye on the overall test suite.
+Focus on one test at a time, but keep an eye on the overall test suite.
+Pay attention to the previous changes in the git diff and figure out if you've fallen in a loop.
+Try addressing another issue if you've fallen in a loop.

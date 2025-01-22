@@ -442,6 +442,10 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     let processed_files = process_files_parallel(repo_path, &config)?;
 
     // Convert ProcessedFile to the expected tuple format
+    if processed_files.is_empty() {
+        return Ok(()); // No files processed, nothing to write
+    }
+
     let mut entries: Vec<(String, String, i32)> = processed_files
         .into_iter()
         .map(|f| (f.rel_path, f.content, f.priority))
@@ -505,7 +509,7 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
                     (start + char_pos).min(file_content.len())
                 } else {
                     // Byte mode handling
-                    (start + available_size).min(file_content.len())
+                    start + available_size.min(file_content.len() - start)
                 };
 
                 let part_content = &file_content[start..end];
@@ -551,7 +555,7 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
 
     // Handle empty repo case
     if chunks.is_empty() {
-        chunks.push(String::new());
+        return Ok(());
     }
 
     // Write each chunk to a separate file or combine for streaming

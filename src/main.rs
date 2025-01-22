@@ -164,13 +164,13 @@ fn main() -> Result<()> {
 
         // Handle streaming logic
         if !stdout_is_tty {
-            // Only enable streaming if no output directory was explicitly set
-            if config_for_this_dir.output_dir.is_none() {
-                config_for_this_dir.stream = true;
-            }
+            // Force streaming when stdout is piped
+            config_for_this_dir.stream = true;
+            config_for_this_dir.output_dir = None;
         } else {
             // In interactive mode, set default output dir if none specified and not streaming
             if config_for_this_dir.output_dir.is_none() {
+                std::fs::create_dir_all("repo-serialized")?;
                 config_for_this_dir.output_dir = Some(PathBuf::from("repo-serialized"));
             }
         }
