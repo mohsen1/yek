@@ -270,6 +270,8 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 /// Determine final priority of a file by scanning the priority list
 /// in descending order of score.
 pub fn get_file_priority(path: &str, rules: &[PriorityRule]) -> i32 {
+    // Strip leading ./ if present
+    let path = path.strip_prefix("./").unwrap_or(path);
     rules
         .iter()
         .filter_map(|rule| {
