@@ -4,9 +4,9 @@ use assert_cmd::Command;
 use integration_common::{create_file, ensure_empty_output_dir, setup_temp_repo};
 use std::fs;
 
-/// Writes a file larger than the default 10MB limit in tokens or bytes, forcing multiple chunks.
+/// Writes a file larger than the default 10MB limit in tokens or bytes, forcing trimming.
 #[test]
-fn splits_large_file_in_chunks_bytes_mode() {
+fn trims_large_file_in_bytes_mode() {
     let repo = setup_temp_repo();
     let large_content = "A ".repeat(1024 * 1024 * 11); // ~ 11MB
     create_file(repo.path(), "BIG.txt", large_content.as_bytes());
@@ -36,21 +36,21 @@ fn splits_large_file_in_chunks_bytes_mode() {
 
     // Check debug messages
     assert!(
-        debug_log.contains("File exceeds chunk size, splitting into multiple chunks"),
-        "Should indicate file exceeds chunk size"
+        debug_log.contains("File exceeds max size, trimming"),
+        "Should indicate file exceeds max size"
     );
     assert!(
-        debug_log.contains("Writing large file part 0"),
-        "Should write first part"
+        debug_log.contains("Writing trimmed file"),
+        "Should write trimmed file"
     );
     assert!(
-        debug_log.contains("Writing large file part 1"),
-        "Should write second part"
+        debug_log.contains("Writing trimmed file"),
+        "Should write trimmed file"
     );
 }
 
 #[test]
-fn splits_large_file_in_chunks_token_mode() {
+fn trims_large_file_in_token_mode() {
     let repo = setup_temp_repo();
     // Each "word" is a token
     let large_content = "TOKEN ".repeat(200_000); // enough tokens to exceed default
@@ -82,15 +82,15 @@ fn splits_large_file_in_chunks_token_mode() {
 
     // Check debug messages
     assert!(
-        debug_log.contains("File exceeds chunk size, splitting into multiple chunks"),
-        "Should indicate file exceeds chunk size"
+        debug_log.contains("File exceeds max size, trimming"),
+        "Should indicate file exceeds max size"
     );
     assert!(
-        debug_log.contains("Writing large file part 0"),
-        "Should write first part"
+        debug_log.contains("Writing trimmed file"),
+        "Should write trimmed file"
     );
     assert!(
-        debug_log.contains("Writing large file part 1"),
-        "Should write second part"
+        debug_log.contains("Writing trimmed file"),
+        "Should write trimmed file"
     );
 }

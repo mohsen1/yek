@@ -25,10 +25,10 @@ fn skips_known_binary_files() {
     };
     serialize_repo(temp.path(), Some(&config)).unwrap();
 
-    // Check that the first chunk exists and contains only the text file
-    let chunk_0 = output_dir.join("chunk-0.txt");
-    assert!(chunk_0.exists(), "Should write first chunk");
-    let content = fs::read_to_string(chunk_0).unwrap();
+    // Check that output.txt exists and contains only the text file
+    let output_file = output_dir.join("output.txt");
+    assert!(output_file.exists(), "Should write output file");
+    let content = fs::read_to_string(output_file).unwrap();
     assert!(
         content.contains("text content"),
         "Should contain text file content"
@@ -61,10 +61,10 @@ fn respects_custom_binary_extensions() {
     };
     serialize_repo(temp.path(), Some(&config)).unwrap();
 
-    // Check that the first chunk exists and contains only the text file
-    let chunk_0 = output_dir.join("chunk-0.txt");
-    assert!(chunk_0.exists(), "Should write first chunk");
-    let content = fs::read_to_string(chunk_0).unwrap();
+    // Check that output.txt exists and contains only the text file
+    let output_file = output_dir.join("output.txt");
+    assert!(output_file.exists(), "Should write output file");
+    let content = fs::read_to_string(output_file).unwrap();
     assert!(
         content.contains("text content"),
         "Should contain text file content"

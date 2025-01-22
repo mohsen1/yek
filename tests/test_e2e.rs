@@ -19,7 +19,7 @@ macro_rules! timeout_test {
 
 /// This test simulates an entire small repository with multiple directories
 /// and checks the end-to-end behavior of running `yek` on it.
-/// It verifies chunking, ignoring, and content ordering.
+/// It verifies parts, ignoring, and content ordering.
 #[test]
 fn e2e_small_repo_basic() {
     let repo = setup_temp_repo();
@@ -45,11 +45,11 @@ fn e2e_small_repo_basic() {
     cmd.current_dir(repo.path())
         .arg("--output-dir")
         .arg(&output_dir)
-        .arg("--max-size=200KB") // Large enough to include all files in one chunk
+        .arg("--max-size=200KB") // Large enough to include all files in one output
         .assert()
         .success();
 
-    // Check that ignore_me/binary.bin is not in any output chunk
+    // Check that ignore_me/binary.bin is not in output
     let mut found_lib_rs = false;
     let mut found_bin = false;
 
@@ -58,7 +58,7 @@ fn e2e_small_repo_basic() {
         if path.extension().unwrap_or_default() != "txt" {
             continue;
         }
-        let content = fs::read_to_string(&path).expect("read chunk file");
+        let content = fs::read_to_string(&path).expect("read output file");
         if content.contains("binary.bin") {
             found_bin = true;
         }
@@ -66,14 +66,13 @@ fn e2e_small_repo_basic() {
             found_lib_rs = true;
         }
     }
-    assert!(!found_bin, "binary.bin (ignored) must not appear in chunks");
+    assert!(!found_bin, "binary.bin (ignored) must not appear in output");
     assert!(found_lib_rs, "lib.rs must appear in the serialized output");
 }
 
-/// This test ensures that large single files (bigger than the chunk limit)
-/// do indeed get split into multiple chunks on Windows and Unix.
+/// This test ensures that large files are truncated based on max_size
 #[test]
-fn e2e_large_file_splitting() {
+fn large_file_truncation() {
     let repo = TempDir::new().unwrap();
 
     // 1 MB worth of text
@@ -83,38 +82,26 @@ fn e2e_large_file_splitting() {
     let output_dir = repo.path().join("yek-output");
     ensure_empty_output_dir(&output_dir);
 
-    // We set chunk limit to ~100 KB so that 1 MB file is forced into ~10 parts
+    // We set max_size to ~100 KB so that 1 MB file is truncated
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.current_dir(repo.path())
-        .arg("--max-size=50KB") // Much smaller chunk size
+        .arg("--max-size=50KB") // Much smaller size limit
         .arg("--output-dir")
         .arg(&output_dir)
         .assert()
         .success();
 
-    // Verify multiple chunk files
-    let mut chunk_count = 0;
-    println!("Output directory: {:?}", output_dir);
-    for entry in fs::read_dir(&output_dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().unwrap_or_default() == "txt" {
-            chunk_count += 1;
-            let content = fs::read_to_string(&path).expect("read chunk");
-            // Only print first 100 chars of content
-            println!(
-                "Chunk {}: {} ...",
-                chunk_count,
-                &content.chars().take(100).collect::<String>()
-            );
-            assert!(
-                content.contains("BIGFILE.txt") && content.contains("chunk"),
-                "Each chunk should show the file name banner"
-            );
-        }
-    }
+    // Verify output file
+    let output_file = output_dir.join("output.txt");
+    assert!(output_file.exists(), "Should write output file");
+    let content = fs::read_to_string(&output_file).expect("read output");
     assert!(
-        chunk_count > 1,
-        "Should produce multiple chunks for a large file"
+        content.contains("BIGFILE.txt"),
+        "Should contain file name banner"
+    );
+    assert!(
+        content.len() <= 50 * 1024,
+        "Content should be truncated to max size"
     );
 }
 
@@ -157,18 +144,18 @@ fn e2e_nested_paths() {
         .assert()
         .success();
 
-    // Check chunk content quickly
-    let mut chunk_found = false;
+    // Check output content quickly
+    let mut file_found = false;
     for entry in fs::read_dir(&output_dir).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().unwrap_or_default() == "txt" {
             let content = fs::read_to_string(&path).unwrap();
             if content.contains("src/module2/extra/deep_file.rs") {
-                chunk_found = true;
+                file_found = true;
             }
         }
     }
-    assert!(chunk_found, "Nested file wasn't found in output");
+    assert!(file_found, "Nested file wasn't found in output");
 }
 
 /// Test cross-platform environment by mocking environment variables or
@@ -288,18 +275,10 @@ score = 1
     println!("STDOUT: {}", String::from_utf8_lossy(&assert.stdout));
     println!("STDERR: {}", String::from_utf8_lossy(&assert.stderr));
 
-    // Check final chunk (should have `core/main.rs` due to highest priority).
-    let entries = fs::read_dir(&output_dir).unwrap();
-    let mut chunk_files: Vec<_> = entries
-        .filter_map(|e| {
-            let p = e.ok()?.path();
-            (p.extension()? == "txt").then_some(p)
-        })
-        .collect();
-
-    chunk_files.sort(); // chunk-0.txt, chunk-1.txt, ...
-    let last_chunk = chunk_files.last().expect("Must have at least one chunk");
-    let content = fs::read_to_string(last_chunk).expect("Read last chunk");
+    // Check output (should have `core/main.rs` due to highest priority).
+    let output_file = output_dir.join("output.txt");
+    assert!(output_file.exists(), "Should write output file");
+    let content = fs::read_to_string(&output_file).expect("Read output");
     assert!(
         content.contains("core/main.rs"),
         "highest priority must come last"
@@ -316,12 +295,8 @@ score = 1
     // Make sure README.md is included but before the highest priority
     // We won't do a heavy check here, just confirm it appears somewhere
     let mut included_md = false;
-    for file in &chunk_files {
-        let c = fs::read_to_string(file).unwrap();
-        if c.contains("README.md") {
-            included_md = true;
-            break;
-        }
+    if content.contains("README.md") {
+        included_md = true;
     }
     assert!(
         included_md,
@@ -329,7 +304,7 @@ score = 1
     );
 }
 
-/// This test verifies that after chunking multiple directories at once,
+/// This test verifies that after processing multiple directories at once,
 /// the highest priority files from either directory appear last.
 #[test]
 fn e2e_multi_directory_priority() {
@@ -375,27 +350,48 @@ score = 99
         .arg(repo2.path())
         .arg("--output-dir")
         .arg(out_str)
-        .arg("--max-size=5KB")
+        .arg("--max-size=5KB") // Much smaller size limit
         .assert()
         .success();
 
-    // The last chunk should have `super/c.txt` due to higher priority from second repo
-    let mut chunk_files: Vec<_> = fs::read_dir(&output_dir)
-        .unwrap()
-        .filter_map(|e| {
-            let p = e.ok()?.path();
-            (p.extension()? == "txt").then_some(p)
-        })
-        .collect();
-    chunk_files.sort();
-
-    let last_chunk = chunk_files.last().expect("need at least one chunk");
-    let content = fs::read_to_string(last_chunk).unwrap();
+    // The output should have `super/c.txt` due to higher priority from second repo
+    let output_file = output_dir.path().join("output.txt");
+    assert!(output_file.exists(), "Should write output file");
+    let content = fs::read_to_string(&output_file).unwrap();
     assert!(
         content.contains("super/c.txt"),
         "highest priority must come last"
     );
     // dir1 is priority 10, super is priority 99 => super is last
+
+    // Ensure output is truncated
+    let output_file = output_dir.path().join("output.txt");
+    assert!(output_file.exists(), "Should write output file");
+    let content = fs::read_to_string(&output_file).unwrap();
+    assert!(
+        content.len() <= 5 * 1024,
+        "Content should be truncated to max size"
+    );
+
+    // Check if files appear in output
+    let mut found_first = false;
+    let mut found_last = false;
+
+    for entry in fs::read_dir(&output_dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().unwrap_or_default() == "txt" {
+            let c = fs::read_to_string(&path).unwrap();
+            if c.contains(">>>> dir1/a.txt") {
+                found_first = true;
+            }
+            if c.contains(">>>> dir2/b.txt") {
+                found_last = true;
+            }
+        }
+    }
+
+    assert!(found_first, "dir1/a.txt must appear in output");
+    assert!(found_last, "dir2/b.txt must appear in output");
 }
 
 // Replace the parallel test with macro usage
@@ -420,23 +416,23 @@ timeout_test!(
             .current_dir(repo.path())
             .arg("--output-dir")
             .arg(&output_dir)
-            .arg("--max-size=5KB") // Much smaller chunk size
+            .arg("--max-size=5KB") // Much smaller part size
             .output()
             .expect("Failed to execute command");
 
         assert!(output.status.success(), "Command failed");
 
-        // Ensure we have multiple chunks
-        let mut chunk_files: Vec<_> = fs::read_dir(&output_dir)
+        // Ensure we have multiple parts
+        let mut part_files: Vec<_> = fs::read_dir(&output_dir)
             .unwrap()
             .filter_map(|e| {
                 let p = e.ok()?.path();
                 if p.extension()? == "txt" {
-                    // Extract chunk index from filename "chunk-{index}.txt"
+                    // Extract part index from filename "part-{index}.txt"
                     let index = p
                         .file_stem()?
                         .to_str()?
-                        .strip_prefix("chunk-")?
+                        .strip_prefix("part-")?
                         .split("-part-") // Handle split parts if any
                         .next()?
                         .parse::<usize>()
@@ -447,21 +443,21 @@ timeout_test!(
                 }
             })
             .collect();
-        // Sort by chunk index
-        chunk_files.sort_by_key(|(index, _)| *index);
-        let chunk_files: Vec<_> = chunk_files.into_iter().map(|(_, p)| p).collect();
+        // Sort by part index
+        part_files.sort_by_key(|(index, _)| *index);
+        let part_files: Vec<_> = part_files.into_iter().map(|(_, p)| p).collect();
 
         assert!(
-            chunk_files.len() > 1,
-            "Must produce multiple chunks with 200 small files"
+            part_files.len() > 1,
+            "Must produce multiple parts with 200 small files"
         );
 
-        // Check if files appear in any chunk
+        // Check if files appear in any part
         let mut found_first = false;
         let mut found_last = false;
 
-        for chunk_file in &chunk_files {
-            let content = fs::read_to_string(chunk_file).unwrap();
+        for part_file in &part_files {
+            let content = fs::read_to_string(part_file).unwrap();
             if content.contains(">>>> file_000.txt") {
                 found_first = true;
             }
@@ -470,8 +466,8 @@ timeout_test!(
             }
         }
 
-        assert!(found_first, "file_000.txt must appear in some chunk");
-        assert!(found_last, "file_199.txt must appear in some chunk");
+        assert!(found_first, "file_000.txt must appear in some part");
+        assert!(found_last, "file_199.txt must appear in some part");
     }
     .await
 );
@@ -500,7 +496,7 @@ fn streams_content_when_piped() -> Result<(), Box<dyn std::error::Error>> {
 
     let stdout = String::from_utf8(output.get_output().stdout.clone())?;
 
-    // In streaming mode, we still get chunk headers
+    // In streaming mode, we still get part headers
     assert!(
         stdout.contains(">>>> main.rs\nfn main() {}"),
         "Missing main.rs content"
@@ -511,7 +507,7 @@ fn streams_content_when_piped() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Verify no files were created
-    assert!(!temp_dir.path().join("chunk-0.txt").exists());
+    assert!(!temp_dir.path().join("output.txt").exists());
     Ok(())
 }
 
@@ -533,10 +529,9 @@ fn writes_files_when_interactive() -> Result<(), Box<dyn std::error::Error>> {
         .success();
 
     // Verify file output
-    let chunk_path = output_dir.path().join("chunk-0.txt");
-    let content = fs::read_to_string(chunk_path)?;
+    let output_file = output_dir.path().join("output.txt");
+    let content = fs::read_to_string(output_file)?;
 
-    assert!(content.starts_with("chunk 0\n"), "Missing chunk header");
     assert!(
         content.contains(">>>> config.yml\nkey: value"),
         "Missing config content"
@@ -566,7 +561,7 @@ fn handles_large_files_with_splitting() -> Result<(), Box<dyn std::error::Error>
     // Verify splitting occurred
     assert!(stdout.contains(">>>> big.txt (part 0)"));
     assert!(stdout.contains(">>>> big.txt (part 1)"));
-    assert!(!stdout.contains("chunk 0"));
+    assert!(!stdout.contains("part 0"));
 
     Ok(())
 }

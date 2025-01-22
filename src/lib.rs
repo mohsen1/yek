@@ -18,20 +18,13 @@ use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
 use parallel::process_files_parallel;
 
 /// Write output to either a single file or stdout
-fn write_output(content: &str, out_dir: &Path, is_stream: bool) -> io::Result<()> {
+fn write_output(content: &str, out_dir: Option<&Path>, is_stream: bool) -> Result<()> {
     if is_stream {
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
-        writeln!(handle, "{}", content)?;
+        print!("{}", content);
         Ok(())
     } else {
-        std::fs::create_dir_all(out_dir)?;
-        let file_name = "output.txt";
-        let path = out_dir.join(file_name);
-        debug!("Writing output to {}", path.display());
-        let mut file = fs::File::create(path)?;
-        file.write_all(content.as_bytes())?;
-        file.flush()?;
+        let out_dir = out_dir.expect("output dir required for file mode");
+        fs::write(out_dir.join("output.txt"), content)?;
         Ok(())
     }
 }
@@ -277,7 +270,7 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
     errors
 }
 
-/// Check if file is text by extension or scanning first chunk for null bytes.
+/// Check if file is text by extension or scanning first part for null bytes.
 pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Result<bool> {
     // First check extension - fast path
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
@@ -403,122 +396,201 @@ pub struct ConfigError {
     pub message: String,
 }
 
-pub const DEFAULT_MAX_SIZE: usize = 10 * 1024 * 1024; // 10MB in README
+pub const DEFAULT_PART_SIZE: usize = 10 * 1024 * 1024; // 10MB in README
 
-/// Write all files into a single output with priority-based ordering
-fn write_combined_output(
+/// Write a single part either to stdout or file
+fn write_single_part(
+    content: &str,
+    index: usize,
+    part_i: Option<usize>,
+    out_dir: Option<&Path>,
+    is_stream: bool,
+) -> Result<()> {
+    if is_stream {
+        print!("{}", content);
+        Ok(())
+    } else {
+        // Always use part index in filename
+        let mut file_name = format!("part-{}", index);
+        if let Some(part_i) = part_i {
+            file_name = format!("part-{}-part-{}", index, part_i);
+        }
+        file_name.push_str(".txt");
+        let out_dir = out_dir.expect("output dir required for file mode");
+        fs::write(out_dir.join(file_name), content)?;
+        Ok(())
+    }
+}
+
+/// The aggregator that writes part-* files or streams to stdout.
+fn write_parts(
     entries: &[(String, String, i32)],
+    out_dir: Option<&Path>,
     config: &YekConfig,
     is_stream: bool,
 ) -> Result<()> {
-    let mut sorted_entries = entries.to_vec();
-    sorted_entries.retain(|(_, content, _)| !content.is_empty());
-    sorted_entries.sort_by(|a, b| b.2.cmp(&a.2)); // Sort by descending priority (higher priority first)
+    debug!("Starting write_parts with {} entries", entries.len());
+    let part_size = config.max_size.unwrap_or(DEFAULT_PART_SIZE);
 
-    if sorted_entries.is_empty() {
-        debug!("No valid files found to process");
-        // Create empty output file
-        if !config.stream {
-            let output_dir = config
-                .output_dir
-                .as_deref()
-                .expect("output_dir is None but streaming is false");
-            let output_file = output_dir.join("output.txt");
-            fs::write(&output_file, "").map_err(|e| {
-                anyhow!(
-                    "Failed to create empty output file at {}: {}",
-                    output_file.display(),
-                    e
-                )
-            })?;
-        }
-        return Ok(());
-    }
+    let mut total_parts = 0;
 
+    // Buffer to accumulate content
     let mut buffer = String::new();
-    let mut current_total = 0;
-    let max_size = config.max_size.unwrap_or(usize::MAX);
-    let token_mode = config.token_mode;
-    let model = config.tokenizer_model.as_deref().unwrap_or("openai");
+    let mut used_size = 0;
 
-    for (rel_path, content, priority) in &sorted_entries {
-        if content.is_empty() {
-            debug!("Skipping empty file: {}", rel_path);
-            continue;
-        }
+    // For part files:
+    // - Each file gets a header with its path
+    // - Files are accumulated until reaching part_size
+    // - When part_size is reached, write to disk and start new buffer
+    // - If a single file is > part_size, split into multiple parts
+    //
+    // For streaming:
+    // - Same logic but write to stdout instead of files
+    // - No need to track part numbers
 
-        let header = format!(">>>> {}\n", rel_path);
+    let mut part_idx = 0;
 
-        // Calculate header size
-        let header_size = if token_mode {
-            debug!("Calculating token count for header of {}", rel_path);
-            model_manager::count_tokens(&header, model)?
+    for (rel_path, content, _) in entries {
+        if config.token_mode {
+            let tokens: Vec<&str> = content.split_whitespace().collect();
+            let file_tokens = tokens.len();
+
+            // If file exceeds part_size by itself, do forced splits
+            if file_tokens >= part_size {
+                debug!("File exceeds part size, splitting into multiple parts");
+
+                // Write current buffer if not empty
+                if !buffer.is_empty() {
+                    write_single_part(&buffer, part_idx, None, out_dir, is_stream)?;
+                    total_parts += 1;
+                    buffer.clear();
+                    used_size = 0;
+                    part_idx += 1;
+                }
+
+                // Split large file into parts
+                let mut part = 0;
+                let mut start = 0;
+                while start < file_tokens {
+                    let end = (start + part_size).min(file_tokens);
+                    let part_tokens = &tokens[start..end];
+                    let part_str = format!(
+                        "part {}\n>>>> {}:part {}\n{}\n",
+                        part_idx,
+                        rel_path,
+                        part,
+                        part_tokens.join(" ")
+                    );
+
+                    write_single_part(&part_str, part_idx, Some(part), out_dir, is_stream)?;
+                    total_parts += 1;
+                    part_idx += 1;
+                    part += 1;
+                    start = end;
+                }
+            } else {
+                // Small enough to fit in one part
+                let add_size = file_tokens;
+
+                // If adding this would exceed part_size, write current buffer
+                if used_size + add_size > part_size && !buffer.is_empty() {
+                    // Write current buffer
+                    write_single_part(&buffer, part_idx, None, out_dir, is_stream)?;
+                    total_parts += 1;
+                    buffer.clear();
+                    used_size = 0;
+                    part_idx += 1;
+                }
+
+                // Add to buffer
+                buffer.push_str(&format!("part {}\n>>>> {}\n", part_idx, rel_path));
+                buffer.push_str(&tokens.join(" "));
+                buffer.push('\n');
+                used_size += add_size;
+            }
         } else {
-            header.len()
-        };
+            let file_len = content.len();
 
-        debug!("Processing file: {}, priority: {}", rel_path, priority);
+            // If file exceeds part_size by itself, do forced splits
+            if file_len >= part_size {
+                debug!("File exceeds part size, splitting into multiple parts");
 
-        // Check if we can add header
-        if current_total + header_size > max_size {
-            debug!("Skipping {} due to size limit", rel_path);
-            continue;
-        }
+                // Write current buffer if not empty
+                if !buffer.is_empty() {
+                    write_single_part(&buffer, part_idx, None, out_dir, is_stream)?;
+                    total_parts += 1;
+                    buffer.clear();
+                    used_size = 0;
+                    part_idx += 1;
+                }
 
-        buffer.push_str(&header);
-        current_total += header_size;
+                // Split large file into parts
+                let mut part = 0;
+                let mut start = 0;
+                while start < file_len {
+                    let end = (start + part_size).min(file_len);
+                    let part_data = &content.as_bytes()[start..end];
+                    let part_str = format!(
+                        "part {}\n>>>> {}:part {}\n{}\n",
+                        part_idx,
+                        rel_path,
+                        part,
+                        String::from_utf8_lossy(part_data)
+                    );
 
-        // Calculate available space for content
-        let available = max_size.saturating_sub(current_total);
-        if available == 0 {
-            debug!("No space left for content, stopping");
-            break;
-        }
+                    write_single_part(&part_str, part_idx, Some(part), out_dir, is_stream)?;
+                    total_parts += 1;
+                    part_idx += 1;
+                    part += 1;
+                    start = end;
+                }
+            } else {
+                // Small enough to fit in one part
+                let add_size = file_len;
 
-        // Process content based on mode
-        let content_size = if token_mode {
-            debug!("Tokenizing content for {}", rel_path);
-            let tokens = model_manager::tokenize(content, model)?;
-            let take_tokens = tokens.len().min(available);
-            let decoded = model_manager::decode_tokens(&tokens[..take_tokens], model)?;
-            buffer.push_str(&decoded);
-            take_tokens
-        } else {
-            let truncated = truncate_bytes(content, available);
-            debug!("Writing {} bytes for {}", truncated.len(), rel_path);
-            let size = truncated.len();
-            buffer.push_str(&truncated);
-            size
-        };
+                // If adding this would exceed part_size, write current buffer
+                if used_size + add_size > part_size && !buffer.is_empty() {
+                    // Write current buffer
+                    write_single_part(&buffer, part_idx, None, out_dir, is_stream)?;
+                    total_parts += 1;
+                    buffer.clear();
+                    used_size = 0;
+                    part_idx += 1;
+                }
 
-        // Ensure we add a trailing newline after content
-        buffer.push('\n');
-        current_total += content_size + 1; // +1 for newline
-
-        if current_total >= max_size {
-            debug!("Reached size limit, stopping");
-            break;
+                // Add to buffer
+                buffer.push_str(&format!("part {}\n>>>> {}\n", part_idx, rel_path));
+                buffer.push_str(content);
+                buffer.push('\n');
+                used_size += add_size;
+            }
         }
     }
 
-    write_output(
-        &buffer,
-        config
-            .output_dir
-            .as_deref()
-            .unwrap_or_else(|| Path::new(".")),
-        is_stream,
-    )?;
-
-    if !config.stream {
-        let output_dir = config
-            .output_dir
-            .as_deref()
-            .expect("output_dir is None but streaming is false");
-        let output_path = output_dir.join("output.txt");
-        println!("Wrote output to {}", output_path.display());
+    // Flush final part if not empty
+    if !buffer.is_empty() {
+        write_single_part(&buffer, part_idx, None, out_dir, is_stream)?;
+        total_parts += 1;
     }
 
+    if !is_stream {
+        match total_parts {
+            0 => debug!("No output generated"),
+            1 => {
+                if let Some(dir) = out_dir {
+                    let path = dir.join("part-0.txt");
+                    debug!("Wrote single part file: {}", path.display());
+                }
+            }
+            _ => {
+                if let Some(dir) = out_dir {
+                    println!("Wrote {} parts in {}", total_parts, dir.display());
+                }
+            }
+        }
+    }
+
+    debug!("Finished write_parts");
     Ok(())
 }
 
@@ -561,11 +633,25 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
         .map(|f| (f.rel_path, f.content, f.priority))
         .collect();
 
-    // Sort by descending priority (higher priority first)
+    // Sort by descending priority (higher priority first) to ensure truncation retains important content
     entries.sort_by(|a, b| b.2.cmp(&a.2));
 
-    // Write combined output
-    write_combined_output(&entries, &config, config.stream)?;
+    // Build single output content
+    let mut content = String::new();
+    for (rel_path, file_content, _) in entries {
+        content.push_str(&format!(">>>> {}\n{}\n", rel_path, file_content));
+    }
+
+    // Apply max_size truncation
+    let max_size = config.max_size.unwrap_or(usize::MAX);
+    let truncated_content = truncate_bytes(&content, max_size);
+
+    // Write to output.txt or stdout
+    write_output(
+        &truncated_content,
+        config.output_dir.as_deref(),
+        config.stream,
+    )?;
 
     Ok(())
 }

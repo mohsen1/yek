@@ -41,15 +41,15 @@ pattern = "^less_important/"
         .assert()
         .success();
 
-    // Read the first chunk file
-    let chunk_0 = fs::read_to_string(output_dir.join("chunk-0.txt")).unwrap();
-    println!("Chunk content:\n{}", chunk_0);
+    // Read the output file
+    let output = fs::read_to_string(output_dir.join("output.txt")).unwrap();
+    println!("Output content:\n{}", output);
 
     // Check that very_important appears after less_important in the output
-    let very_pos = chunk_0
+    let very_pos = output
         .find(">>>> very_important/one.txt")
         .expect("very_important/one.txt not found");
-    let less_pos = chunk_0
+    let less_pos = output
         .find(">>>> less_important/two.txt")
         .expect("less_important/two.txt not found");
     assert!(

@@ -31,7 +31,7 @@ fn run_file_mode(dir: &std::path::Path) -> String {
         .assert()
         .success();
 
-    // Read all chunk files
+    // Read all part files
     let mut content = String::new();
     for entry in fs::read_dir(output_dir).unwrap() {
         let path = entry.unwrap().path();
@@ -72,22 +72,16 @@ fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> ignore_me.txt"),
+        !content.contains(">>>> ignore_me.txt"),
         "ignore_me.txt should be ignored"
     );
     assert!(
-        combined_content.contains(">>>> keep_me.txt"),
+        content.contains(">>>> keep_me.txt"),
         "keep_me.txt should be kept"
     );
 
@@ -136,26 +130,20 @@ fn test_gitignore_subdirectory() -> Result<(), Box<dyn std::error::Error>> {
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> otherdir/settings.temp"),
+        !content.contains(">>>> otherdir/settings.temp"),
         "settings.temp should be ignored by root .gitignore"
     );
     assert!(
-        !combined_content.contains(">>>> subdir/secret.conf"),
+        !content.contains(">>>> subdir/secret.conf"),
         "secret.conf should be ignored by subdirectory .gitignore"
     );
     assert!(
-        combined_content.contains(">>>> subdir/app.rs"),
+        content.contains(">>>> subdir/app.rs"),
         "app.rs should be kept"
     );
 
@@ -207,34 +195,28 @@ temp/*
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> error.log"),
+        !content.contains(">>>> error.log"),
         "error.log should be ignored"
     );
     assert!(
-        !combined_content.contains(">>>> build/output.exe"),
+        !content.contains(">>>> build/output.exe"),
         "build/output.exe should be ignored"
     );
     assert!(
-        !combined_content.contains(">>>> temp/junk.tmp"),
+        !content.contains(">>>> temp/junk.tmp"),
         "temp/junk.tmp should be ignored"
     );
     assert!(
-        combined_content.contains(">>>> temp/keep.me"),
+        content.contains(">>>> temp/keep.me"),
         "temp/keep.me should be kept (negated pattern)"
     );
     assert!(
-        combined_content.contains(">>>> src/main.rs"),
+        content.contains(">>>> src/main.rs"),
         "src/main.rs should be kept"
     );
 
@@ -290,30 +272,24 @@ fn test_gitignore_and_yek_toml() -> Result<(), Box<dyn std::error::Error>> {
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> exclude/secret.txt"),
+        !content.contains(">>>> exclude/secret.txt"),
         "exclude/secret.txt should be ignored by yek.toml"
     );
     assert!(
-        !combined_content.contains(">>>> test.tmp"),
+        !content.contains(">>>> test.tmp"),
         "test.tmp should be ignored by .gitignore"
     );
     assert!(
-        !combined_content.contains(">>>> node_modules/lib.js"),
+        !content.contains(">>>> node_modules/lib.js"),
         "node_modules/lib.js should be ignored by .gitignore"
     );
     assert!(
-        combined_content.contains(">>>> src/index.rs"),
+        content.contains(">>>> src/index.rs"),
         "src/index.rs should be kept"
     );
 
@@ -352,26 +328,17 @@ fn test_gitignore_binary_files() -> Result<(), Box<dyn std::error::Error>> {
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> binary.jpg"),
+        !content.contains(">>>> binary.jpg"),
         "binary.jpg should be ignored as a binary file"
     );
+    assert!(content.contains(">>>> text.txt"), "text.txt should be kept");
     assert!(
-        combined_content.contains(">>>> text.txt"),
-        "text.txt should be kept"
-    );
-    assert!(
-        !combined_content.contains(">>>> unknown.xyz"),
+        !content.contains(">>>> unknown.xyz"),
         "unknown.xyz should be ignored as a binary file (unknown extension)"
     );
 
