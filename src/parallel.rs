@@ -24,7 +24,7 @@ pub struct ProcessedFile {
 pub fn process_files_parallel(
     base_dir: &Path,
     config: &YekConfig,
-    chunks: &mut Vec<String>,
+    output_chunks: &mut Vec<String>,
 ) -> Result<()> {
     // Validate token mode configuration first
     if config.token_mode {
@@ -56,12 +56,16 @@ pub fn process_files_parallel(
         .git_ignore(true)
         .build_parallel();
 
+    let has_files = Arc::new(Mutex::new(false));
+    let has_files_clone = Arc::clone(&has_files);
+
     walker.run(|| {
         let tx = tx.clone();
         let base_dir = Arc::clone(&base_dir);
         let config = Arc::clone(&config);
         let processed_files = Arc::clone(&processed_files);
         let file_counter = Arc::clone(&file_counter);
+        let has_files = Arc::clone(&has_files_clone);
 
         Box::new(move |entry| {
             let entry = match entry {
@@ -72,6 +76,9 @@ pub fn process_files_parallel(
             if !entry.file_type().map_or(false, |ft| ft.is_file()) {
                 return WalkState::Continue;
             }
+
+            // Mark that we found at least one file
+            *has_files.lock().unwrap() = true;
 
             let rel_path = normalize_path(entry.path(), &base_dir);
             let priority = get_file_priority(&rel_path, &config.priority_rules);
@@ -95,14 +102,19 @@ pub fn process_files_parallel(
             }
 
             // Read and process file
-            if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                let processed = ProcessedFile {
-                    priority,
-                    rel_path,
-                    content,
-                };
-                if tx.send(processed).is_err() {
-                    return WalkState::Quit;
+            match std::fs::read_to_string(entry.path()) {
+                Ok(content) => {
+                    let processed = ProcessedFile {
+                        priority,
+                        rel_path,
+                        content,
+                    };
+                    if tx.send(processed).is_err() {
+                        return WalkState::Quit;
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to read file {}: {}", rel_path, e);
                 }
             }
 
@@ -112,9 +124,36 @@ pub fn process_files_parallel(
 
     drop(tx);
 
+    // Check if we found any files
+    if !*has_files.lock().unwrap() {
+        debug!("No files found in directory");
+        return Ok(());
+    }
+
     let results: Vec<ProcessedFile> = rx.iter().collect();
     let mut sorted_results = results;
-    sorted_results.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+    // Sort by priority and then by path for stable ordering
+    sorted_results.sort_by(|a, b| match b.priority.cmp(&a.priority) {
+        std::cmp::Ordering::Equal => a.rel_path.cmp(&b.rel_path),
+        other => other,
+    });
+
+    // Apply git boost if available
+    if let Some(git_times) = &git_times {
+        const DEFAULT_GIT_BOOST: i32 = 100;
+        for file in &mut sorted_results {
+            if let Some(timestamp) = git_times.get(&file.rel_path) {
+                let days_old = (timestamp / 86400) as i32;
+                file.priority += DEFAULT_GIT_BOOST.min(days_old);
+            }
+        }
+        // Re-sort after applying git boost
+        sorted_results.sort_by(|a, b| match b.priority.cmp(&a.priority) {
+            std::cmp::Ordering::Equal => a.rel_path.cmp(&b.rel_path),
+            other => other,
+        });
+    }
 
     let max_size = config.max_size.unwrap_or(usize::MAX);
     let mut current_chunk = String::new();
@@ -136,23 +175,39 @@ pub fn process_files_parallel(
 
         if entry_size > max_size {
             // Handle large files by splitting
+            // First, push current chunk if not empty
+            if !current_chunk.is_empty() {
+                output_chunks.push(current_chunk);
+                current_chunk = String::new();
+                current_size = 0;
+            }
+
+            // Split large file into parts
             let mut start = 0;
-            let mut part = 0;
+            let mut part = 0; // Start from part 0 as expected by tests
             while start < entry.content.len() {
                 let part_header = format!(">>>> {} (part {})\n", entry.rel_path, part);
                 let available_size = max_size.saturating_sub(part_header.len());
                 let end = start + available_size.min(entry.content.len() - start);
-                let chunk = format!("{}{}\n", part_header, &entry.content[start..end]);
-                chunks.push(chunk);
-                start = end;
+
+                // Ensure we don't split in the middle of a line
+                let mut adjusted_end = end;
+                if end < entry.content.len() {
+                    if let Some(newline_pos) = entry.content[..end].rfind('\n') {
+                        adjusted_end = newline_pos + 1;
+                    }
+                }
+
+                let chunk = format!("{}{}\n", part_header, &entry.content[start..adjusted_end]);
+                output_chunks.push(chunk);
+                start = adjusted_end;
                 part += 1;
             }
         } else if current_size + entry_size > max_size {
             // Start new chunk
             if !current_chunk.is_empty() {
-                chunks.push(current_chunk);
+                output_chunks.push(current_chunk);
                 current_chunk = String::new();
-                current_size = 0;
             }
             current_chunk.push_str(&entry_content);
             current_size = entry_size;
@@ -164,7 +219,7 @@ pub fn process_files_parallel(
 
     // Add final chunk if not empty
     if !current_chunk.is_empty() {
-        chunks.push(current_chunk);
+        output_chunks.push(current_chunk);
     }
 
     Ok(())

@@ -50,41 +50,21 @@ fn write_output(
         };
 
         if content_size > max_size {
-            let mut start = 0;
-            let mut part = 0;
-            while start < content.len() {
-                let mut end = content.len().min(start + max_size);
-                while !content.is_char_boundary(end) && end > start {
-                    end -= 1;
-                }
-                let chunk = &content[start..end];
-                let chunk_size = if let Some(cfg) = cfg {
-                    if cfg.token_mode {
-                        let model = ModelManager::new(cfg.tokenizer_model.as_deref())?;
-                        model.count_tokens(chunk)?
-                    } else {
-                        chunk.len()
-                    }
-                } else {
-                    chunk.len()
-                };
-
-                if chunk_size <= max_size {
-                    fs::write(out_dir.join(format!("part-{}.txt", part)), chunk)?;
-                    part += 1;
-                    start = end;
-                } else {
-                    end = start + end / 2;
-                    while !content.is_char_boundary(end) && end > start {
-                        end -= 1;
-                    }
-                }
+            // Find a good truncation point at a newline
+            let mut end = max_size;
+            if let Some(newline_pos) = content[..end].rfind('\n') {
+                end = newline_pos + 1;
             }
-            Ok(())
+            // Ensure we're at a valid UTF-8 boundary
+            while !content.is_char_boundary(end) && end > 0 {
+                end -= 1;
+            }
+            let truncated = &content[..end];
+            fs::write(out_dir.join("output.txt"), truncated)?;
         } else {
             fs::write(out_dir.join("output.txt"), content)?;
-            Ok(())
         }
+        Ok(())
     }
 }
 
@@ -467,13 +447,6 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     let config = cfg.cloned().unwrap_or_default();
     validate_config(&config);
 
-    // Create output directory if needed
-    if let Some(output_dir) = &config.output_dir {
-        if !config.stream {
-            fs::create_dir_all(output_dir)?;
-        }
-    }
-
     let mut chunks = Vec::new();
     process_files_parallel(repo_path, &config, &mut chunks)?;
 
@@ -495,6 +468,11 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
             .output_dir
             .as_deref()
             .ok_or_else(|| anyhow!("Output directory is required when not in streaming mode"))?;
+
+        // Create output directory if it doesn't exist
+        fs::create_dir_all(out_dir)?;
+
+        // Write content to output file
         write_output(&chunks.join(""), Some(out_dir), false, Some(&config))?;
     }
 

@@ -1,0 +1,3 @@
+To run tests run:
+
+askds --system-prompt="./prompts/fix-tests.txt" cargo test
