@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use model_manager::ModelManager;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -17,15 +18,73 @@ mod parallel;
 use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
 use parallel::process_files_parallel;
 
-/// Write output to either a single file or stdout
-fn write_output(content: &str, out_dir: Option<&Path>, is_stream: bool) -> Result<()> {
+/// Write output to either a single file or stdout with token-based splitting if enabled
+fn write_output(
+    content: &str,
+    out_dir: Option<&Path>,
+    is_stream: bool,
+    cfg: Option<&YekConfig>,
+) -> Result<()> {
     if is_stream {
         print!("{}", content);
         Ok(())
     } else {
-        let out_dir = out_dir.expect("output dir required for file mode");
-        fs::write(out_dir.join("output.txt"), content)?;
-        Ok(())
+        let out_dir = out_dir.ok_or_else(|| anyhow!("output dir required for file mode"))?;
+        fs::create_dir_all(out_dir)?;
+
+        let max_size = if let Some(cfg) = cfg {
+            cfg.max_size.unwrap_or(DEFAULT_PART_SIZE)
+        } else {
+            DEFAULT_PART_SIZE
+        };
+
+        let content_size = if let Some(cfg) = cfg {
+            if cfg.token_mode {
+                let model = ModelManager::new(cfg.tokenizer_model.as_deref())?;
+                model.count_tokens(content)?
+            } else {
+                content.len()
+            }
+        } else {
+            content.len()
+        };
+
+        if content_size > max_size {
+            let mut start = 0;
+            let mut part = 0;
+            while start < content.len() {
+                let mut end = content.len().min(start + max_size);
+                while !content.is_char_boundary(end) && end > start {
+                    end -= 1;
+                }
+                let chunk = &content[start..end];
+                let chunk_size = if let Some(cfg) = cfg {
+                    if cfg.token_mode {
+                        let model = ModelManager::new(cfg.tokenizer_model.as_deref())?;
+                        model.count_tokens(chunk)?
+                    } else {
+                        chunk.len()
+                    }
+                } else {
+                    chunk.len()
+                };
+
+                if chunk_size <= max_size {
+                    fs::write(out_dir.join(format!("part-{}.txt", part)), chunk)?;
+                    part += 1;
+                    start = end;
+                } else {
+                    end = start + end / 2;
+                    while !content.is_char_boundary(end) && end > start {
+                        end -= 1;
+                    }
+                }
+            }
+            Ok(())
+        } else {
+            fs::write(out_dir.join("output.txt"), content)?;
+            Ok(())
+        }
     }
 }
 
@@ -406,163 +465,17 @@ pub const DEFAULT_PART_SIZE: usize = 10 * 1024 * 1024; // 10MB in README
 /// The main function that the tests call.
 pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     let config = cfg.cloned().unwrap_or_default();
+    validate_config(&config);
 
-    // Log tokenizer configuration
-    if config.token_mode {
-        debug!(
-            "Token mode enabled with model: {:?}",
-            config.tokenizer_model.as_deref().unwrap_or("openai")
-        );
-    }
-
-    // Validate config before processing
-    let errors = validate_config(&config);
-    if !errors.is_empty() {
-        for error in errors {
-            eprintln!("Error in {}: {}", error.field, error.message);
-        }
-        return Err(anyhow!("Invalid configuration"));
-    }
-
-    // Create output directory early even if empty
+    // Create output directory if needed
     if let Some(output_dir) = &config.output_dir {
         if !config.stream {
-            // Create directory without .keep file to avoid unnecessary I/O
-            std::fs::create_dir_all(output_dir).map_err(|e: std::io::Error| {
-                anyhow!(
-                    "Failed to create output directory '{}': {}",
-                    output_dir.display(),
-                    e
-                )
-            })?;
+            fs::create_dir_all(output_dir)?;
         }
     }
 
-    // Process files in parallel
-    let processed_files = process_files_parallel(repo_path, &config)?;
-
-    // Convert ProcessedFile to the expected tuple format
-    if processed_files.is_empty() {
-        return Ok(()); // No files processed, nothing to write
-    }
-
-    let mut entries: Vec<(String, String, i32)> = processed_files
-        .into_iter()
-        .map(|f| (f.rel_path, f.content, f.priority))
-        .collect();
-
-    // Sort by descending priority (higher priority first)
-    entries.sort_by(|a, b| b.2.cmp(&a.2));
-
-    // Prepare content chunks
-    let max_size = config.max_size.unwrap_or(usize::MAX);
     let mut chunks = Vec::new();
-    let mut current_chunk = String::new();
-    let mut current_size = 0;
-
-    for (rel_path, file_content, _) in entries {
-        let model = config.tokenizer_model.as_deref().unwrap_or("openai");
-        let entry_header = format!(">>>> {}\n", rel_path);
-        let entry = format!("{}{}\n", entry_header, file_content);
-        let entry_size = if config.token_mode {
-            model_manager::count_tokens(&entry, model).unwrap_or_else(|e| {
-                tracing::warn!("Token count failed for {}: {}", rel_path, e);
-                entry.len()
-            })
-        } else {
-            entry.len()
-        };
-
-        // Check if entry exceeds max_size on its own
-        if entry_size > max_size {
-            let mut start = 0;
-            let mut part = 0;
-
-            while start < file_content.len() {
-                let part_header = format!(">>>> {} (part {})\n", rel_path, part);
-                let header_size = if config.token_mode {
-                    model_manager::count_tokens(&part_header, model).unwrap_or_else(|e| {
-                        tracing::warn!("Header token count failed: {}", e);
-                        part_header.len()
-                    })
-                } else {
-                    part_header.len()
-                };
-
-                let available_size = max_size.saturating_sub(header_size);
-                if available_size <= 0 {
-                    break;
-                }
-
-                let end = if config.token_mode {
-                    // Tokenize the remaining content
-                    let tokens = model_manager::tokenize(&file_content[start..], model)
-                        .unwrap_or_else(|e| {
-                            tracing::warn!("Tokenization failed: {}", e);
-                            vec![]
-                        });
-                    let mut token_count = 0;
-                    let mut char_pos = start;
-
-                    for token in tokens.iter() {
-                        let token_text =
-                            model_manager::decode_tokens(&[*token], model).unwrap_or_default();
-                        token_count += 1;
-                        char_pos += token_text.len();
-
-                        if token_count > available_size {
-                            break;
-                        }
-                    }
-
-                    (start + char_pos).min(file_content.len())
-                } else {
-                    // Byte mode handling
-                    start + available_size.min(file_content.len() - start)
-                };
-
-                let part_content = &file_content[start..end];
-                let full_part = format!("{}{}\n", part_header, part_content);
-                chunks.push(full_part);
-
-                start = end;
-                part += 1;
-            }
-            continue;
-        }
-
-        // For non-split files, check if adding entry would exceed max_size
-        let header_size = if config.token_mode {
-            model_manager::count_tokens(&entry_header, model).unwrap_or_else(|e| {
-                tracing::warn!("Header token count failed: {}", e);
-                entry_header.len()
-            })
-        } else {
-            entry_header.len()
-        };
-
-        let content_size = if config.token_mode {
-            model_manager::count_tokens(&file_content, model).unwrap_or_else(|_| file_content.len())
-        } else {
-            file_content.len()
-        };
-
-        let total_size = header_size + content_size;
-
-        if current_size + total_size > max_size && !current_chunk.is_empty() {
-            chunks.push(current_chunk);
-            current_chunk = String::new();
-            current_size = 0;
-        }
-
-        current_chunk.push_str(&format!("{}{}\n", entry_header, file_content));
-        current_size += total_size;
-    }
-
-    // Add remaining content
-    if !current_chunk.is_empty() {
-        chunks.push(current_chunk);
-    }
+    process_files_parallel(repo_path, &config, &mut chunks)?;
 
     // Handle empty repo case
     if chunks.is_empty() {
@@ -571,23 +484,18 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
 
     // Write each chunk to a separate file or combine for streaming
     if config.stream {
-        write_output(&chunks.join(""), config.output_dir.as_deref(), true)?;
+        write_output(
+            &chunks.join(""),
+            config.output_dir.as_deref(),
+            true,
+            Some(&config),
+        )?;
     } else {
         let out_dir = config
             .output_dir
             .as_deref()
-            .map(|d| std::fs::create_dir_all(d).map(|_| d))
-            .transpose()?
-            .expect("output dir required for file mode");
-
-        if chunks.len() == 1 {
-            fs::write(out_dir.join("output.txt"), &chunks[0])?;
-        } else {
-            for (i, chunk) in chunks.iter().enumerate() {
-                fs::write(out_dir.join(format!("part-{}.txt", i)), chunk)?;
-            }
-            debug!("Wrote {} parts", chunks.len());
-        }
+            .ok_or_else(|| anyhow!("Output directory is required when not in streaming mode"))?;
+        write_output(&chunks.join(""), Some(out_dir), false, Some(&config))?;
     }
 
     Ok(())

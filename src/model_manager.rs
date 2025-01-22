@@ -86,3 +86,21 @@ pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
         .map(|tokens| tokens.len())
         .map_err(|e: anyhow::Error| anyhow!("Token counting failed: {}", e))
 }
+
+pub struct ModelManager {
+    model: String,
+}
+
+impl ModelManager {
+    pub fn new(model: Option<&str>) -> Result<Self> {
+        let model = model.unwrap_or("openai").to_string();
+        if !SUPPORTED_MODEL_FAMILIES.contains(&model.as_str()) {
+            return Err(anyhow!("Unsupported model family: {}", model));
+        }
+        Ok(Self { model })
+    }
+
+    pub fn count_tokens(&self, text: &str) -> Result<usize> {
+        count_tokens(text, &self.model)
+    }
+}
