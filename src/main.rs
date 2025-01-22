@@ -162,13 +162,14 @@ fn main() -> Result<()> {
         // Handle output directory determination AFTER config merge
         let stdout_is_tty = stdout().is_terminal();
 
-        // Force streaming configuration if stdout isn't a TTY
+        // Handle streaming logic
         if !stdout_is_tty {
-            // Override any output directory when streaming
-            config_for_this_dir.output_dir = None;
-            config_for_this_dir.stream = true;
+            // Only enable streaming if no output directory was explicitly set
+            if config_for_this_dir.output_dir.is_none() {
+                config_for_this_dir.stream = true;
+            }
         } else {
-            // In interactive mode, ensure we have an output directory
+            // In interactive mode, set default output dir if none specified and not streaming
             if config_for_this_dir.output_dir.is_none() {
                 config_for_this_dir.output_dir = Some(PathBuf::from("repo-serialized"));
             }

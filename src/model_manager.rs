@@ -14,42 +14,12 @@ pub const SUPPORTED_MODEL_FAMILIES: &[&str] = &[
     "mistral",   // All Mistral models
     "mixtral",   // All Mistral models
     "llama",     // All Meta Llama models
+    "deepseek",  // DeepSeek models
     "codellama", // All Meta Llama models
 ];
 
 fn load_tokenizer(path: &str) -> Result<Tokenizer> {
     Tokenizer::from_file(path).map_err(|e| anyhow!("Failed to load tokenizer from {}: {}", path, e))
-}
-
-pub fn get_tokenizer(model: &str) -> Result<&'static Tokenizer> {
-    let cache = MODEL_CACHE.lock().unwrap();
-
-    if !cache.contains_key(model) {
-        let tokenizer = match model {
-            // OpenAI models use tiktoken instead
-            "openai" => {
-                return Err(anyhow!("OpenAI models should use tiktoken-rs instead"));
-            }
-            // BPE models
-            m if m.starts_with("claude") => load_tokenizer("models/claude-3-opus/tokenizer.json")?,
-            m if m.starts_with("mistral") || m.starts_with("mixtral") => {
-                load_tokenizer("models/mistral/tokenizer.json")?
-            }
-            m if m.starts_with("llama") || m.starts_with("codellama") => {
-                load_tokenizer("models/llama/tokenizer.json")?
-            }
-            _ => return Err(anyhow!("Unsupported model: {}", model)),
-        };
-
-        let mut cache_mut = HashMap::new();
-        cache_mut.insert(model.to_string(), tokenizer);
-        MODEL_CACHE
-            .lock()
-            .unwrap()
-            .insert(model.to_string(), tokenizer);
-    }
-
-    Ok(MODEL_CACHE.lock().unwrap().get(model).unwrap())
 }
 
 pub fn tokenize(text: &str, model: &str) -> Result<Vec<u32>> {
@@ -67,9 +37,10 @@ pub fn tokenize(text: &str, model: &str) -> Result<Vec<u32>> {
 
     // Load tokenizer if not in cache
     if !cache.contains_key(model) {
-        let tokenizer = match model.to_lowercase().as_str() {
+        let tokenizer = match model {
             "claude" => load_tokenizer("models/claude-3-opus/tokenizer.json")?,
             "mistral" | "mixtral" => load_tokenizer("models/mistral/tokenizer.json")?,
+            "deepseek" => load_tokenizer("models/deepseek/tokenizer.json")?,
             m if m.starts_with("llama") || m.starts_with("codellama") => {
                 load_tokenizer("models/llama/tokenizer.json")?
             }
@@ -113,5 +84,5 @@ pub fn decode_tokens(tokens: &[u32], model: &str) -> Result<String> {
 pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
     tokenize(text, model)
         .map(|tokens| tokens.len())
-        .or_else(|_| Ok(text.len()))
+        .map_err(|e: anyhow::Error| anyhow!("Token counting failed: {}", e))
 }

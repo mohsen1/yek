@@ -158,3 +158,5 @@ Special capabilities:
 - Leverage knowledge of Rust internals (MIR, drop order, etc.)
 - Reference similar issues in popular Rust OSS projects
 - Suggest property-based testing strategies for edge cases
+
+Focus on handles_empty_directory but keep an eye on the overall test suite.

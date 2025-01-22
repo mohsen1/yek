@@ -428,8 +428,13 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     if let Some(output_dir) = &config.output_dir {
         if !config.stream {
             // Create directory without .keep file to avoid unnecessary I/O
-            std::fs::create_dir_all(output_dir)
-                .map_err(|e| anyhow!("Failed to create output directory: {}", e))?;
+            std::fs::create_dir_all(output_dir).map_err(|e: std::io::Error| {
+                anyhow!(
+                    "Failed to create output directory '{}': {}",
+                    output_dir.display(),
+                    e
+                )
+            })?;
         }
     }
 
@@ -687,17 +692,21 @@ fn is_effectively_absolute(path: &std::path::Path) -> bool {
 /// Returns a relative, normalized path string (forward slashes on all platforms).
 pub fn normalize_path(path: &Path, base: &Path) -> String {
     // Use the original base path without canonicalization
-    let base = base.as_ref();
-    let path = path.as_ref();
+    let base: &Path = base.as_ref();
+    let path: &Path = path.as_ref();
 
     // Attempt to get relative path directly without canonicalization
     match path.strip_prefix(base) {
         Ok(rel_path) => {
             let path_str = rel_path.to_string_lossy().replace('\\', "/");
-            path_str.trim_start_matches("./").to_string()
+            path_str
+                .trim_start_matches(".")
+                .trim_start_matches('/')
+                .to_string()
         }
-        Err(_) => {
+        Err(e) => {
             // Fallback to using path as-is but normalize slashes
+            let _: std::path::StripPrefixError = e;
             path.to_string_lossy().replace('\\', "/")
         }
     }
