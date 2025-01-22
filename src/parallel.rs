@@ -20,6 +20,7 @@ pub struct ProcessedFile {
     pub file_index: usize,
     pub rel_path: String,
     pub content: String,
+    pub token_count: Option<usize>,
 }
 
 pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec<ProcessedFile>> {
@@ -158,6 +159,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
                 file_index,
                 rel_path,
                 content,
+                token_count: None,
             };
 
             let _ = tx.send(processed);

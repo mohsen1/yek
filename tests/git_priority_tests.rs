@@ -255,41 +255,33 @@ fn test_git_priority_no_git() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_git_priority_binary_files() -> Result<(), Box<dyn std::error::Error>> {
-    let repo_path = TempDir::new()?.into_path();
-    let output_dir = TempDir::new()?.into_path();
+    let temp_dir = TempDir::new()?;
+    let repo = setup_temp_repo();
 
     // Create test files
-    create_file(
-        &repo_path,
-        "src/main.rs",
-        "fn main() { println!(\"Hello\"); }".as_bytes(),
-    );
-    create_file(
-        &repo_path,
-        "README.md",
-        "# Test Repository\n\nInitial commit.".as_bytes(),
-    );
-    create_file(
-        &repo_path,
-        "docs/README.md",
-        "# Documentation\nThis is a test.".as_bytes(),
-    );
-    create_file(&repo_path, "binary.bin", b"fake binary\x00\x7f");
+    create_file(repo.path(), "binary.bin", b"\x00\x01\x02\x03");
+    create_file(repo.path(), "image.jpg", b"\xFF\xD8\xFF\xE0");
+    create_file(repo.path(), "README.md", b"# Test\n\nThis is a test.");
 
+    // Run yek with output directory
+    let output_dir = temp_dir.path().join("output");
     let config = YekConfig {
         output_dir: Some(output_dir.clone()),
-        binary_extensions: vec!["bin".to_string()],
         ..Default::default()
     };
-    serialize_repo(&repo_path, Some(&config))?;
 
-    // Check output
-    let chunk_path = output_dir.join("chunk-0.txt");
-    let content = fs::read_to_string(chunk_path)?;
-    assert!(
-        !content.contains("binary.bin"),
-        "Should not have included binary.bin"
-    );
+    serialize_repo(repo.path(), Some(&config))?;
+
+    // Verify binary file is not present in output.txt
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(output_file)?;
+
+    // Check that binary files are not present in the output
+    assert!(!content.contains("binary.bin"));
+    assert!(!content.contains("image.jpg"));
+
+    // Check that text files are present
+    assert!(content.contains("README.md"));
 
     Ok(())
 }

@@ -17,6 +17,37 @@ mod parallel;
 use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
 use parallel::process_files_parallel;
 
+/// Write output to either a single file or stdout
+fn write_output(content: &str, out_dir: &Path, is_stream: bool) -> io::Result<()> {
+    if is_stream {
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        writeln!(handle, "{}", content)?;
+        Ok(())
+    } else {
+        std::fs::create_dir_all(out_dir)?;
+        let file_name = "output.txt";
+        let path = out_dir.join(file_name);
+        debug!("Writing output to {}", path.display());
+        let mut file = fs::File::create(path)?;
+        file.write_all(content.as_bytes())?;
+        file.flush()?;
+        Ok(())
+    }
+}
+
+/// Safely truncate a string to specified byte length
+fn truncate_bytes(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
+    }
+    let mut end = max_bytes;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s[..end].to_string()
+}
+
 /// Convert a glob pattern to a regex pattern
 fn glob_to_regex(pattern: &str) -> String {
     let mut regex = String::with_capacity(pattern.len() * 2);
@@ -420,139 +451,121 @@ fn get_content_size(content: &str, config: &YekConfig) -> Result<usize> {
     }
 }
 
-/// The aggregator that writes chunk-* files or streams to stdout.
-fn write_chunks(
+/// Write all files into a single output with priority-based ordering
+fn write_combined_output(
     entries: &[(String, String, i32)],
     config: &YekConfig,
     is_stream: bool,
-) -> Result<usize> {
-    let mut total_chunks = 0;
-    let mut current_chunk = String::new();
-    let mut current_size = 0;
-    let chunk_size = config.max_size.unwrap_or(DEFAULT_CHUNK_SIZE);
-    let token_mode = config.token_mode;
-
-    // Print entries before sorting
-    for (path, _, priority) in entries {
-        debug!("Before sort - File: {} Priority: {}", path, priority);
-    }
-
-    // Sort by ascending priority (lower priority first)
+) -> Result<()> {
     let mut sorted_entries = entries.to_vec();
-    sorted_entries.sort_by(|a, b| a.2.cmp(&b.2));
+    sorted_entries.retain(|(_, content, _)| !content.is_empty());
+    sorted_entries.sort_by(|a, b| b.2.cmp(&a.2)); // Sort by descending priority (higher priority first)
 
-    // Print entries after sorting
-    for (path, _, priority) in &sorted_entries {
-        debug!("After sort - File: {} Priority: {}", path, priority);
+    if sorted_entries.is_empty() {
+        debug!("No valid files found to process");
+        // Create empty output file
+        if !config.stream {
+            let output_dir = config
+                .output_dir
+                .as_deref()
+                .expect("output_dir is None but streaming is false");
+            let output_file = output_dir.join("output.txt");
+            fs::write(&output_file, "").map_err(|e| {
+                anyhow!(
+                    "Failed to create empty output file at {}: {}",
+                    output_file.display(),
+                    e
+                )
+            })?;
+        }
+        return Ok(());
     }
 
-    // Process each file
-    for (rel_path, content, _) in sorted_entries.iter() {
-        let header = format!("\n>>>> {}\n", rel_path);
+    let mut buffer = String::new();
+    let mut current_total = 0;
+    let max_size = config.max_size.unwrap_or(usize::MAX);
+    let token_mode = config.token_mode;
+    let model = config.tokenizer_model.as_deref().unwrap_or("openai");
+
+    for (rel_path, content, priority) in &sorted_entries {
+        if content.is_empty() {
+            debug!("Skipping empty file: {}", rel_path);
+            continue;
+        }
+
+        let header = format!(">>>> {}\n", rel_path);
+
+        // Calculate header size
         let header_size = if token_mode {
-            get_content_size(&header, config)?
+            debug!("Calculating token count for header of {}", rel_path);
+            model_manager::count_tokens(&header, model)?
         } else {
             header.len()
         };
 
-        // If content is larger than chunk size, split it into parts
-        if content.len() > chunk_size {
-            let mut start = 0;
-            let mut part = 0;
+        debug!("Processing file: {}, priority: {}", rel_path, priority);
 
-            while start < content.len() {
-                let mut current_size = 0;
-                let mut char_count = 0;
+        // Check if we can add header
+        if current_total + header_size > max_size {
+            debug!("Skipping {} due to size limit", rel_path);
+            continue;
+        }
 
-                // Process content character by character
-                for c in content[start..].chars() {
-                    current_size += c.len_utf8();
-                    char_count += 1;
+        buffer.push_str(&header);
+        current_total += header_size;
 
-                    if current_size >= chunk_size {
-                        break;
-                    }
-                }
+        // Calculate available space for content
+        let available = max_size.saturating_sub(current_total);
+        if available == 0 {
+            debug!("No space left for content, stopping");
+            break;
+        }
 
-                // Convert character count to byte offset
-                let mut end = start
-                    + content[start..]
-                        .chars()
-                        .take(char_count)
-                        .map(|c| c.len_utf8())
-                        .sum::<usize>();
-
-                // Ensure we make progress even if a single character is too large
-                if end == start {
-                    end = start
-                        + content[start..]
-                            .chars()
-                            .next()
-                            .map(|c| c.len_utf8())
-                            .unwrap_or(1);
-                }
-
-                let part_header = format!("\n>>>> {} (part {})\n", rel_path, part);
-                let part_content = &content[start..end];
-
-                write_single_chunk(
-                    &format!("{}{}", part_header, part_content),
-                    total_chunks,
-                    Some(part),
-                    config
-                        .output_dir
-                        .as_deref()
-                        .unwrap_or_else(|| Path::new(".")),
-                    is_stream,
-                )?;
-
-                start = end;
-                part += 1;
-                total_chunks += 1;
-            }
+        // Process content based on mode
+        let content_size = if token_mode {
+            debug!("Tokenizing content for {}", rel_path);
+            let tokens = model_manager::tokenize(content, model)?;
+            let take_tokens = tokens.len().min(available);
+            let decoded = model_manager::decode_tokens(&tokens[..take_tokens], model)?;
+            buffer.push_str(&decoded);
+            take_tokens
         } else {
-            // Content fits in a single chunk
-            if current_size + header_size + content.len() > chunk_size && !current_chunk.is_empty()
-            {
-                // Write current chunk if it would overflow
-                write_single_chunk(
-                    &current_chunk,
-                    total_chunks,
-                    None,
-                    config
-                        .output_dir
-                        .as_deref()
-                        .unwrap_or_else(|| Path::new(".")),
-                    is_stream,
-                )?;
-                current_chunk.clear();
-                current_size = 0;
-                total_chunks += 1;
-            }
+            let truncated = truncate_bytes(content, available);
+            debug!("Writing {} bytes for {}", truncated.len(), rel_path);
+            let size = truncated.len();
+            buffer.push_str(&truncated);
+            size
+        };
 
-            // Add content to current chunk
-            current_chunk.push_str(&header);
-            current_chunk.push_str(content);
-            current_size += header_size + content.len();
+        // Ensure we add a trailing newline after content
+        buffer.push('\n');
+        current_total += content_size + 1; // +1 for newline
+
+        if current_total >= max_size {
+            debug!("Reached size limit, stopping");
+            break;
         }
     }
 
-    // Write final chunk if not empty
-    if !current_chunk.is_empty() {
-        write_single_chunk(
-            &current_chunk,
-            total_chunks,
-            None,
-            config
-                .output_dir
-                .as_deref()
-                .unwrap_or_else(|| Path::new(".")),
-            is_stream,
-        )?;
-        total_chunks += 1;
+    write_output(
+        &buffer,
+        config
+            .output_dir
+            .as_deref()
+            .unwrap_or_else(|| Path::new(".")),
+        is_stream,
+    )?;
+
+    if !config.stream {
+        let output_dir = config
+            .output_dir
+            .as_deref()
+            .expect("output_dir is None but streaming is false");
+        let output_path = output_dir.join("output.txt");
+        println!("Wrote output to {}", output_path.display());
     }
 
-    Ok(total_chunks)
+    Ok(())
 }
 
 /// The main function that the tests call.
@@ -576,38 +589,29 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
         return Err(anyhow!("Invalid configuration"));
     }
 
+    // Create output directory early even if empty
+    if let Some(output_dir) = &config.output_dir {
+        if !config.stream {
+            // Create directory without .keep file to avoid unnecessary I/O
+            std::fs::create_dir_all(output_dir)
+                .map_err(|e| anyhow!("Failed to create output directory: {}", e))?;
+        }
+    }
+
     // Process files in parallel
     let processed_files = process_files_parallel(repo_path, &config)?;
 
-    // Convert to the format expected by write_chunks
+    // Convert ProcessedFile to the expected tuple format
     let mut entries: Vec<(String, String, i32)> = processed_files
         .into_iter()
         .map(|f| (f.rel_path, f.content, f.priority))
         .collect();
 
-    // Sort by ascending priority (lower priority first)
-    entries.sort_by(|a, b| a.2.cmp(&b.2));
+    // Sort by descending priority (higher priority first)
+    entries.sort_by(|a, b| b.2.cmp(&a.2));
 
-    // Write chunks and get total count
-    let total_chunks = write_chunks(&entries, &config, config.stream)?;
-
-    // Print final output message
-    if !config.stream {
-        let out_dir = config
-            .output_dir
-            .as_ref()
-            .expect("output_dir is None but streaming is false");
-        match total_chunks {
-            0 => {} // No files written (edge case)
-            1 => {
-                let path = out_dir.join("chunk-0.txt");
-                println!("Wrote: {}", path.display());
-            }
-            _ => {
-                println!("Wrote {} chunks in {}", total_chunks, out_dir.display());
-            }
-        }
-    }
+    // Write combined output
+    write_combined_output(&entries, &config, config.stream)?;
 
     Ok(())
 }
@@ -722,11 +726,13 @@ fn is_effectively_absolute(path: &std::path::Path) -> bool {
 /// Returns a relative, normalized path string (forward slashes on all platforms).
 pub fn normalize_path(path: &Path, base: &Path) -> String {
     let abs_path = if path.is_absolute() {
-        path.to_path_buf()
+        path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
     } else {
-        base.canonicalize()
-            .unwrap_or_else(|_| base.to_path_buf())
+        let canonical_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+        canonical_base
             .join(path)
+            .canonicalize()
+            .unwrap_or_else(|_| base.to_path_buf())
     };
 
     let abs_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
@@ -735,19 +741,27 @@ pub fn normalize_path(path: &Path, base: &Path) -> String {
     match abs_path.strip_prefix(&abs_base) {
         Ok(rel) => {
             let path_str = rel.to_string_lossy().replace('\\', "/");
-            if path_str.is_empty() || path_str == "." {
-                "./".to_string()
+            let path_str = if path_str.starts_with("./") {
+                path_str.replacen("./", "", 1)
             } else {
-                format!("./{}", path_str)
+                path_str.to_string()
+            };
+            if path_str.is_empty() || path_str == "." {
+                // Handle root directory case
+                ".".to_string()
+            } else {
+                path_str
             }
         }
         Err(_) => {
             // If strip_prefix fails, try a more manual approach
             let path_str = path.to_string_lossy().replace('\\', "/");
-            if path_str.starts_with("./") || path_str.starts_with("../") {
-                path_str.to_string()
+            if path_str.starts_with("./") {
+                path_str.replacen("./", "", 1)
+            } else if path_str.starts_with('/') || path_str.starts_with('\\') {
+                format!(".{}", path_str)
             } else {
-                format!("./{}", path_str)
+                path_str.to_string()
             }
         }
     }
@@ -897,13 +911,4 @@ pub fn merge_config(dest: &mut YekConfig, other: &YekConfig) {
     if other.output_dir.is_some() {
         dest.output_dir = other.output_dir.clone();
     }
-}
-
-#[derive(Debug)]
-pub struct ProcessedFile {
-    pub priority: i32,
-    pub file_index: usize,
-    pub rel_path: String,
-    pub content: String,
-    pub token_count: Option<usize>, // Add this field
 }

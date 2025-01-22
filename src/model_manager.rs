@@ -47,30 +47,57 @@ pub fn get_tokenizer(model: &str) -> Result<&'static Tokenizer> {
     Ok(cache.get(model).unwrap())
 }
 
-pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
+pub fn tokenize(text: &str, model: &str) -> Result<Vec<u32>> {
     match model {
-        // OpenAI models use o200k_base
         "openai" => {
             let encoding =
                 o200k_base().map_err(|e| anyhow!("Failed to get o200k_base encoding: {}", e))?;
-            Ok(encoding.encode_with_special_tokens(text).len())
+            let tokens = encoding.encode_with_special_tokens(text);
+            Ok(tokens.into_iter().map(|t| t as u32).collect())
         }
-        // Try Hugging Face tokenizers first, fallback to tiktoken BPE
-        _ => {
-            match get_tokenizer(model) {
-                Ok(tokenizer) => {
-                    let encoded = tokenizer
-                        .encode(text, true)
-                        .map_err(|e| anyhow!("Failed to encode text with HF tokenizer: {}", e))?;
-                    Ok(encoded.get_ids().len())
-                }
-                Err(_) => {
-                    // Fallback to tiktoken BPE
-                    let encoding = get_bpe_from_model("openai")
-                        .map_err(|e| anyhow!("Failed to get tiktoken BPE encoding: {}", e))?;
-                    Ok(encoding.encode_with_special_tokens(text).len())
-                }
+        _ => match get_tokenizer(model) {
+            Ok(tokenizer) => {
+                let encoded = tokenizer
+                    .encode(text, true)
+                    .map_err(|e| anyhow!("Failed to encode text with HF tokenizer: {}", e))?;
+                Ok(encoded.get_ids().to_vec())
             }
-        }
+            Err(_) => {
+                let encoding = get_bpe_from_model("openai")
+                    .map_err(|e| anyhow!("Failed to get tiktoken BPE encoding: {}", e))?;
+                let tokens = encoding.encode_with_special_tokens(text);
+                Ok(tokens.into_iter().map(|t| t as u32).collect())
+            }
+        },
     }
+}
+
+pub fn decode_tokens(tokens: &[u32], model: &str) -> Result<String> {
+    match model {
+        "openai" => {
+            let encoding =
+                o200k_base().map_err(|e| anyhow!("Failed to get o200k_base encoding: {}", e))?;
+            let tokens: Vec<usize> = tokens.iter().map(|&t| t as usize).collect();
+            encoding
+                .decode(tokens)
+                .map_err(|e| anyhow!("Failed to decode tokens: {}", e))
+        }
+        _ => match get_tokenizer(model) {
+            Ok(tokenizer) => tokenizer
+                .decode(tokens, true)
+                .map_err(|e| anyhow!("Failed to decode tokens: {}", e)),
+            Err(_) => {
+                let encoding = get_bpe_from_model("openai")
+                    .map_err(|e| anyhow!("Failed to get tiktoken BPE encoding: {}", e))?;
+                let tokens: Vec<usize> = tokens.iter().map(|&t| t as usize).collect();
+                encoding
+                    .decode(tokens)
+                    .map_err(|e| anyhow!("Failed to decode tokens: {}", e))
+            }
+        },
+    }
+}
+
+pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
+    tokenize(text, model).map(|tokens| tokens.len())
 }

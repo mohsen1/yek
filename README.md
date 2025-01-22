@@ -5,10 +5,8 @@ A [fast](#performance) Rust based tool to read text-based files in a repository 
 - Uses `.gitignore` rules to skip unwanted files.
 - Uses the Git history to infer what files are important.
 - Infers additional ignore patterns (binary, large, etc.).
-- Splits content into chunks based on either approximate "token" count or byte size.
 - Automatically detects if output is being piped and streams content instead of writing to files.
 - Supports processing multiple directories in a single command.
-- Produces multiple chunks if the content is too large to fit in the LLM context window.
 - Configurable via a `yek.toml` file.
 
 Yek <a href="https://fa.wikipedia.org/wiki/۱">يک</a> means "One" in Farsi/Persian.
@@ -25,7 +23,7 @@ Consider having a simple repo like this:
     └── test.rs
 ```
 
-Running `yek` in this directory will produce a single file and write it to the temp directory with the following content:
+Running `yek` in this directory will produce a single file with the following content:
 
 ```txt
 >>>> README.md
@@ -79,11 +77,11 @@ export PATH=$(pwd)/target/release:$PATH
 
 ## Usage
 
-`yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. It will serialize all files in the repository into chunks of 10MB by default. The file will be written to the temp directory and file path will be printed to the console.
+`yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. The output will be written to a single file named `output.txt` in the current directory, or streamed to stdout if piped.
 
 ### Examples
 
-Process current directory and write to temp directory:
+Process current directory and write to output.txt:
 
 ```bash
 yek

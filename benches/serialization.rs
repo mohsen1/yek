@@ -52,16 +52,20 @@ fn single_small_file_byte_mode(c: &mut Criterion) {
     create_test_data_bytes(temp_dir.path(), size, "small_file.txt");
 
     let output_dir = temp_dir.path().join("output");
+    std::fs::create_dir_all(&output_dir).unwrap();
 
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_function("single_small_file", |b| {
         b.iter(|| {
+            let iter_output_dir =
+                output_dir.join(format!("iter-{}", rand::thread_rng().gen::<u64>()));
+            std::fs::create_dir_all(&iter_output_dir).unwrap();
             let config = YekConfig {
-                output_dir: Some(output_dir.clone()),
+                output_dir: Some(iter_output_dir.clone()),
                 ..Default::default()
             };
             serialize_repo(temp_dir.path(), Some(&config)).unwrap();
-            fs::remove_dir_all(&output_dir).ok();
+            fs::remove_dir_all(&iter_output_dir).expect("Failed to clean output dir");
         });
     });
     group.finish();
@@ -75,16 +79,20 @@ fn single_large_file_byte_mode(c: &mut Criterion) {
     create_test_data_bytes(temp_dir.path(), size, "large_file.txt");
 
     let output_dir = temp_dir.path().join("output");
+    std::fs::create_dir_all(&output_dir).unwrap();
 
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_function("single_large_file", |b| {
         b.iter(|| {
+            let iter_output_dir =
+                output_dir.join(format!("iter-{}", rand::thread_rng().gen::<u64>()));
+            std::fs::create_dir_all(&iter_output_dir).unwrap();
             let config = YekConfig {
-                output_dir: Some(output_dir.clone()),
+                output_dir: Some(iter_output_dir.clone()),
                 ..Default::default()
             };
             serialize_repo(temp_dir.path(), Some(&config)).unwrap();
-            fs::remove_dir_all(&output_dir).ok();
+            fs::remove_dir_all(&iter_output_dir).expect("Failed to clean output dir");
         });
     });
     group.finish();
@@ -98,16 +106,21 @@ fn single_large_file_token_mode(c: &mut Criterion) {
     create_test_data_tokens(temp_dir.path(), token_count, "large_tokens.txt");
 
     let output_dir = temp_dir.path().join("output");
+    std::fs::create_dir_all(&output_dir).unwrap();
 
     group.throughput(Throughput::Elements(token_count as u64));
     group.bench_function("single_large_token_file", |b| {
         b.iter(|| {
+            let iter_output_dir =
+                output_dir.join(format!("iter-{}", rand::thread_rng().gen::<u64>()));
+            std::fs::create_dir_all(&iter_output_dir).unwrap();
             let config = YekConfig {
-                output_dir: Some(output_dir.clone()),
+                output_dir: Some(iter_output_dir.clone()),
+                token_mode: true,
                 ..Default::default()
             };
             serialize_repo(temp_dir.path(), Some(&config)).unwrap();
-            fs::remove_dir_all(&output_dir).ok();
+            fs::remove_dir_all(&iter_output_dir).expect("Failed to clean output dir");
         });
     });
     group.finish();
@@ -123,15 +136,19 @@ fn multiple_small_files(c: &mut Criterion) {
                 let sizes = vec![1024; 50]; // 50 files of 1KB each
                 create_multiple_files(temp_dir.path(), &sizes, "small");
                 let output_dir = temp_dir.path().join("output");
+                std::fs::create_dir_all(&output_dir).unwrap();
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
+                let iter_output_dir =
+                    output_dir.join(format!("iter-{}", rand::thread_rng().gen::<u64>()));
+                std::fs::create_dir_all(&iter_output_dir).unwrap();
                 let config = YekConfig {
-                    output_dir: Some(output_dir.clone()),
+                    output_dir: Some(iter_output_dir.clone()),
                     ..Default::default()
                 };
                 serialize_repo(temp_dir.path(), Some(&config)).unwrap();
-                fs::remove_dir_all(&output_dir).ok();
+                fs::remove_dir_all(&iter_output_dir).expect("Failed to clean output dir");
             },
             BatchSize::SmallInput,
         );
@@ -152,15 +169,19 @@ fn multiple_medium_files(c: &mut Criterion) {
                     .collect::<Vec<_>>();
                 create_multiple_files(temp_dir.path(), &sizes, "medium");
                 let output_dir = temp_dir.path().join("output");
+                std::fs::create_dir_all(&output_dir).unwrap();
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
+                let iter_output_dir =
+                    output_dir.join(format!("iter-{}", rand::thread_rng().gen::<u64>()));
+                std::fs::create_dir_all(&iter_output_dir).unwrap();
                 let config = YekConfig {
-                    output_dir: Some(output_dir.clone()),
+                    output_dir: Some(iter_output_dir.clone()),
                     ..Default::default()
                 };
                 serialize_repo(temp_dir.path(), Some(&config)).unwrap();
-                fs::remove_dir_all(&output_dir).ok();
+                fs::remove_dir_all(&iter_output_dir).expect("Failed to clean output dir");
             },
             BatchSize::SmallInput,
         );
@@ -178,15 +199,19 @@ fn multiple_large_files(c: &mut Criterion) {
                 let sizes = vec![5_242_880; 5]; // ~5 MB x 5
                 create_multiple_files(temp_dir.path(), &sizes, "large");
                 let output_dir = temp_dir.path().join("output");
+                std::fs::create_dir_all(&output_dir).unwrap();
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
+                let iter_output_dir =
+                    output_dir.join(format!("iter-{}", rand::thread_rng().gen::<u64>()));
+                std::fs::create_dir_all(&iter_output_dir).unwrap();
                 let config = YekConfig {
-                    output_dir: Some(output_dir.clone()),
+                    output_dir: Some(iter_output_dir.clone()),
                     ..Default::default()
                 };
                 serialize_repo(temp_dir.path(), Some(&config)).unwrap();
-                fs::remove_dir_all(&output_dir).ok();
+                fs::remove_dir_all(&iter_output_dir).expect("Failed to clean output dir");
             },
             BatchSize::SmallInput,
         );
@@ -204,15 +229,20 @@ fn multiple_token_files(c: &mut Criterion) {
                 let tokens = vec![10_000; 10];
                 create_multiple_token_files(temp_dir.path(), &tokens, "token");
                 let output_dir = temp_dir.path().join("output");
+                std::fs::create_dir_all(&output_dir).unwrap();
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
+                let iter_output_dir =
+                    output_dir.join(format!("iter-{}", rand::thread_rng().gen::<u64>()));
+                std::fs::create_dir_all(&iter_output_dir).unwrap();
                 let config = YekConfig {
-                    output_dir: Some(output_dir.clone()),
+                    output_dir: Some(iter_output_dir.clone()),
+                    token_mode: true,
                     ..Default::default()
                 };
                 serialize_repo(temp_dir.path(), Some(&config)).unwrap();
-                fs::remove_dir_all(&output_dir).ok();
+                fs::remove_dir_all(&iter_output_dir).expect("Failed to clean output dir");
             },
             BatchSize::SmallInput,
         );
@@ -223,13 +253,6 @@ fn multiple_token_files(c: &mut Criterion) {
 /// Demonstrates using a custom config (e.g. extra ignores or priority rules).
 fn custom_config_test(c: &mut Criterion) {
     let mut group = c.benchmark_group("CustomConfig");
-    let mut config = YekConfig::default();
-    config.priority_rules.push(PriorityRule {
-        pattern: "*.rs".into(),
-        score: 500,
-    });
-    config.ignore_patterns = vec!["*.txt".into()];
-
     group.bench_function("custom_config_test", |b| {
         b.iter_batched(
             || {
@@ -238,15 +261,19 @@ fn custom_config_test(c: &mut Criterion) {
                 create_test_data_bytes(temp_dir.path(), 1024, "test.txt");
                 create_test_data_bytes(temp_dir.path(), 1024, "test.rs");
                 let output_dir = temp_dir.path().join("output");
+                std::fs::create_dir_all(&output_dir).unwrap();
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
+                let iter_output_dir =
+                    output_dir.join(format!("iter-{}", rand::thread_rng().gen::<u64>()));
+                std::fs::create_dir_all(&iter_output_dir).unwrap();
                 let config = YekConfig {
-                    output_dir: Some(output_dir.clone()),
+                    output_dir: Some(iter_output_dir.clone()),
                     ..Default::default()
                 };
                 serialize_repo(temp_dir.path(), Some(&config)).unwrap();
-                fs::remove_dir_all(&output_dir).ok();
+                fs::remove_dir_all(&iter_output_dir).expect("Failed to clean output dir");
             },
             BatchSize::SmallInput,
         );
