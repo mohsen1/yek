@@ -115,7 +115,7 @@ yek --max-size 100KB --output-dir /tmp/yek src/
 ```
 
 > [!NOTE]
-> When multiple chunks are written, the last chunk will contain the highest-priority files.
+> When max-size is reached, `yek` will throw away all of the less important files and generate
 
 Process multiple directories:
 
@@ -136,11 +136,11 @@ Arguments:
   [directories]...  Directories to process [default: .]
 
 Options:
-      --max-size <max-size>      Maximum size per chunk (defaults to '10000' in token mode, '10MB' in byte mode)
+      --max-size <max-size>      Maximum size of output
       --tokens [<MODEL_FAMILY>]  Count size in tokens using specified model family.
                                  Options: openai, claude, mistral, deepseek, llama [default: openai]
       --debug                    Enable debug output
-      --output-dir <output-dir>  Output directory for chunks
+      --output-dir <output-dir>  Output directory for output file
   -h, --help                     Print help
 ```
 
@@ -159,10 +159,10 @@ You can place a file called `yek.toml` at your project root or pass a custom pat
 This is optional, you can configure the `yek.toml` file at the root of your project.
 
 ```toml
-# Output directory for chunks when not using --output-dir and not streaming
+# Output directory for the output file
 output_dir = "yek-output"
 
-# Maximum size per chunk (defaults to '10000' in token mode, '10MB' in byte mode)
+# Maximum size of output
 max_size = "128K"
 
 # Tokenizer model for token counting (defaults to 'deepseek-reasoner')

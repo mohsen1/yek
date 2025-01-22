@@ -403,53 +403,7 @@ pub struct ConfigError {
     pub message: String,
 }
 
-pub const DEFAULT_CHUNK_SIZE: usize = 10 * 1024 * 1024; // 10MB in README
-
-/// Write a single chunk either to stdout or file
-fn write_single_chunk(
-    content: &str,
-    index: usize,
-    part_index: Option<usize>,
-    out_dir: &Path,
-    is_stream: bool,
-) -> io::Result<()> {
-    if is_stream {
-        // In stream mode, write directly to stdout
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
-        writeln!(handle, "{}", content)?;
-        Ok(())
-    } else {
-        // In file mode, write to a file in the output directory
-        let file_name = match part_index {
-            Some(part) => format!("chunk-{}-part-{}.txt", index, part),
-            None => format!("chunk-{}.txt", index),
-        };
-
-        // Ensure output directory exists
-        std::fs::create_dir_all(out_dir)?;
-
-        let path = out_dir.join(file_name);
-        debug!("Writing chunk to {}", path.display());
-
-        // Write content with UTF-8 encoding
-        let mut file = fs::File::create(path)?;
-        file.write_all(content.as_bytes())?;
-        file.flush()?;
-
-        Ok(())
-    }
-}
-
-/// Get the size of content in either bytes or tokens
-fn get_content_size(content: &str, config: &YekConfig) -> Result<usize> {
-    if config.token_mode {
-        let model = config.tokenizer_model.as_deref().unwrap_or("openai");
-        model_manager::count_tokens(content, model)
-    } else {
-        Ok(content.len())
-    }
-}
+pub const DEFAULT_MAX_SIZE: usize = 10 * 1024 * 1024; // 10MB in README
 
 /// Write all files into a single output with priority-based ordering
 fn write_combined_output(

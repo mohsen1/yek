@@ -33,7 +33,7 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("max-size")
                 .long("max-size")
-                .help("Maximum size per chunk (defaults to '10000' in token mode, '10MB' in byte mode)")
+                .help("Maximum size of output file")
                 .required(false),
         )
         .arg(
@@ -69,7 +69,7 @@ fn main() -> Result<()> {
         .arg(
             Arg::new("output-dir")
                 .long("output-dir")
-                .help("Output directory for chunks"),
+                .help("Output directory for the output file"),
         )
         .get_matches();
 
