@@ -20,6 +20,7 @@ use parallel::process_files_parallel;
 /// Convert a glob pattern to a regex pattern
 fn glob_to_regex(pattern: &str) -> String {
     let mut regex = String::with_capacity(pattern.len() * 2);
+    regex.push('^');
     let mut chars = pattern.chars().peekable();
 
     while let Some(c) = chars.next() {
@@ -27,8 +28,15 @@ fn glob_to_regex(pattern: &str) -> String {
             '*' => {
                 if chars.peek() == Some(&'*') {
                     chars.next(); // consume second *
-                    regex.push_str(".*");
+                                  // Handle /**/ pattern to match zero or more directories
+                    if chars.peek() == Some(&'/') {
+                        chars.next(); // consume /
+                        regex.push_str("(?:.*/)?");
+                    } else {
+                        regex.push_str(".*");
+                    }
                 } else {
+                    // Single * matches non-slash characters
                     regex.push_str("[^/]*");
                 }
             }
@@ -65,6 +73,7 @@ fn glob_to_regex(pattern: &str) -> String {
             }
         }
     }
+    regex.push('$');
     regex
 }
 
@@ -275,9 +284,13 @@ pub fn get_file_priority(path: &str, rules: &[PriorityRule]) -> i32 {
     rules
         .iter()
         .filter_map(|rule| {
-            let re = match Regex::new(&rule.pattern) {
+            let regex_pattern = glob_to_regex(&rule.pattern);
+            let re = match Regex::new(&regex_pattern) {
                 Ok(re) => re,
-                Err(_) => return None,
+                Err(e) => {
+                    tracing::warn!("Invalid regex pattern {}: {}", rule.pattern, e);
+                    return None;
+                }
             };
             if re.is_match(path) {
                 Some(rule.score)
