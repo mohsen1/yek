@@ -15,7 +15,8 @@ ignore_patterns = [
     "CHANGELOG.md",
     "^LICENSE$",
     "^README$",
-    "^askai.yaml$"
+    "^prompts/.*$",
+    "^\\.sh$"
 ]
 
 [[priority_rules]]
