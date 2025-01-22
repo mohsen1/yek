@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
-use yek::{serialize_repo, PriorityRule, YekConfig};
+use yek::{serialize_repo, YekConfig};
 
 /// Creates a text file of a specified size in bytes.
 fn create_test_data_bytes(dir: &Path, size: usize, file_name: &str) {

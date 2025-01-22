@@ -17,10 +17,8 @@ use tracing::debug;
 #[derive(Debug)]
 pub struct ProcessedFile {
     pub priority: i32,
-    pub file_index: usize,
     pub rel_path: String,
     pub content: String,
-    pub token_count: Option<usize>,
 }
 
 pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec<ProcessedFile>> {
@@ -148,7 +146,7 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
             }
 
             // Get file index for stable sorting
-            let file_index = {
+            let _file_index = {
                 let mut counter = file_counter.lock().unwrap();
                 *counter += 1;
                 *counter - 1
@@ -156,10 +154,8 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
 
             let processed = ProcessedFile {
                 priority,
-                file_index,
                 rel_path,
                 content,
-                token_count: None,
             };
 
             let _ = tx.send(processed);
