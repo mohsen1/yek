@@ -462,9 +462,13 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
 
     for (rel_path, file_content, _) in entries {
         let model = config.tokenizer_model.as_deref().unwrap_or("openai");
-        let entry = format!(">>>> {}\n{}\n", rel_path, file_content);
+        let entry_header = format!(">>>> {}\n", rel_path);
+        let entry = format!("{}{}\n", entry_header, file_content);
         let entry_size = if config.token_mode {
-            model_manager::count_tokens(&entry, model).unwrap_or_else(|_| entry.len())
+            model_manager::count_tokens(&entry, model).unwrap_or_else(|e| {
+                tracing::warn!("Token count failed for {}: {}", rel_path, e);
+                entry.len()
+            })
         } else {
             entry.len()
         };
@@ -477,21 +481,26 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
             while start < file_content.len() {
                 let part_header = format!(">>>> {} (part {})\n", rel_path, part);
                 let header_size = if config.token_mode {
-                    model_manager::count_tokens(&part_header, model)
-                        .unwrap_or_else(|_| part_header.len())
+                    model_manager::count_tokens(&part_header, model).unwrap_or_else(|e| {
+                        tracing::warn!("Header token count failed: {}", e);
+                        part_header.len()
+                    })
                 } else {
                     part_header.len()
                 };
 
                 let available_size = max_size.saturating_sub(header_size);
                 if available_size <= 0 {
-                    break; // Can't even fit the header
+                    break;
                 }
 
                 let end = if config.token_mode {
                     // Tokenize the remaining content
                     let tokens = model_manager::tokenize(&file_content[start..], model)
-                        .unwrap_or_else(|_| vec![]);
+                        .unwrap_or_else(|e| {
+                            tracing::warn!("Tokenization failed: {}", e);
+                            vec![]
+                        });
                     let mut token_count = 0;
                     let mut char_pos = start;
 
@@ -524,10 +533,12 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
 
         // For non-split files, check if adding entry would exceed max_size
         let header_size = if config.token_mode {
-            model_manager::count_tokens(&format!(">>>> {}\n", rel_path), model)
-                .unwrap_or_else(|_| rel_path.len() + 6)
+            model_manager::count_tokens(&entry_header, model).unwrap_or_else(|e| {
+                tracing::warn!("Header token count failed: {}", e);
+                entry_header.len()
+            })
         } else {
-            rel_path.len() + 6 // ">>>> " + "\n"
+            entry_header.len()
         };
 
         let content_size = if config.token_mode {
@@ -544,7 +555,7 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
             current_size = 0;
         }
 
-        current_chunk.push_str(&format!(">>>> {}\n{}\n", rel_path, file_content));
+        current_chunk.push_str(&format!("{}{}\n", entry_header, file_content));
         current_size += total_size;
     }
 
@@ -565,12 +576,8 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
         let out_dir = config
             .output_dir
             .as_deref()
-            .map(|d| {
-                std::fs::create_dir_all(d).unwrap_or_else(|e| {
-                    debug!("Failed to create output directory: {}", e);
-                });
-                d
-            })
+            .map(|d| std::fs::create_dir_all(d).map(|_| d))
+            .transpose()?
             .expect("output dir required for file mode");
 
         if chunks.len() == 1 {
@@ -703,16 +710,9 @@ pub fn normalize_path(path: &Path, base: &Path) -> String {
     match path.strip_prefix(base) {
         Ok(rel_path) => {
             let path_str = rel_path.to_string_lossy().replace('\\', "/");
-            path_str
-                .trim_start_matches(".")
-                .trim_start_matches('/')
-                .to_string()
+            path_str.to_string()
         }
-        Err(e) => {
-            // Fallback to using path as-is but normalize slashes
-            let _: std::path::StripPrefixError = e;
-            path.to_string_lossy().replace('\\', "/")
-        }
+        Err(_) => path.to_string_lossy().replace('\\', "/"),
     }
 }
 

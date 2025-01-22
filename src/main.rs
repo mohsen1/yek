@@ -170,14 +170,13 @@ fn main() -> Result<()> {
         } else {
             // In interactive mode, set default output dir if none specified and not streaming
             if config_for_this_dir.output_dir.is_none() {
-                std::fs::create_dir_all("repo-serialized")?;
-                config_for_this_dir.output_dir = Some(PathBuf::from("repo-serialized"));
+                let output_path = PathBuf::from("repo-serialized");
+                if !output_path.exists() {
+                    std::fs::create_dir_all(&output_path)?;
+                }
+                config_for_this_dir.output_dir = Some(output_path);
             }
-        }
-
-        // Create output directory if specified and not streaming
-        if let Some(dir) = &config_for_this_dir.output_dir {
-            std::fs::create_dir_all(dir)?;
+            std::fs::create_dir_all(config_for_this_dir.output_dir.as_ref().unwrap())?;
         }
 
         // Validate final merged config

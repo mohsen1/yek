@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tiktoken_rs::{get_bpe_from_model, o200k_base};
+use tiktoken_rs::o200k_base;
 use tokenizers::Tokenizer;
 
 lazy_static::lazy_static! {

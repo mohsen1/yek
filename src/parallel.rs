@@ -76,7 +76,9 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
             }
 
             let path = entry.path();
-            let rel_path = normalize_path(path, &base_dir);
+            let rel_path = normalize_path(path, &*base_dir)
+                .trim_start_matches("./")
+                .to_string();
 
             // Check if file has been processed
             {
