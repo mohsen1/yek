@@ -11,8 +11,8 @@ categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 anyhow = "1.0"
-byte-unit = "5.1"
-clap = { version = "4.5", features = ["derive"] }
+byte-unit = "4.0"
+clap = { version = "4.4", features = ["derive"] }
 crossbeam = "0.8"
 ignore = "0.4"
 indicatif = "0.17"
@@ -38,7 +38,7 @@ predicates = "3.0"
 tempfile = "3.9"
 criterion = "0.5"
 rand = "0.8"
-git-cliff = "2.3.0"
+git-cliff = "1.4.0"
 regex = "1.10.3"
 
 [[bench]]
