@@ -68,18 +68,6 @@ fn write_output(
     }
 }
 
-/// Safely truncate a string to specified byte length
-fn truncate_bytes(s: &str, max_bytes: usize) -> String {
-    if s.len() <= max_bytes {
-        return s.to_string();
-    }
-    let mut end = max_bytes;
-    while !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    s[..end].to_string()
-}
-
 /// Convert a glob pattern to a regex pattern
 fn glob_to_regex(pattern: &str) -> String {
     let adjusted_pattern = if pattern.ends_with('/') {
@@ -588,9 +576,8 @@ fn is_effectively_absolute(path: &std::path::Path) -> bool {
 
 /// Returns a relative, normalized path string (forward slashes on all platforms).
 pub fn normalize_path(path: &Path, base: &Path) -> String {
-    // Use the original base path without canonicalization
-    let base: &Path = base.as_ref();
-    let path: &Path = path.as_ref();
+    let base: &Path = base;
+    let path: &Path = path;
 
     // Attempt to get relative path directly without canonicalization
     match path.strip_prefix(base) {

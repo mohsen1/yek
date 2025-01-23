@@ -1,12 +1,11 @@
 use crate::{
-    get_file_priority, get_recent_commit_times, glob_to_regex,
+    get_file_priority, get_recent_commit_times,
     model_manager::{self},
     normalize_path, Result, YekConfig,
 };
 use anyhow::anyhow;
 use crossbeam::channel::bounded;
 use ignore::{WalkBuilder, WalkState};
-use regex::Regex;
 use std::{
     collections::HashSet,
     path::Path,
@@ -63,8 +62,8 @@ pub fn process_files_parallel(
         let tx = tx.clone();
         let base_dir = Arc::clone(&base_dir);
         let config = Arc::clone(&config);
-        let processed_files = Arc::clone(&processed_files);
-        let file_counter = Arc::clone(&file_counter);
+        let _processed_files = Arc::clone(&processed_files);
+        let _file_counter = Arc::clone(&file_counter);
         let has_files = Arc::clone(&has_files_clone);
 
         Box::new(move |entry| {
@@ -73,7 +72,7 @@ pub fn process_files_parallel(
                 Err(_) => return WalkState::Continue,
             };
 
-            if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+            if !entry.file_type().is_some_and(|ft| ft.is_file()) {
                 return WalkState::Continue;
             }
 
