@@ -49,25 +49,24 @@ fn e2e_small_repo_basic() {
         .assert()
         .success();
 
-    // Check that ignore_me/binary.bin is not in output
-    let mut found_lib_rs = false;
-    let mut found_bin = false;
+    // Check output file
+    let output_file = output_dir.join("output.txt");
+    assert!(output_file.exists(), "output.txt should exist");
+    let content = fs::read_to_string(&output_file).expect("read output file");
 
-    for entry in fs::read_dir(&output_dir).expect("Output dir must exist") {
-        let path = entry.expect("entry").path();
-        if path.extension().unwrap_or_default() != "txt" {
-            continue;
-        }
-        let content = fs::read_to_string(&path).expect("read output file");
-        if content.contains("binary.bin") {
-            found_bin = true;
-        }
-        if content.contains("src/lib.rs") {
-            found_lib_rs = true;
-        }
-    }
-    assert!(!found_bin, "binary.bin (ignored) must not appear in output");
-    assert!(found_lib_rs, "lib.rs must appear in the serialized output");
+    // Verify content
+    assert!(
+        !content.contains("binary.bin"),
+        "binary.bin (ignored) must not appear in output"
+    );
+    assert!(
+        content.contains("src/lib.rs"),
+        "lib.rs must appear in the output"
+    );
+    assert!(
+        content.contains("pub fn lib_fn()"),
+        "lib.rs content must be included"
+    );
 }
 
 /// This test ensures that large files are truncated based on max_size
@@ -75,17 +74,17 @@ fn e2e_small_repo_basic() {
 fn large_file_truncation() {
     let repo = TempDir::new().unwrap();
 
-    // 1 MB worth of text
+    // Create a large file (1 MB)
     let big_content = "test content ".repeat(100_000);
     create_file(repo.path(), "BIGFILE.txt", big_content.as_bytes());
 
     let output_dir = repo.path().join("yek-output");
     ensure_empty_output_dir(&output_dir);
 
-    // We set max_size to ~100 KB so that 1 MB file is truncated
+    // Set max_size to 50KB to ensure truncation
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.current_dir(repo.path())
-        .arg("--max-size=50KB") // Much smaller size limit
+        .arg("--max-size=50KB")
         .arg("--output-dir")
         .arg(&output_dir)
         .assert()
@@ -95,10 +94,9 @@ fn large_file_truncation() {
     let output_file = output_dir.join("output.txt");
     assert!(output_file.exists(), "Should write output file");
     let content = fs::read_to_string(&output_file).expect("read output");
-    assert!(
-        content.contains("BIGFILE.txt"),
-        "Should contain file name banner"
-    );
+
+    // Check that the file was included but truncated
+    assert!(content.contains("BIGFILE.txt"), "Should contain file name");
     assert!(
         content.len() <= 50 * 1024,
         "Content should be truncated to max size"
@@ -541,7 +539,7 @@ fn writes_files_when_interactive() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn handles_large_files_with_splitting() -> Result<(), Box<dyn std::error::Error>> {
+fn handles_large_files() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;
 
     // Create 2MB test file
@@ -558,10 +556,12 @@ fn handles_large_files_with_splitting() -> Result<(), Box<dyn std::error::Error>
 
     let stdout = String::from_utf8(output.get_output().stdout.clone())?;
 
-    // Verify splitting occurred
-    assert!(stdout.contains(">>>> big.txt (part 0)"));
-    assert!(stdout.contains(">>>> big.txt (part 1)"));
-    assert!(!stdout.contains("part 0"));
+    // Verify file is included but truncated
+    assert!(stdout.contains("big.txt"));
+    assert!(
+        stdout.len() <= 1_000_000,
+        "Output should be truncated to 1MB"
+    );
 
     Ok(())
 }
