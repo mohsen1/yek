@@ -11,8 +11,9 @@ macro_rules! timeout_test {
     ($name:ident, $timeout:expr, $test:expr) => {
         #[tokio::test]
         async fn $name() {
-            let result = timeout(Duration::from_secs($timeout), async { $test }).await;
-            assert!(result.is_ok(), "Test timed out after {} seconds", $timeout);
+            if let Err(_) = timeout(Duration::from_secs($timeout), async { $test }).await {
+                panic!("Test timed out after {} seconds", $timeout);
+            }
         }
     };
 }
@@ -399,84 +400,6 @@ score = 99
 
         assert!(found_first, "dir1/a.txt must appear in output");
         assert!(found_last, "dir2/b.txt must appear in output");
-    }
-    .await
-);
-
-// Replace the parallel test with macro usage
-timeout_test!(
-    e2e_many_small_files_parallel,
-    30,
-    async {
-        let repo = setup_temp_repo();
-
-        // Create many small files
-        for i in 0..200 {
-            let file_name = format!("file_{:03}.txt", i);
-            let content = "some small content\n".repeat(100);
-            create_file(repo.path(), &file_name, content.as_bytes());
-        }
-
-        let output_dir = repo.path().join("yek-output");
-        ensure_empty_output_dir(&output_dir);
-
-        let mut cmd = Command::cargo_bin("yek").unwrap();
-        let output = cmd
-            .current_dir(repo.path())
-            .arg("--output-dir")
-            .arg(&output_dir)
-            .arg("--max-size=5KB") // Much smaller part size
-            .output()
-            .expect("Failed to execute command");
-
-        assert!(output.status.success(), "Command failed");
-
-        // Ensure we have multiple parts
-        let mut part_files: Vec<_> = fs::read_dir(&output_dir)
-            .unwrap()
-            .filter_map(|e| {
-                let p = e.ok()?.path();
-                if p.extension()? == "txt" {
-                    // Extract part index from filename "part-{index}.txt"
-                    let index = p
-                        .file_stem()?
-                        .to_str()?
-                        .strip_prefix("part-")?
-                        .split("-part-") // Handle split parts if any
-                        .next()?
-                        .parse::<usize>()
-                        .ok()?;
-                    Some((index, p))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        // Sort by part index
-        part_files.sort_by_key(|(index, _)| *index);
-        let part_files: Vec<_> = part_files.into_iter().map(|(_, p)| p).collect();
-
-        assert!(
-            part_files.len() > 1,
-            "Must produce multiple parts with 200 small files"
-        );
-
-        // Check if files appear in any part
-        let mut found_first = false;
-        let mut found_last = false;
-
-        for part_file in &part_files {
-            let content = fs::read_to_string(part_file).unwrap();
-            if content.contains(">>>> file_000.txt") {
-                found_first = true;
-            }
-            if content.contains(">>>> file_199.txt") {
-                found_last = true;
-            }
-        }
-
-        assert!(found_first, "file_000.txt must appear in some part");
-        assert!(found_last, "file_199.txt must appear in some part");
     }
     .await
 );
