@@ -73,101 +73,52 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux GNU builds
+          # Linux builds using cross
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: yek
-            asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
+            use-cross: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact_name: yek
-            asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
-
-          # Linux MUSL builds
+            use-cross: true
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            artifact_name: yek
-            asset_name: yek-x86_64-unknown-linux-musl.tar.gz
+            use-cross: true
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            artifact_name: yek
-            asset_name: yek-aarch64-unknown-linux-musl.tar.gz
+            use-cross: true
 
-          # macOS builds
+          # Native macOS builds
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: yek
-            asset_name: yek-x86_64-apple-darwin.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: yek
-            asset_name: yek-aarch64-apple-darwin.tar.gz
 
-          # Windows builds
+          # Native Windows builds
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: yek.exe
-            asset_name: yek-x86_64-pc-windows-msvc.zip
           - os: windows-latest
             target: aarch64-pc-windows-msvc
-            artifact_name: yek.exe
-            asset_name: yek-aarch64-pc-windows-msvc.zip
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install cross (Linux)
+        if: matrix.use-cross
+        run: cargo install cross
+
+      - name: Setup Rust (Native builds)
+        if: ${{ !matrix.use-cross }}
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt,clippy
-          cache-key: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev musl-tools gcc-aarch64-linux-gnu
+      - name: Build with cross (Linux)
+        if: matrix.use-cross
+        run: cross build --release --target ${{ matrix.target }}
 
-          # Handle aarch64 targets
-          if [[ "${{ matrix.target }}" == *"aarch64"* ]]; then
-            # GNU targets
-            if [[ "${{ matrix.target }}" == *"gnu"* ]]; then
-              sudo apt-get install -y gcc-aarch64-linux-gnu
-              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-            # MUSL targets
-            elif [[ "${{ matrix.target }}" == *"musl"* ]]; then
-              wget https://musl.cc/aarch64-linux-musl-cross.tgz
-              sudo tar -xzf aarch64-linux-musl-cross.tgz -C /usr/local --strip-components=1
-              echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=/usr/local/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
-              echo "PATH=/usr/local/bin:$PATH" >> $GITHUB_ENV
-              echo "CC_aarch64_unknown_linux_musl=/usr/local/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
-              echo "OPENSSL_DIR=/usr/local/aarch64-linux-musl" >> $GITHUB_ENV
-              echo "OPENSSL_INCLUDE_DIR=/usr/local/aarch64-linux-musl/include" >> $GITHUB_ENV
-              echo "OPENSSL_LIB_DIR=/usr/local/aarch64-linux-musl/lib" >> $GITHUB_ENV
-            fi
-          fi
-
-      - name: Setup OpenSSL (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install openssl@3
-          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
-
-      - name: Install OpenSSL (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install openssl --params='/InstallationPath:C:\OpenSSL\'
-          echo "OPENSSL_DIR=C:\OpenSSL" >> $env:GITHUB_ENV
-          echo "PKG_CONFIG_PATH=C:\OpenSSL\lib\pkgconfig" >> $env:GITHUB_ENV
-
-      - name: Install ARM64 toolchain (Windows)
-        if: matrix.target == 'aarch64-pc-windows-msvc'
-        run: |
-          choco install visualstudio2022-workload-vctools `
-            --params "--add Microsoft.VisualStudio.Component.VC.Tools.ARM64"
-
-      - name: Build target
-        run: |
-          rustup target add ${{ matrix.target }}
-          cargo build --release --target ${{ matrix.target }} --locked
+      - name: Native build (macOS/Windows)
+        if: ${{ !matrix.use-cross }}
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package
         shell: bash
@@ -189,7 +140,7 @@ jobs:
           path: ${{ matrix.asset_name }}
 
   benchmark:
-    name: Benchmark - ${{ matrix.benchmark_group.name }}
+    name: Benchmark / ${{ matrix.benchmark_group.name }}
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     strategy:
