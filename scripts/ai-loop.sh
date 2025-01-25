@@ -49,7 +49,8 @@ for i in $(seq 1 $attempts); do
         --test-file-pattern='tests/*.rs' \
         --source-file-pattern='src/**/*.rs' \
         --system-prompt=./prompts/fix-tests.txt \
-        "$(cat askds_input.tmp)" 2>&1 | tee -a attempts.txt
+        --run="$(cat askds_input.tmp)" \
+        2>&1 | tee -a attempts.txt
     echo "--- End askds Output ---" | tee -a attempts.txt
 
     # Cleanup temp files
