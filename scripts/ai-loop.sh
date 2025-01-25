@@ -52,7 +52,7 @@ for i in $(seq 1 $attempts); do
             --test-file-pattern='tests/*.rs' \
             --source-file-pattern='src/**/*.rs' \
             --system-prompt=./prompts/fix-tests.txt \
-            --run="cat askds_input.tmp" 2>&1 | tee /dev/stderr
+            --run="cat askds_input.tmp" 2>&1 | tee /dev/stderr || true
     )
     askds_exit_code=$?
 
