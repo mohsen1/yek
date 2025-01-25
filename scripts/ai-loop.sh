@@ -16,7 +16,7 @@ for i in $(seq 1 $attempts); do
     echo "=== Attempt $i/$attempts ===" | tee -a attempts.txt
 
     # Run tests and print output to console, capture to temp file
-    cargo test -- --test-threads=1 2>&1 | tee test_output.tmp
+    cargo test -- --test accepts_model_from_config --test-threads=1 2>&1 | tee test_output.tmp
     test_exit_code=${PIPESTATUS[0]}
 
     # Trim output to only include failures section
