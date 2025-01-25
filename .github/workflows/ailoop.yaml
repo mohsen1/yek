@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Branch to run the workflow on'
+        description: "Branch to run the workflow on"
         required: true
-        default: 'main'
+        default: "main"
         type: string
       attempts:
         description: Maximum number of attempts
-        default: '40'
+        default: "40"
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
   loop:
     name: AI Fix Loop
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # Maximum allowed by GitHub
+    timeout-minutes: 360 # Maximum allowed by GitHub
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: '20'
+          node-version: "20"
       - name: Install askds
         run: npm install -g askds
 
@@ -50,7 +50,7 @@ jobs:
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-          
+
           echo "SHORT_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
           attempts=${{ github.event.inputs.attempts }}
           success=0
@@ -59,11 +59,14 @@ jobs:
               echo "=== Attempt $i/$attempts ===" | tee -a attempts.txt
               
               # Capture both stdout and stderr
-              cargo test -- --test-threads=1 2>&1 | tee current.txt
+              test_output=$(cargo test -- --test-threads=1 2>&1)
               test_exit_code=${PIPESTATUS[0]}
+
+              # Trim output from "failures:"
+              test_output=$(echo "$test_output" | sed -n '/failures:/,/failures:/p' | sed '1d; $d')
               
               # Save full test output
-              cat current.txt >> attempts.txt
+              echo "$test_output" >> attempts.txt
               echo -e "\n\n" >> attempts.txt
 
               # Exit if tests pass
@@ -73,8 +76,9 @@ jobs:
                   break
               fi
 
-  
-              askds --fix --auto-apply --system-prompt=./prompts/fix-tests.txt "$(cat current.txt)"
+
+              # Feed DeepSeek with history but only the last 250KB
+              askds --fix --auto-apply --system-prompt=./prompts/fix-tests.txt "$(tail -c 250000 attempts.txt)"
 
               # Check for changes
               if ! git diff --quiet; then
@@ -119,7 +123,7 @@ jobs:
             - Total attempts made: ${{ env.ATTEMPTS }}
             - Source branch: ${{ github.event.inputs.branch }}
             - Fix branch: ${{ github.event.inputs.branch }}-ai-fix-${{ env.SHORT_DATE }}
-            
+
             **Important Notes:**
             - Review all changes carefully
             - Verify test results
