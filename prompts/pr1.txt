@@ -1,0 +1,811 @@
+## Implement the following changes to the code:
+
+### Cargo.toml
+
+```toml
+[package]
+name = "yek"
+version = "0.13.8"
+edition = "2021"
+description = "A tool to serialize a repository into a single text file"
+license = "MIT"
+repository = "https://github.com/mohsen-w-elsayed/yek"
+readme = "README.md"
+keywords = ["git", "repository", "serialization", "text"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+anyhow = "1.0"
+byte-unit = "4.0"
+clap = { version = "4.4", features = ["derive"] }
+crossbeam = "0.8"
+ignore = "0.4"
+indicatif = "0.17"
+num_cpus = "1.16"
+rayon = "1.8"
+regex = "1.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_derive = "1.0"
+sha2 = "0.10"
+time = "0.3"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+walkdir = "2.4"
+path-slash = "0.2.1"
+git2 = { version = "0.18.2", features = ["vendored-openssl", "https"] }
+crossbeam-channel = "0.5"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+chrono = "0.4"
+predicates = "3.0"
+tempfile = "3.9"
+criterion = "0.5"
+rand = "0.8"
+git-cliff = "1.4.0"
+regex = "1.10.3"
+
+[[bench]]
+name = "serialization"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+```
+
+### src/main.rs (Argument parsing and main logic)
+
+```rust
+use anyhow::{anyhow, Result};
+use clap::Parser;
+use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
+use tracing::{subscriber, Level};
+use tracing_subscriber::fmt;
+use yek::{find_config_file, load_config_file, parse_size_input, serialize_repo, validate_config, YekConfig};
+
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+#[command(after_help = "See https://github.com/mohsen-w-elsayed/yek for detailed documentation.")]
+struct Args {
+    /// Directories to process
+    #[arg()]
+    directories: Vec<PathBuf>,
+
+    /// Path to custom config file
+    #[arg(short, long, value_name = "FILE")]
+    config: Option<PathBuf>,
+
+    /// Maximum output size (supports K/KB/M/MB suffixes)
+    #[arg(long, value_name = "SIZE")]
+    max_size: Option<String>,
+
+    #[arg(long, value_name = "MODEL")]
+    #[arg(num_args = 0..=1, require_equals = true, default_missing_value = "openai")]
+    #[arg(value_parser = ["openai", "claude", "mistral", "mixtral", "deepseek", "llama", "codellama"])]
+    #[arg(
+        help = "Count size in tokens using specified model family (default: openai)\nSUPPORTED MODELS: openai, claude, mistral, mixtral, deepseek, llama, codellama"
+    )]
+    tokens: Option<String>,
+
+    /// Output directory for generated files
+    #[arg(long, short, value_name = "DIR")]
+    output_dir: Option<PathBuf>,
+
+    /// Enable debug output
+    #[arg(long)]
+    debug: bool,
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+
+    // Setup logging
+    let level = if args.debug {
+        Level::DEBUG
+    } else {
+        Level::INFO
+    };
+
+    // Configure logging output
+    if let Ok(debug_output) = std::env::var("YEK_DEBUG_OUTPUT") {
+        let file = std::fs::File::create(debug_output)?;
+        let subscriber = fmt()
+            .with_max_level(level)
+            .with_writer(file)
+            .without_time()
+            .with_target(false)
+            .with_ansi(false)
+            .finish();
+        subscriber::set_global_default(subscriber)?;
+    } else {
+        fmt()
+            .with_max_level(level)
+            .without_time()
+            .with_target(false)
+            .with_ansi(true)
+            .init();
+    }
+
+    // Load and merge configurations
+    let mut config = YekConfig::default();
+
+    // Load config from file if specified
+    if let Some(config_path) = args.config.as_ref().or(find_config_file(Path::new("."))) {
+        if config_path.exists() {
+            let file_config = load_config_file(&config_path);
+            match file_config {
+                Some(file_config) => {
+                    config.merge(&file_config);
+                }
+                None => {
+                    return Err(anyhow!(
+                        "Failed to load config from: {}",
+                        config_path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    // Apply command-line arguments
+    if let Some(size_str) = args.max_size {
+        config.max_size = Some(parse_size_input(&size_str, config.token_mode)?);
+    }
+
+    if let Some(model) = args.tokens {
+        config.token_mode = true;
+        config.tokenizer_model = Some(model);
+    }
+
+    if args.output_dir.is_some() {
+        config.output_dir = args.output_dir;
+    }
+
+    // Stream mode: if stdout is not a tty, enable streaming
+    if !std::io::stdout().is_terminal() {
+        config.stream = true;
+    }
+
+    // Validate the merged configuration
+    let validation_errors = validate_config(&config);
+    if !validation_errors.is_empty() {
+        for error in validation_errors {
+            eprintln!("Configuration error: {}", error);
+        }
+        return Err(anyhow!("Invalid configuration"));
+    }
+
+    // Use specified directories or default to current directory
+    let directories = if args.directories.is_empty() {
+        vec![PathBuf::from(".")]
+    } else {
+        args.directories
+    };
+
+    // Run serialization for each directory
+    for dir in directories {
+        serialize_repo(&dir, Some(&config))?;
+    }
+
+    Ok(())
+}
+```
+
+### src/lib.rs (Configuration related parts)
+
+```rust
+use anyhow::{anyhow, Result};
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs::{self};
+use std::io::Read;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command as SysCommand, Stdio};
+use tracing::debug;
+
+mod defaults;
+mod parallel;
+mod model_manager;
+
+use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
+use parallel::process_files_parallel;
+
+/// Convert a glob pattern to a regex pattern
+fn glob_to_regex(pattern: &str) -> String {
+    let mut regex = String::with_capacity(pattern.len() * 2);
+    regex.push('^'); // Match from the start of the path
+
+    let mut chars = pattern.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '*' => {
+                if chars.peek() == Some(&'*') {
+                    chars.next();
+                    regex.push_str(".*"); // Match anything with .*
+                } else {
+                    regex.push_str("[^/]*"); // Match any character except /
+                }
+            }
+            '?' => regex.push('.'), // Match any single character
+            '.' => regex.push_str("\\."), // Escape dots
+            '/' => regex.push_str("[/]"), // Forward slash
+            '[' => {
+                regex.push('[');
+                if let Some(&'^') = chars.peek() {
+                    chars.next();
+                    regex.push('^'); // Negated character class
+                }
+                // Parse character class, escape special characters as needed
+                while let Some(c) = chars.peek() {
+                    let c = *c;
+                    chars.next();
+                    match c {
+                        ']' => {
+                            regex.push(']');
+                            break;
+                        }
+                        '\\' => {
+                            regex.push_str(r"\\");
+                            if let Some(c) = chars.next() {
+                                regex.push(c);
+                            }
+                        }
+                        '-' => regex.push('-'),
+                        _ => regex.push(c),
+                    }
+                }
+            }
+            '{' => regex.push('('), // Start of alternation group
+            '}' => regex.push(')'), // End of alternation group
+            ',' => regex.push('|'), // Alternation separator
+            c => regex.push_str(®ex::escape(&c.to_string())), // Escape other special characters
+        }
+    }
+
+    regex.push('$'); // Match until the end of the path
+    regex
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct IgnorePatterns {
+    #[serde(default)]
+    pub patterns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriorityRule {
+    pub pattern: String,
+    pub score: i32,
+}
+
+impl PriorityRule {
+    #[allow(dead_code)]
+    fn matches(&self, path: &str) -> bool {
+        if let Ok(re) = Regex::new(&self.pattern) {
+            re.is_match(path)
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YekConfig {
+    #[serde(default)]
+    pub ignore_patterns: Vec<String>,
+    #[serde(default)]
+    pub priority_rules: Vec<PriorityRule>,
+    #[serde(default)]
+    pub binary_extensions: Vec<String>,
+    #[serde(default)]
+    pub max_size: Option<usize>,
+    #[serde(default)]
+    pub output_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub stream: bool,
+    #[serde(default)]
+    pub token_mode: bool,
+    #[serde(default)]
+    pub tokenizer_model: Option<String>,
+    #[serde(default)]
+    pub max_files: Option<usize>,
+}
+
+impl Default for YekConfig {
+    fn default() -> Self {
+        Self {
+            stream: false,
+            output_dir: None,
+            priority_rules: vec![],
+            binary_extensions: vec![
+                "jpg".to_string(),
+                "jpeg".to_string(),
+                "png".to_string(),
+                "gif".to_string(),
+                "bin".to_string(),
+                "zip".to_string(),
+                "exe".to_string(),
+                "dll".to_string(),
+                "so".to_string(),
+                "dylib".to_string(),
+                "class".to_string(),
+                "jar".to_string(),
+                "pyc".to_string(),
+                "pyo".to_string(),
+                "pyd".to_string(),
+            ],
+            ignore_patterns: vec![],
+            token_mode: false,
+            tokenizer_model: None,
+            max_size: None,
+            max_files: None,
+        }
+    }
+}
+
+impl YekConfig {
+    pub fn merge(&mut self, other: &YekConfig) {
+        // Only override output_dir if present in other config
+        if other.output_dir.is_some() {
+            self.output_dir = other.output_dir.clone();
+        }
+        self.stream = other.stream;
+        self.token_mode = other.token_mode;
+        if other.max_size.is_some() {
+            self.max_size = other.max_size;
+        }
+        if other.max_files.is_some() {
+            self.max_files = other.max_files;
+        }
+        if other.tokenizer_model.is_some() {
+            self.tokenizer_model = other.tokenizer_model.clone();
+        }
+        // Merge other fields as needed, for example:
+        self.ignore_patterns.extend(other.ignore_patterns.clone());
+        self.priority_rules.extend(other.priority_rules.clone());
+        self.binary_extensions.extend(other.binary_extensions.clone());
+    }
+}
+
+/// Check if file is text by extension or scanning first chunk for null bytes.
+pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Result<bool> {
+    // Check user-provided binary extensions first, permitting no leading dot
+    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+        let ext_lower = ext.to_lowercase();
+        if user_binary_extensions
+            .iter()
+            .any(|e| e.trim_start_matches('.') == ext_lower)
+        {
+            return Ok(false);
+        }
+    }
+
+    // Check default binary extensions
+    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+        if BINARY_FILE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+            return Ok(false);
+        }
+    }
+
+    // If no extension or not in binary list, check content
+    let mut file = fs::File::open(path)?;
+    let mut buffer = [0; 512]; // Read a small chunk to check for null bytes
+    let n = file.read(&mut buffer)?;
+
+    // Check for null bytes which typically indicate binary content
+    Ok(!buffer[..n].contains(&0))
+}
+
+/// Determine final priority of a file by scanning the priority list
+/// in descending order of score.
+pub fn get_file_priority(path: &str, rules: &[PriorityRule]) -> i32 {
+    rules
+        .iter()
+        .filter_map(|rule| {
+            let re = match Regex::new(&rule.pattern) {
+                Ok(re) => re,
+                Err(_) => return None,
+            };
+            if re.is_match(path) {
+                Some(rule.score)
+            } else {
+                None
+            }
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// Get the commit time of the most recent change to each file.
+/// Returns a map from file path (relative to the repo root) → last commit Unix time.
+/// If Git or .git folder is missing, returns None instead of erroring.
+pub fn get_recent_commit_times(repo_path: &Path) -> Option<HashMap<String, u64>> {
+    // Confirm there's a .git folder
+    if !repo_path.join(".git").exists() {
+        debug!("No .git directory found, skipping Git-based prioritization");
+        return None;
+    }
+
+    // Get all files and their timestamps using bash with proper UTF-8 handling
+    let output = SysCommand::new("bash")
+        .args([
+            "-c",
+            "export LC_ALL=en_US.UTF-8; export LANG=en_US.UTF-8; \
+             git -c core.quotepath=false log \
+             --format=%ct \
+             --name-only \
+             --no-merges \
+             --no-renames \
+             -- . | tr -cd '[:print:]\n' | iconv -f utf-8 -t utf-8 -c",
+        ])
+        .current_dir(repo_path)
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        debug!("Git log command failed, skipping Git-based prioritization");
+        return None;
+    }
+
+    let mut git_times = HashMap::new();
+    let mut current_timestamp = 0_u64;
+
+    // Process output line by line with UTF-8 conversion
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Ok(ts) = line.parse::<u64>() {
+            current_timestamp = ts;
+            debug!("Found timestamp: {}", ts);
+        } else {
+            debug!("Found file: {} with timestamp {}", line, current_timestamp);
+            git_times.insert(line.to_string(), current_timestamp);
+        }
+    }
+
+    if git_times.is_empty() {
+        debug!("No valid timestamps found, skipping Git-based prioritization");
+        None
+    } else {
+        Some(git_times)
+    }
+}
+
+/// Validate the config object, returning any errors found
+#[derive(Debug)]
+pub struct ConfigError {
+    pub message: String,
+}
+
+pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
+    let mut errors = Vec::new();
+
+    // Validate priority rules
+    for rule in &config.priority_rules {
+        if rule.score < 0 || rule.score > 1000 {
+            errors.push(ConfigError {
+                message: format!("Priority score {} must be between 0 and 1000", rule.score),
+            });
+        }
+        if rule.pattern.is_empty() {
+            errors.push(ConfigError {
+                message: "Priority rule must have a pattern".to_string(),
+            });
+        }
+        // Validate regex pattern
+        if let Err(e) = Regex::new(&rule.pattern) {
+            errors.push(ConfigError {
+                message: format!("Invalid regex pattern '{}': {}", rule.pattern, e),
+            });
+        }
+    }
+
+    // Validate ignore patterns
+    for pattern in &config.ignore_patterns {
+        let regex_pattern = if pattern.starts_with('^') || pattern.ends_with('$') {
+            // Already a regex pattern
+            pattern.to_string()
+        } else {
+            // Convert glob pattern to regex
+            glob_to_regex(pattern)
+        };
+
+        if let Err(e) = Regex::new(®ex_pattern) {
+            errors.push(ConfigError {
+                message: format!("Invalid pattern '{}': {}", pattern, e),
+            });
+        }
+    }
+
+    // Validate max_size
+    if let Some(size) = config.max_size {
+        if size == 0 {
+            errors.push(ConfigError {
+                message: "Max size cannot be 0".to_string(),
+            });
+        }
+    }
+
+    // Validate output directory if specified
+    if let Some(dir) = &config.output_dir {
+        let path = Path::new(dir);
+        if path.exists() && !path.is_dir() {
+            errors.push(ConfigError {
+                message: format!(
+                    "Output path '{}' exists but is not a directory",
+                    dir.display()
+                ),
+            });
+        }
+
+        if let Err(e) = std::fs::create_dir_all(path) {
+            errors.push(ConfigError {
+                message: format!("Cannot create output directory '{}': {}", dir.display(), e),
+            });
+        }
+    }
+
+    errors
+}
+
+pub const DEFAULT_CHUNK_SIZE: usize = 10 * 1024 * 1024; // 10MB in README
+
+/// The main function that the tests call.
+pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
+    let config = cfg.cloned().unwrap_or_default();
+    let is_stream = config.stream;
+
+    // Process files in parallel
+    let processed_files = process_files_parallel(repo_path, &config)?;
+
+    // Convert to the format expected by write_chunks
+    let entries: Vec<(String, String, i32)> = processed_files
+        .into_iter()
+        .map(|f| (f.rel_path, f.content, f.priority))
+        .collect();
+
+    Ok(())
+}
+
+/// Find yek.toml by walking up directories
+pub fn find_config_file(start_path: &Path) -> Option<PathBuf> {
+    let mut current = if start_path.is_absolute() {
+        debug!(
+            "Starting config search from absolute path: {}",
+            start_path.display()
+        );
+        start_path.to_path_buf()
+    } else {
+        let path = std::env::current_dir().ok()?.join(start_path);
+        debug!(
+            "Starting config search from relative path: {}",
+            path.display()
+        );
+        path
+    };
+
+    loop {
+        let config_path = current.join("yek.toml");
+        if config_path.exists() {
+            return Some(config_path);
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+
+    None
+}
+
+/// Merge config from a TOML file if present
+pub fn load_config_file(path: &Path) -> Option<YekConfig> {
+    debug!("Attempting to load config from: {}", path.display());
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to read config file: {}", e);
+            return None;
+        }
+    };
+
+    match toml::from_str::<YekConfig>(&content) {
+        Ok(cfg) => {
+            debug!("Successfully loaded config");
+            // Validate the config
+            let errors = validate_config(&cfg);
+            if !errors.is_empty() {
+                eprintln!("Invalid configuration in {}:", path.display());
+                for error in errors {
+                    eprintln!("  {}", error.message);
+                }
+                None
+            } else {
+                Some(cfg)
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to parse config file: {}", e);
+            None
+        }
+    }
+}
+
+/// Returns a relative, normalized path string (forward slashes on all platforms).
+pub fn normalize_path(path: &Path, base: &Path) -> String {
+    // Handle current directory specially
+    if path.to_str() == Some(".") {
+        return ".".to_string();
+    }
+
+    // Resolve both paths to their canonical forms to handle symlinks
+    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let canonical_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+
+    // Attempt to strip the base directory from the file path
+    match canonical_path.strip_prefix(&canonical_base) {
+        Ok(rel_path) => {
+            // Convert to forward slashes and return as relative path
+            rel_path.to_string_lossy().replace('\\', "/")
+        }
+        Err(_) => {
+            // Return the absolute path without adding an extra leading slash
+            canonical_path.to_string_lossy().replace('\\', "/")
+        }
+    }
+}
+
+/// Parse size (for bytes or tokens) with optional K/KB, M/MB, G/GB suffix if not in token mode.
+pub fn parse_size_input(input: &str, is_tokens: bool) -> Result<usize> {
+    let s = input.trim();
+    if is_tokens {
+        // If user typed "128K", interpret as 128000 tokens
+        if s.to_lowercase().ends_with('k') {
+            let val = s[..s.len() - 1]
+                .trim()
+                .parse::<usize>()
+                .map_err(|e| anyhow!("Invalid token size: {}", e))?;
+            return Ok(val * 1000);
+        }
+        Ok(s.parse::<usize>()?)
+    } else {
+        // Byte-based suffix
+        let s = s.to_uppercase();
+        if s.ends_with("KB") {
+            let val = s[..s.len() - 2].trim().parse::<usize>()?;
+            return Ok(val * 1024);
+        } else if s.ends_with("MB") {
+            let val = s[..s.len() - 2].trim().parse::<usize>()?;
+            return Ok(val * 1024 * 1024);
+        } else if s.ends_with("GB") {
+            let val = s[..s.len() - 2].trim().parse::<usize>()?;
+            return Ok(val * 1024 * 1024 * 1024);
+        } else if let Ok(val) = s.parse::<usize>() {
+            return Ok(val);
+        }
+        Err(anyhow!("Invalid size string: {}", input))
+    }
+}
+
+pub fn is_ignored(path: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|p| {
+        let pattern = if p.starts_with('^') || p.ends_with('$') {
+            p.to_string()
+        } else {
+            glob_to_regex(p)
+        };
+        if let Ok(re) = Regex::new(&pattern) {
+            re.is_match(path)
+        } else {
+            false
+        }
+    })
+}
+
+pub fn normalize_path_with_root(path: &Path, base: &Path) -> String {
+    let path = match path.strip_prefix(base) {
+        Ok(p) => p,
+        Err(_) => path,
+    };
+    normalize_path(path)
+}
+```
+
+tests/test_validation.rs (Tests for config validation)
+
+```rust
+mod integration_common;
+use assert_cmd::Command;
+use integration_common::{create_file, setup_temp_repo};
+use std::fs;
+use yek::{find_config_file, load_config_file, serialize_repo, PriorityRule, YekConfig};
+
+#[test]
+fn fails_on_invalid_regex_in_config() {
+    let repo = setup_temp_repo();
+    create_file(
+        repo.path(),
+        "yek.toml",
+        r#"
+        [[priority_rules]]
+        pattern = "(?!.*)"  # Invalid regex
+        score = 10
+        "#
+        .as_bytes(),
+    );
+
+    let mut cmd = Command::cargo_bin("yek").unwrap();
+    cmd.current_dir(repo.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Invalid regex pattern"));
+}
+
+#[test]
+fn fails_on_invalid_priority_score() {
+    let repo = setup_temp_repo();
+    create_file(
+        repo.path(),
+        "yek.toml",
+        r#"
+        [[priority_rules]]
+        pattern = ".*"
+        score = 1001  # Invalid score
+        "#
+        .as_bytes(),
+    );
+
+    let mut cmd = Command::cargo_bin("yek").unwrap();
+    cmd.current_dir(repo.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("between 0 and 1000"));
+}
+```
+
+## Explanation of Changes:
+
+Cargo.toml:
+Added clap for command-line argument parsing.
+Added serde and toml for config file handling.
+src/main.rs:
+Uses clap to define and parse command-line arguments.
+Loads configuration from yek.toml if present, using find_config_file and load_config_file.
+Merges command-line arguments into the config, with CLI arguments taking precedence.
+Validates the final configuration using validate_config.
+Handles --debug flag to enable debug logging.
+Calls serialize_repo with the merged and validated configuration.
+src/lib.rs:
+Defines the YekConfig struct to hold configuration values.
+Implements Default for YekConfig to provide sensible defaults.
+Adds merge method to YekConfig to merge two configurations.
+Implements find_config_file to locate yek.toml by walking up the directory tree.
+Implements load_config_file to read and parse yek.toml.
+Adds validate_config to check for invalid configuration values.
+Adds parse_size_input to parse size strings with optional units (KB, MB, GB in byte mode, K, M in token mode).
+Adds glob_to_regex to convert basic glob patterns to regular expressions.
+tests/test_validation.rs:
+Adds tests to verify that invalid configuration values are detected and result in appropriate error messages.
+Testing Strategy:
+
+The test_validation.rs file includes tests to cover various validation scenarios:
+Invalid regex in yek.toml
+Invalid priority score in yek.toml
+Existing integration tests will need to be adjusted to work with the new argument parsing and configuration loading.
+This PR lays the groundwork for more advanced features by providing a solid foundation for configuration and input handling. It also improves error handling and makes the codebase more maintainable.
+
+You will be asked to do "Fixes" but we are really just adding a new feature.
+
+Add ALL the files needed to implement the feature.

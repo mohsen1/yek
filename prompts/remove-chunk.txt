@@ -1,0 +1,10 @@
+We should remove the notion of "chunks" from the codebase. yek will always output a single file.
+
+Implement the changes needed to remove the chunk code.
+Update docs and tests to reflect the new behavior.
+
+We have done some work but some references are still in the codebase that mention "chunks".
+
+You will be asked to do "Fixes" but we are really just adding a new feature.
+
+Add ALL the files needed to implement the feature.

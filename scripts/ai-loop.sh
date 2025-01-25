@@ -20,6 +20,12 @@ for i in $(seq 1 $attempts); do
     test_exit_code=$?
     echo "$test_output" >test_output.tmp
 
+    # Append last attempt to test output if it exists
+    if [ -f last_attempt.txt ]; then
+        echo "## Last time we tried this but we failed:"
+        cat last_attempt.txt >>test_output.tmp
+    fi
+
     # Exit loop if tests passed
     if [ $test_exit_code -eq 0 ]; then
         success=1
@@ -41,6 +47,7 @@ for i in $(seq 1 $attempts); do
         --system-prompt=./prompts/fix-tests.txt \
         --run="cat test_output.tmp" || true
 
+    rm last_attempt.txt
     cargo fmt
     cargo clippy --fix --allow-dirty
 
@@ -51,6 +58,7 @@ for i in $(seq 1 $attempts); do
         echo "Applied fixes for ${BRANCH} tests"
     else
         echo "No changes in attempt $i"
+        cp test_output.tmp last_attempt.txt
         continue
     fi
 done
