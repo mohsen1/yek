@@ -6,7 +6,7 @@ on:
       branch:
         description: "Branch to run the workflow on"
         required: true
-        default: "main"
+        default: "tokenizer"
         type: string
       attempts:
         description: Maximum number of attempts
@@ -78,7 +78,7 @@ jobs:
 
 
               # Feed DeepSeek with history but only the last 250KB
-              askds --fix --auto-apply --system-prompt=./prompts/fix-tests.txt "$(tail -c 250000 attempts.txt)"
+              askds --serialize="yek --max-size=100KB | cat" --test-file-pattern="tests/*.rs --fix --auto-apply --system-prompt=./prompts/fix-tests.txt "$(tail -c 250000 attempts.txt)"
 
               # Check for changes
               if ! git diff --quiet; then
