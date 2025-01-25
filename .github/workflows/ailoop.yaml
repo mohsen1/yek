@@ -9,7 +9,7 @@ on:
       branch:
         description: "Branch to run the workflow on"
         required: true
-        default: "tokenizer" # Default branch to main after testing
+        default: "tokenizer"
         type: string
       attempts:
         description: Maximum number of attempts
@@ -23,26 +23,45 @@ jobs:
   loop:
     name: AI Fix Loop
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # Maximum allowed by GitHub
+    timeout-minutes: 360
+    env:
+      MAX_ATTEMPTS: ${{ github.event.inputs.attempts || '40' }}
+      BRANCH: ${{ github.event.inputs.branch || 'tokenizer' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.branch }}
+          ref: ${{ env.BRANCH }}
           fetch-depth: 0
 
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Setup Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
+
       - name: Install askds
         run: npm install -g askds
 
       - name: Install Yek
         run: curl -fsSL https://bodo.run/yek.sh | bash
 
+      - name: Rust Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
       - name: Build
-        run: cargo build
+        run: cargo build --locked
 
       - name: Run AI Fix
         timeout-minutes: 360
@@ -50,8 +69,8 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           FIREWORKS_AI_API_KEY: ${{ secrets.FIREWORKS_AI_API_KEY }}
           RUST_TEST_TIMEOUT: 300
-          MAX_ATTEMPTS: ${{ github.event.inputs.attempts || '40' }}
-        run: ./scripts/ai-loop.sh
+          MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
+        run: bash ./scripts/ai-loop.sh
 
       - name: Upload attempts log
         uses: actions/upload-artifact@v3
@@ -62,8 +81,8 @@ jobs:
       - name: Push changes
         if: success()
         run: |
-          git checkout -b ${{ github.event.inputs.branch }}-ai-fix-${{ env.SHORT_DATE }}
-          git push origin ${{ github.event.inputs.branch }}-ai-fix-${{ env.SHORT_DATE }}
+          git checkout -b ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
+          git push origin ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -73,16 +92,16 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "AI Fix"
-          title: "AI Fix for ${{ github.event.inputs.branch }} (Attempts: ${{ env.ATTEMPTS }})"
+          title: "AI Fix for ${{ env.BRANCH }} (Attempts: ${{ env.MAX_ATTEMPTS }})"
           body: |
             ## AI Fix Results
-            - Total attempts made: ${{ env.ATTEMPTS }}
-            - Source branch: ${{ github.event.inputs.branch }}
-            - Fix branch: ${{ github.event.inputs.branch }}-ai-fix-${{ env.SHORT_DATE }}
+            - Total attempts made: ${{ env.MAX_ATTEMPTS }}
+            - Source branch: `${{ env.BRANCH }}`
+            - Fix branch: `${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}`
 
             **Important Notes:**
             - Review all changes carefully
             - Verify test results
             - Check the [workflow artifacts](#) for detailed attempt logs
-          branch: ${{ github.event.inputs.branch }}-ai-fix-${{ env.SHORT_DATE }}
-          base: ${{ github.event.inputs.branch }}
+          branch: ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
+          base: ${{ env.BRANCH }}
