@@ -32,86 +32,55 @@ jobs:
         run: cargo build
 
       - name: Run AI Fix
+        timeout-minutes: 360
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           FIREWORKS_AI_API_KEY: ${{ secrets.FIREWORKS_AI_API_KEY }}
+          RUST_TEST_TIMEOUT: 300
         run: |
-          # Set up environment
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
+          
           echo "SHORT_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
-
-          # Initialize variables
-          branch="${{ github.event.inputs.branch}}"
-          max_attempts="${{ github.event.inputs.attempts}}"
+          attempts=${{ github.event.inputs.attempts }}
           success=0
-          attempts_made=0
 
-          # Main loop with error handling
-          for ((i=1; i<=max_attempts; i++)); do
-            echo "=== Attempt $i/$max_attempts ===" | tee -a attempts.txt
-            
-            # Run tests with timeout
-            timeout 15m cargo test > current.txt 2>&1 || true
-            test_exit_code=$?
-            
-            # Log test results
-            {
-              echo "Test exit code: $test_exit_code"
-              cat current.txt
-              echo -e "\n\n"
-            } >> attempts.txt
+          for i in $(seq 1 $attempts); do
+              echo "=== Attempt $i/$attempts ===" | tee -a attempts.txt
+              
+              # Capture both stdout and stderr
+              cargo test -- --test-threads=1 2>&1 | tee current.txt
+              test_exit_code=${PIPESTATUS[0]}
+              
+              # Save full test output
+              cat current.txt >> attempts.txt
+              echo -e "\n\n" >> attempts.txt
 
-            # Exit loop if tests passed
-            if [ $test_exit_code -eq 0 ]; then
-              success=1
-              attempts_made=$i
-              break
-            fi
+              # Exit if tests pass
+              if [ $test_exit_code -eq 0 ]; then
+                  success=1
+                  echo "ATTEMPTS=$i" >> $GITHUB_ENV
+                  break
+              fi
 
-            # Apply AI fix
-            echo "Applying AI fix..." | tee -a attempts.txt
-            askds --fix --auto-apply --hide-reasoning \
-              --system-prompt=./prompts/fix-tests.txt \
-              "$(cat current.txt)" >> attempts.txt 2>&1 || true
+  
+              askds --fix --auto-apply --system-prompt=./prompts/fix-tests.txt "$(cat current.txt)"
 
-            # Check for changes
-            if git diff --quiet; then
-              echo "No changes applied" >> attempts.txt
-              continue
-            fi
-
-            # Commit changes
-            git add . >> attempts.txt 2>&1
-            git commit -m "AI fix attempt $i" >> attempts.txt 2>&1 || true
-
-            # Verify changes with timeout
-            timeout 15m cargo test > current.txt 2>&1 || true
-            test_exit_code=$?
-            
-            # Log verification results
-            {
-              echo "Post-fix test exit code: $test_exit_code"
-              cat current.txt
-              echo -e "\n\n"
-            } >> attempts.txt
-
-            # Break if successful after fix
-            if [ $test_exit_code -eq 0 ]; then
-              success=1
-              attempts_made=$i
-              break
-            fi
+              # Check for changes
+              if ! git diff --quiet; then
+                  git add .
+                  git commit -m "fix attempt $i (tokenizer)"
+                  echo "Applied fixes for tokenizer tests" | tee -a attempts.txt
+              else
+                  echo "No changes in attempt $i" | tee -a attempts.txt
+                  continue
+              fi
           done
 
-          # Set final status
-          if [ $success -eq 1 ]; then
-            echo "ATTEMPTS=$attempts_made" >> $GITHUB_ENV
-            echo "Success after $attempts_made attempts"
-          else
-            echo "ATTEMPTS=$max_attempts" >> $GITHUB_ENV
-            echo "Failed after $max_attempts attempts"
-            exit 1
+          if [ $success -ne 1 ]; then
+              echo "ATTEMPTS=$attempts" >> $GITHUB_ENV
+              echo "::error::Failed after $attempts attempts"
+              exit 1
           fi
 
       - name: Upload attempts log
