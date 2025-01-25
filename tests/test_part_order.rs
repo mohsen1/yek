@@ -54,5 +54,8 @@ fn part_order_reflects_priority() {
     let b_pos = content.find("b.txt").unwrap();
     let c_pos = content.find("c.txt").unwrap();
 
-    assert!(a_pos < b_pos && b_pos < c_pos, "Files should be ordered by ascending priority with higher priority files last");
+    assert!(
+        a_pos < b_pos && b_pos < c_pos,
+        "Files should be ordered by ascending priority with higher priority files last"
+    );
 }

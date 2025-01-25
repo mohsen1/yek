@@ -25,7 +25,9 @@ struct Args {
     #[arg(long, value_name = "MODEL")]
     #[arg(num_args = 0..=1, require_equals = true, default_missing_value = "openai")]
     #[arg(value_parser = ["openai", "claude", "mistral", "mixtral", "deepseek", "llama", "codellama"])]
-    #[arg(help = "Count size in tokens using specified model family (default: openai)\nSUPPORTED MODELS: openai, claude, mistral, mixtral, deepseek, llama, codellama")]
+    #[arg(
+        help = "Count size in tokens using specified model family (default: openai)\nSUPPORTED MODELS: openai, claude, mistral, mixtral, deepseek, llama, codellama"
+    )]
     tokens: Option<String>,
 
     /// Output directory for generated files
@@ -110,9 +112,11 @@ fn main() -> Result<()> {
     }
 
     if args.debug {
-        use tracing_subscriber::{fmt, EnvFilter};
         use std::fs::File;
-        let filter = EnvFilter::builder().with_default_directive("yek=debug".parse().unwrap()).from_env_lossy();
+        use tracing_subscriber::{fmt, EnvFilter};
+        let filter = EnvFilter::builder()
+            .with_default_directive("yek=debug".parse().unwrap())
+            .from_env_lossy();
         let fmt = fmt().with_env_filter(filter).with_ansi(false);
         if let Ok(path) = std::env::var("YEK_DEBUG_OUTPUT") {
             let file = File::create(path)?;

@@ -7,7 +7,7 @@ if [ "$GITHUB_ACTIONS" ]; then
 fi
 
 # Default to 40 attempts if not set
-attempts=${MAX_ATTEMPTS:-1}
+attempts=${MAX_ATTEMPTS:-40}
 BRANCH=${BRANCH:-tokenizer}
 
 success=0
@@ -41,7 +41,7 @@ for i in $(seq 1 $attempts); do
 
     # Run askds and capture output while streaming to console
     echo "--- askds Output ---" | tee -a attempts.txt
-    ../../askds/dist/index.js \
+    askds \
         --hide-ui \
         --fix \
         --auto-apply \
@@ -49,7 +49,7 @@ for i in $(seq 1 $attempts); do
         --test-file-pattern='tests/*.rs' \
         --source-file-pattern='src/**/*.rs' \
         --system-prompt=./prompts/fix-tests.txt \
-        --run="$(cat askds_input.tmp)" \
+        --run="cat askds_input.tmp" \
         2>&1 | tee -a attempts.txt
     echo "--- End askds Output ---" | tee -a attempts.txt
 

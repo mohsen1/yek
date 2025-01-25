@@ -23,12 +23,12 @@ fn test_supported_models_list() {
 
     // Verify all models are listed
     let models = [
-        "openai",   // OpenAI models
-        "claude",   // Anthropic Claude models
-        "mistral",  // Mistral models
-        "mixtral",  // Mixtral models
-        "deepseek", // DeepSeek models
-        "llama",    // Meta Llama models
+        "openai",    // OpenAI models
+        "claude",    // Anthropic Claude models
+        "mistral",   // Mistral models
+        "mixtral",   // Mixtral models
+        "deepseek",  // DeepSeek models
+        "llama",     // Meta Llama models
         "codellama", // CodeLlama models
     ];
 
