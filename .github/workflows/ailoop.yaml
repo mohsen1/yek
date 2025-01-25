@@ -1,0 +1,106 @@
+name: AI Fix Loop
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to run the workflow on'
+        required: true
+        default: 'main'
+        type: string
+      attempts:
+        description: Maximum number of attempts
+        default: '40'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  loop:
+    name: AI Fix Loop
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4 
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0
+
+      - name: Build
+        run: cargo build
+
+      - name: Run AI Fix
+        timeout-minutes: 360
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          FIREWORKS_AI_APIK_KEY: ${{ secrets.FIREWORKS_AI_APIK_KEY }}
+        run: |
+          set -e
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          # Generate short date for branch name and set as environment variable
+          echo "SHORT_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
+
+          branch=${{ github.event.inputs.branch }}
+          attempts=${{ github.event.inputs.attempts }}
+
+          for i in $(seq 1 $attempts); do
+              # Capture test output and exit code
+              cargo test >current.txt 2>&1
+              test_exit_code=$?
+              
+              # Store attempt log
+              echo "attempt: $i" >>attempts.txt
+              echo "test_output:" >>attempts.txt
+              cat current.txt >>attempts.txt
+              echo -e "\n" >>attempts.txt
+
+              # Break loop if tests pass initially
+              if [ $test_exit_code -eq 0 ]; then
+                  echo "Tests passed without fixes"
+                  break
+              fi
+
+              # Apply AI fixes
+              askds --fix --auto-apply --hide-reasoning --system-prompt=./prompts/fix-tests.txt "$(cat current.txt)"
+
+              # Check for changes
+              diff_output=$(git diff --name-only)
+              if [ -n "$diff_output" ]; then
+                  git add .
+                  git commit -m "fix attempt $i"
+                  # Re-run tests after applying changes
+                  cargo test >current.txt 2>&1
+                  test_exit_code=$?
+                  if [ $test_exit_code -eq 0 ]; then
+                      echo "Tests passed after $i attempts"
+                      break
+                  fi
+              else
+                  echo "No changes applied in attempt $i"
+              fi
+          done
+
+          if [ $test_exit_code -ne 0 ]; then
+              echo "Tests failed after $attempts attempts"
+              exit 1
+          fi
+
+      - name: Push changes
+        run: |
+          git checkout -b ${{ github.event.inputs.branch }}-ai-fix-${{ env.SHORT_DATE }}
+          git push origin ${{ github.event.inputs.branch }}-ai-fix-${{ env.SHORT_DATE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v5 
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "AI Fix"
+          title: "AI Fix"
+          body: "AI Fix"
+          branch: ${{ github.event.inputs.branch }}-ai-fix-${{ env.SHORT_DATE }}
+          base: ${{ github.event.inputs.branch }}
