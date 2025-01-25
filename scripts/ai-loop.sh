@@ -37,7 +37,8 @@ for i in $(seq 1 $attempts); do
     fi
 
     # Create temp file for askds input and clean it up
-    tail -c 250000 attempts.txt | sed 's/===/---/g' >askds_input.tmp
+    askds_input=$(tail -c 250000 attempts.txt | sed 's/===/---/g')
+    echo "$askds_input" >askds_input.tmp
 
     # Run askds and capture output while streaming to console
     echo "--- askds Output ---" | tee -a attempts.txt
