@@ -1,12 +1,15 @@
 name: AI Fix Loop
 
 on:
+  push:
+    branches:
+      - ai-loop # Remove me after testing
   workflow_dispatch:
     inputs:
       branch:
         description: "Branch to run the workflow on"
         required: true
-        default: "tokenizer"
+        default: "tokenizer" # Default branch to main after testing
         type: string
       attempts:
         description: Maximum number of attempts
@@ -47,55 +50,8 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           FIREWORKS_AI_API_KEY: ${{ secrets.FIREWORKS_AI_API_KEY }}
           RUST_TEST_TIMEOUT: 300
-        run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-
-          echo "SHORT_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
-          attempts=${{ github.event.inputs.attempts }}
-          success=0
-
-          for i in $(seq 1 $attempts); do
-              echo "=== Attempt $i/$attempts ===" | tee -a attempts.txt
-              
-              # Capture both stdout and stderr
-              test_output=$(cargo test -- --test-threads=1 2>&1)
-              test_exit_code=${PIPESTATUS[0]}
-
-              # Trim output from "failures:"
-              test_output=$(echo "$test_output" | sed -n '/failures:/,/failures:/p' | sed '1d; $d')
-              
-              # Save full test output
-              echo "$test_output" >> attempts.txt
-              echo -e "\n\n" >> attempts.txt
-
-              # Exit if tests pass
-              if [ $test_exit_code -eq 0 ]; then
-                  success=1
-                  echo "ATTEMPTS=$i" >> $GITHUB_ENV
-                  break
-              fi
-
-
-              # Feed DeepSeek with history but only the last 250KB
-              askds --serialize="yek --max-size=100KB | cat" --test-file-pattern="tests/*.rs --fix --auto-apply --system-prompt=./prompts/fix-tests.txt "$(tail -c 250000 attempts.txt)"
-
-              # Check for changes
-              if ! git diff --quiet; then
-                  git add .
-                  git commit -m "fix attempt $i (tokenizer)"
-                  echo "Applied fixes for tokenizer tests" | tee -a attempts.txt
-              else
-                  echo "No changes in attempt $i" | tee -a attempts.txt
-                  continue
-              fi
-          done
-
-          if [ $success -ne 1 ]; then
-              echo "ATTEMPTS=$attempts" >> $GITHUB_ENV
-              echo "::error::Failed after $attempts attempts"
-              exit 1
-          fi
+          MAX_ATTEMPTS: ${{ github.event.inputs.attempts || '40' }}
+        run: ./scripts/ai-loop.sh
 
       - name: Upload attempts log
         uses: actions/upload-artifact@v3
