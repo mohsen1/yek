@@ -56,6 +56,9 @@ for i in $(seq 1 $attempts); do
     )
     askds_exit_code=$?
 
+    cargo fmt
+    cargo clippy --fix --allow-dirty
+
     if [ $askds_exit_code -ne 0 ]; then
         echo "askds failed with exit code $askds_exit_code" >>attempts.txt
         echo "askds failed. Guessing we ran out of context window. Trimming attempts.txt to last 30KB"
