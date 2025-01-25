@@ -8,3 +8,5 @@ yek.toml
 repo-serialized/
 dist/
 /*.txt
+/*.diff
+/*.sh

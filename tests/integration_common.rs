@@ -11,6 +11,14 @@ use tempfile::TempDir;
 pub fn setup_temp_repo() -> TempDir {
     let repo_dir = TempDir::new().expect("Failed to create temp dir for repo");
     init_git_repo(repo_dir.path());
+
+    // Create and commit an initial file to establish Git history
+    create_file(
+        repo_dir.path(),
+        "README.md",
+        b"# Test Repository\n\nInitial commit.",
+    );
+
     repo_dir
 }
 
@@ -41,6 +49,31 @@ fn init_git_repo(path: &Path) {
         status_config_email.success(),
         "git config user.email failed"
     );
+
+    // 3. Set default branch name to main
+    let status_config_branch = Command::new("git")
+        .args(["-C", repo_str, "config", "init.defaultBranch", "main"])
+        .status()
+        .expect("Failed to set default branch");
+    assert!(
+        status_config_branch.success(),
+        "git config init.defaultBranch failed"
+    );
+
+    // 4. Create initial commit to establish HEAD
+    let status_initial_commit = Command::new("git")
+        .args([
+            "-C",
+            repo_str,
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "Initial commit",
+        ])
+        .status()
+        .expect("Failed to create initial commit");
+    assert!(status_initial_commit.success(), "git initial commit failed");
 }
 
 /// Creates (or overwrites) a file at `[repo_dir]/[file_path]` with `content`.
@@ -74,11 +107,23 @@ pub fn create_file(repo_dir: &Path, file_path: &str, content: &[u8]) {
                 }
                 // Very basic glob matching - just checks if pattern is a prefix or suffix
                 if pattern.ends_with('/') {
-                    file_path.starts_with(&pattern[..pattern.len() - 1])
+                    if let Some(stripped) = pattern.strip_suffix('/') {
+                        file_path.starts_with(stripped)
+                    } else {
+                        false
+                    }
                 } else if pattern.starts_with('*') {
-                    file_path.ends_with(&pattern[1..])
+                    if let Some(stripped) = pattern.strip_prefix('*') {
+                        file_path.ends_with(stripped)
+                    } else {
+                        false
+                    }
                 } else if pattern.ends_with('*') {
-                    file_path.starts_with(&pattern[..pattern.len() - 1])
+                    if let Some(stripped) = pattern.strip_suffix('*') {
+                        file_path.starts_with(stripped)
+                    } else {
+                        false
+                    }
                 } else {
                     file_path == pattern || file_path.starts_with(pattern)
                 }
@@ -112,28 +157,25 @@ pub fn create_file(repo_dir: &Path, file_path: &str, content: &[u8]) {
             }
         }
 
-        // Stage the file
+        // Stage and commit the file
         let status_add = Command::new("git")
-            .args(["add", "-f", file_path])
-            .current_dir(repo_dir)
+            .args(["-C", repo_str, "add", "-f", file_path])
             .status()
-            .expect("git add failed");
-        assert!(status_add.success(), "git add failed for {}", file_path);
+            .expect("Failed to run git add");
+        assert!(status_add.success(), "git add failed");
 
-        // Commit with a descriptive message
         let status_commit = Command::new("git")
             .args([
                 "-C",
                 repo_str,
                 "commit",
                 "--quiet",
-                "--allow-empty", // allow empty trees
                 "-m",
                 &format!("Add {}", file_path),
             ])
             .status()
-            .expect("Failed to git commit file");
-        assert!(status_commit.success(), "git commit failed for {file_path}");
+            .expect("Failed to run git commit");
+        assert!(status_commit.success(), "git commit failed");
     }
 }
 

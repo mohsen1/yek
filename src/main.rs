@@ -1,159 +1,172 @@
-use anyhow::Result;
-use clap::{Arg, Command};
-use std::io::{stdout, IsTerminal};
+use anyhow::{anyhow, Result};
+use clap::Parser;
+use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use tracing::{subscriber, Level};
-use tracing_subscriber::fmt;
-use yek::{find_config_file, load_config_file, parse_size_input, serialize_repo, YekConfig};
+use tracing::debug;
+use yek::{model_manager, parse_size_input, process_directory, validate_config, YekConfig};
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+#[command(after_help = "See https://github.com/mohsen-w-elsayed/yek for detailed documentation.")]
+struct Args {
+    /// Directories to process
+    #[arg()]
+    directories: Vec<PathBuf>,
+
+    /// Path to custom config file
+    #[arg(short, long)]
+    config: Option<PathBuf>,
+
+    /// Maximum output size (supports K/KB/M/MB suffixes)
+    #[arg(long, value_name = "SIZE")]
+    max_size: Option<String>,
+
+    #[arg(long, value_name = "MODEL")]
+    #[arg(num_args = 0..=1, require_equals = true, default_missing_value = "openai")]
+    #[arg(value_parser = ["openai", "claude", "mistral", "mixtral", "deepseek", "llama", "codellama"])]
+    #[arg(help = "Count size in tokens using specified model family (default: openai)\nSUPPORTED MODELS: openai, claude, mistral, mixtral, deepseek, llama, codellama")]
+    tokens: Option<String>,
+
+    /// Output directory for generated files
+    #[arg(long, short, value_name = "DIR")]
+    output_dir: Option<PathBuf>,
+
+    /// Enable debug output
+    #[arg(long)]
+    debug: bool,
+}
+
+const SUPPORTED_MODELS: &str = "openai, claude, mistral, mixtral, deepseek, llama, codellama";
+
+impl Args {
+    fn model_family(&self) -> Option<&str> {
+        self.tokens.as_deref().filter(|s| !s.is_empty())
+    }
+}
+
+fn load_config(path: &Path) -> Result<YekConfig> {
+    let contents = std::fs::read_to_string(path)?;
+    toml::from_str(&contents).map_err(|e| anyhow!("Failed to parse config: {}", e))
+}
 
 fn main() -> Result<()> {
-    let matches = Command::new("yek")
-        .about("Repository content chunker and serializer for LLM consumption")
-        .arg(
-            Arg::new("directories")
-                .help("Directories to process")
-                .num_args(0..)
-                .default_value("."),
-        )
-        .arg(
-            Arg::new("max-size")
-                .long("max-size")
-                .help("Maximum size per chunk (e.g. '10MB', '128KB', '1GB')")
-                .default_value("10MB"),
-        )
-        .arg(
-            Arg::new("tokens")
-                .long("tokens")
-                .help("Count size in tokens instead of bytes")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("debug")
-                .long("debug")
-                .help("Enable debug output")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("output-dir")
-                .long("output-dir")
-                .help("Output directory for chunks"),
-        )
-        .get_matches();
+    let args = Args::parse();
+    println!("args: {:?}", args);
+    let mut config = YekConfig::default();
 
-    // Setup logging
-    let level = if matches.get_flag("debug") {
-        Level::DEBUG
+    // Load config from file if specified
+    if let Some(config_path) = args.config.clone() {
+        config = load_config(&config_path)?;
+    }
+
+    // Merge command-line arguments into config
+    if let Some(size_str) = &args.max_size {
+        config.max_size = Some(parse_size_input(size_str, config.token_mode)?);
+    }
+
+    if let Some(model) = args.model_family() {
+        if !model_manager::SUPPORTED_MODEL_FAMILIES.contains(&model) {
+            return Err(anyhow!(
+                "Unsupported model family '{}'. Supported: {}",
+                model,
+                SUPPORTED_MODELS
+            ));
+        }
+        config.token_mode = true;
+        config.tokenizer_model = Some(model.to_string());
+    } else if config.token_mode {
+        let model = config.tokenizer_model.as_deref().unwrap_or("openai");
+        tracing::debug!("Token mode enabled via config with model: {}", model);
+    }
+
+    // Validate tokenizer model from config file
+    if let Some(model) = &config.tokenizer_model {
+        if !model_manager::SUPPORTED_MODEL_FAMILIES.contains(&model.as_str()) {
+            return Err(anyhow!(
+                "Unsupported tokenizer model '{}' in config. Supported: {}",
+                model,
+                SUPPORTED_MODELS
+            ));
+        }
+    }
+
+    if let Some(output_dir) = args.output_dir {
+        config.output_dir = Some(output_dir);
+    }
+
+    // Use current directory if no directories provided
+    let directories = if args.directories.is_empty() {
+        vec![PathBuf::from(".")]
     } else {
-        Level::INFO
+        args.directories
     };
 
-    // Configure logging output
-    if let Ok(debug_output) = std::env::var("YEK_DEBUG_OUTPUT") {
-        let file = std::fs::File::create(debug_output)?;
-        let subscriber = fmt()
-            .with_max_level(level)
-            .with_writer(file)
-            .without_time()
-            .with_target(false)
-            .with_ansi(false)
-            .finish();
-        subscriber::set_global_default(subscriber)?;
-    } else {
-        fmt()
-            .with_max_level(level)
-            .without_time()
-            .with_target(false)
-            .with_ansi(true)
-            .init();
+    // Handle stream detection
+    config.stream = !std::io::stdout().is_terminal();
+    // Force stream=false if output_dir is specified
+    if config.output_dir.is_some() {
+        config.stream = false;
     }
 
-    // Gather directories
-    let directories: Vec<&str> = matches
-        .get_many::<String>("directories")
-        .unwrap()
-        .map(|s| s.as_str())
-        .collect();
-
-    // Gather config
-    let mut yek_config = YekConfig::default();
-
-    // Possibly parse max size
-    if let Some(size_str) = matches.get_one::<String>("max-size") {
-        yek_config.max_size = Some(parse_size_input(size_str, matches.get_flag("tokens"))?);
-    }
-
-    yek_config.token_mode = matches.get_flag("tokens");
-
-    // Are we writing chunk files or streaming?
-    // If --output-dir is given, we always write to that directory.
-    // Otherwise, if stdout is not a TTY, we stream. If it *is* a TTY, create a temp dir.
-    if let Some(out_dir) = matches.get_one::<String>("output-dir") {
-        yek_config.output_dir = Some(PathBuf::from(out_dir));
-    } else {
-        let stdout_is_tty = stdout().is_terminal();
-        if stdout_is_tty {
-            // Write chunk files to a temporary directory
-            let tmp = std::env::temp_dir().join("yek-serialize");
-            yek_config.output_dir = Some(tmp);
+    if args.debug {
+        use tracing_subscriber::{fmt, EnvFilter};
+        use std::fs::File;
+        let filter = EnvFilter::builder().with_default_directive("yek=debug".parse().unwrap()).from_env_lossy();
+        let fmt = fmt().with_env_filter(filter).with_ansi(false);
+        if let Ok(path) = std::env::var("YEK_DEBUG_OUTPUT") {
+            let file = File::create(path)?;
+            fmt.with_writer(file).init();
         } else {
-            // Stream to stdout
-            yek_config.stream = true;
+            fmt.with_writer(std::io::stderr).init();
         }
     }
 
-    // Run serialize_repo for each directory
-    for dir in directories {
-        let path = Path::new(dir);
+    // Process directories
+    for path in directories {
+        let mut config_for_this_dir = config.clone();
 
-        // Make a per-directory clone of base config
-        let mut config_for_this_dir = yek_config.clone();
-
-        // Look up any local yek.toml
-        if let Some(toml_path) = find_config_file(path) {
-            if let Some(file_cfg) = load_config_file(&toml_path) {
-                // Merge file_cfg into config_for_this_dir
-                merge_config(&mut config_for_this_dir, &file_cfg);
+        // Load directory-specific config if it exists
+        let dir_config_path = path.join("yek.toml");
+        if dir_config_path.exists() {
+            let dir_config = load_config(&dir_config_path)?;
+            // Validate tokenizer model from directory config
+            if let Some(model) = &dir_config.tokenizer_model {
+                if !model_manager::SUPPORTED_MODEL_FAMILIES.contains(&model.as_str()) {
+                    return Err(anyhow!(
+                        "Unsupported tokenizer model '{}' in directory config. Supported: {}",
+                        model,
+                        SUPPORTED_MODELS
+                    ));
+                }
             }
+            config_for_this_dir.merge(&dir_config);
         }
 
-        serialize_repo(path, Some(&config_for_this_dir))?;
+        // Resolve output directory relative to current directory being processed
+        if let Some(output_dir) = config_for_this_dir.output_dir.take() {
+            let resolved_output = path.join(output_dir);
+            debug!("Resolving output dir {:?} -> {:?}", path, resolved_output);
+            config_for_this_dir.output_dir = Some(resolved_output);
+        }
+
+        // Ensure output directory exists even if no content
+        if let Some(out_dir) = &config_for_this_dir.output_dir {
+            fs::create_dir_all(out_dir)?;
+        }
+
+        // Validate final merged config
+        let errors = validate_config(&config_for_this_dir);
+        if !errors.is_empty() {
+            for error in errors {
+                eprintln!("Config error: {}", error);
+            }
+            return Err(anyhow!("Invalid configuration"));
+        }
+
+        // Process the directory
+        process_directory(&path, &config_for_this_dir)?;
     }
 
     Ok(())
-}
-
-/// Merge the fields of `other` into `dest`.
-fn merge_config(dest: &mut YekConfig, other: &YekConfig) {
-    // Merge ignore patterns
-    dest.ignore_patterns
-        .extend_from_slice(&other.ignore_patterns);
-    // Merge priority rules
-    dest.priority_rules.extend_from_slice(&other.priority_rules);
-    // Merge binary extensions
-    dest.binary_extensions
-        .extend_from_slice(&other.binary_extensions);
-
-    // Respect whichever max_size is more specific
-    if dest.max_size.is_none() && other.max_size.is_some() {
-        dest.max_size = other.max_size;
-    }
-
-    // token_mode: if `other` is true, set it
-    if other.token_mode {
-        dest.token_mode = true;
-    }
-
-    // If `other.output_dir` is set, we can choose to override or not. Usually the CLI
-    // argument has higher precedence, so we only override if `dest.output_dir` is None:
-    if dest.output_dir.is_none() && other.output_dir.is_some() {
-        dest.output_dir = other.output_dir.clone();
-    }
-
-    // Similarly for stream
-    if !dest.stream && other.stream {
-        // only override if CLI didn't force an output dir
-        if dest.output_dir.is_none() {
-            dest.stream = true;
-        }
-    }
 }

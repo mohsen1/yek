@@ -4,14 +4,20 @@ ignore_patterns = [
     "^repo-serialized/",
     "^.*\\.txt$",
     "^tests/.*",
+    "^scripts/.*",
+    "^.github/.*",
+    "^promots/.*",
+    "^.cargo/.*",
+    "^Cargo\\.lock$",
     "^benchmarks/",
     "^src/defaults\\.rs$",
     "^\\.github/.*$",
-    "README.md",
-    "CHANGELOG.md",
+    "README\\.md",
+    "CHANGELOG\\.md",
     "^LICENSE$",
     "^README$",
-    "^askai.yaml$"
+    "^prompts/.*$",
+    "^\\.sh$"
 ]
 
 [[priority_rules]]
