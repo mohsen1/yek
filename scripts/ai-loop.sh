@@ -7,7 +7,7 @@ if [ "$GITHUB_ACTIONS" ]; then
 fi
 
 # Default to 40 attempts if not set
-attempts=${MAX_ATTEMPTS:-40}
+attempts=${MAX_ATTEMPTS:-1}
 BRANCH=${BRANCH:-tokenizer}
 
 success=0
