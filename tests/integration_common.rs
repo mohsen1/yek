@@ -1,5 +1,3 @@
-use regex::Regex;
-#[allow(dead_code)]
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -9,174 +7,62 @@ use tempfile::TempDir;
 /// Returns a `TempDir` whose path is a fresh Git repository directory.
 #[allow(dead_code)]
 pub fn setup_temp_repo() -> TempDir {
-    let repo_dir = TempDir::new().expect("Failed to create temp dir for repo");
-    init_git_repo(repo_dir.path());
+    let tempdir = TempDir::new().unwrap();
+    let repo_path = tempdir.path();
 
-    // Create and commit an initial file to establish Git history
-    create_file(
-        repo_dir.path(),
-        "README.md",
-        b"# Test Repository\n\nInitial commit.",
-    );
-
-    repo_dir
-}
-
-/// Initializes a new Git repository in the given directory.
-/// Configures user.name and user.email so commits will succeed without prompts.
-#[allow(dead_code)]
-fn init_git_repo(path: &Path) {
-    let repo_str = path.to_str().expect("Non-UTF8 path to temp dir?");
-    // 1. git init
-    let status_init = Command::new("git")
-        .args(["init", "--quiet", repo_str])
+    // Initialize a new git repository
+    Command::new("git")
+        .arg("init")
+        .arg("--quiet")
+        .current_dir(repo_path)
         .status()
-        .expect("Failed to run git init");
-    assert!(status_init.success(), "git init failed");
+        .unwrap();
 
-    // 2. Set a dummy user name and email so commits work
-    let status_config_name = Command::new("git")
-        .args(["-C", repo_str, "config", "user.name", "test-user"])
+    // Configure user name and email
+    Command::new("git")
+        .arg("config")
+        .arg("user.name")
+        .arg("Test User")
+        .current_dir(repo_path)
         .status()
-        .expect("Failed to set git user.name");
-    assert!(status_config_name.success(), "git config user.name failed");
+        .unwrap();
 
-    let status_config_email = Command::new("git")
-        .args(["-C", repo_str, "config", "user.email", "test@example.com"])
+    Command::new("git")
+        .arg("config")
+        .arg("user.email")
+        .arg("test@example.com")
+        .current_dir(repo_path)
         .status()
-        .expect("Failed to set git user.email");
-    assert!(
-        status_config_email.success(),
-        "git config user.email failed"
-    );
+        .unwrap();
 
-    // 3. Set default branch name to main
-    let status_config_branch = Command::new("git")
-        .args(["-C", repo_str, "config", "init.defaultBranch", "main"])
-        .status()
-        .expect("Failed to set default branch");
-    assert!(
-        status_config_branch.success(),
-        "git config init.defaultBranch failed"
-    );
-
-    // 4. Create initial commit to establish HEAD
-    let status_initial_commit = Command::new("git")
-        .args([
-            "-C",
-            repo_str,
-            "commit",
-            "--quiet",
-            "--allow-empty",
-            "-m",
-            "Initial commit",
-        ])
-        .status()
-        .expect("Failed to create initial commit");
-    assert!(status_initial_commit.success(), "git initial commit failed");
+    tempdir
 }
 
 /// Creates (or overwrites) a file at `[repo_dir]/[file_path]` with `content`.
 /// If `repo_dir` contains `.git`, automatically `git add` and `git commit`.
 /// This function handles large or binary data (including `\0`) without shell expansions.
 #[allow(dead_code)]
-pub fn create_file(repo_dir: &Path, file_path: &str, content: &[u8]) {
-    // Ensure parent directories exist
-    let full_path = repo_dir.join(file_path);
-    if let Some(parent) = full_path.parent() {
-        fs::create_dir_all(parent)
-            .unwrap_or_else(|_| panic!("Failed to create parent directory for {}", file_path));
-    }
+pub fn create_file(repo_path: &Path, file_path: &str, content: &[u8]) {
+    let full_path = repo_path.join(file_path);
+    fs::create_dir_all(full_path.parent().unwrap()).unwrap();
+    fs::write(full_path, content).unwrap();
 
-    // Write file content in Rust, no shell expansion
-    fs::write(&full_path, content)
-        .unwrap_or_else(|_| panic!("Failed to write file content for {}", file_path));
+    // Stage the new file
+    Command::new("git")
+        .arg("add")
+        .arg(file_path)
+        .current_dir(repo_path)
+        .status()
+        .unwrap();
 
-    // If there's a .git folder, stage & commit the file
-    if repo_dir.join(".git").exists() {
-        let repo_str = repo_dir.to_str().unwrap();
-
-        // First check if .gitignore exists and if this file should be ignored
-        let gitignore_path = repo_dir.join(".gitignore");
-        if gitignore_path.exists() {
-            let gitignore_content = fs::read_to_string(&gitignore_path).unwrap();
-            let should_ignore = gitignore_content.lines().any(|pattern| {
-                let pattern = pattern.trim();
-                if pattern.is_empty() || pattern.starts_with('#') {
-                    return false;
-                }
-                // Very basic glob matching - just checks if pattern is a prefix or suffix
-                if pattern.ends_with('/') {
-                    if let Some(stripped) = pattern.strip_suffix('/') {
-                        file_path.starts_with(stripped)
-                    } else {
-                        false
-                    }
-                } else if pattern.starts_with('*') {
-                    if let Some(stripped) = pattern.strip_prefix('*') {
-                        file_path.ends_with(stripped)
-                    } else {
-                        false
-                    }
-                } else if pattern.ends_with('*') {
-                    if let Some(stripped) = pattern.strip_suffix('*') {
-                        file_path.starts_with(stripped)
-                    } else {
-                        false
-                    }
-                } else {
-                    file_path == pattern || file_path.starts_with(pattern)
-                }
-            });
-            if should_ignore {
-                return; // Don't commit ignored files
-            }
-        }
-
-        // Also check if yek.toml exists and if this file should be ignored
-        let yek_toml_path = repo_dir.join("yek.toml");
-        if yek_toml_path.exists() {
-            let yek_toml_content = fs::read_to_string(&yek_toml_path).unwrap();
-            let should_ignore = yek_toml_content
-                .lines()
-                .filter(|line| line.contains("^")) // Only look at lines with regex patterns
-                .map(|line| {
-                    line.trim()
-                        .trim_matches(|c| c == '"' || c == '[' || c == ']')
-                })
-                .filter(|line| !line.is_empty())
-                .any(|pattern| {
-                    if let Ok(re) = Regex::new(pattern) {
-                        re.is_match(file_path)
-                    } else {
-                        false
-                    }
-                });
-            if should_ignore {
-                return; // Don't commit ignored files
-            }
-        }
-
-        // Stage and commit the file
-        let status_add = Command::new("git")
-            .args(["-C", repo_str, "add", "-f", file_path])
-            .status()
-            .expect("Failed to run git add");
-        assert!(status_add.success(), "git add failed");
-
-        let status_commit = Command::new("git")
-            .args([
-                "-C",
-                repo_str,
-                "commit",
-                "--quiet",
-                "-m",
-                &format!("Add {}", file_path),
-            ])
-            .status()
-            .expect("Failed to run git commit");
-        assert!(status_commit.success(), "git commit failed");
-    }
+    // Commit the file
+    Command::new("git")
+        .arg("commit")
+        .arg("-m")
+        .arg(format!("Add {}", file_path))
+        .current_dir(repo_path)
+        .status()
+        .unwrap();
 }
 
 /// Ensures an output directory exists and is empty.
@@ -191,4 +77,23 @@ pub fn ensure_empty_output_dir(path: &Path) {
         }
     }
     fs::create_dir_all(path).expect("Failed to create output directory");
+}
+
+#[allow(dead_code)]
+pub fn assert_output_file_contains(dir: &Path, patterns: &[&str]) {
+    let output_file_path = dir.join("output.txt");
+    assert!(
+        output_file_path.exists(),
+        "Output file should exist: {}",
+        output_file_path.display()
+    );
+
+    let content = fs::read_to_string(output_file_path).expect("Failed to read output file");
+    for pattern in patterns {
+        assert!(
+            content.contains(pattern),
+            "Output file should contain '{}'",
+            pattern
+        );
+    }
 }

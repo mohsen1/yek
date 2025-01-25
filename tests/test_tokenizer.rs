@@ -1,190 +1,155 @@
-#[path = "integration_common.rs"]
 mod integration_common;
-use assert_cmd::Command;
-use integration_common::{create_file, ensure_empty_output_dir, setup_temp_repo};
+use integration_common::assert_output_file_contains;
+use predicates::prelude::*;
 use std::fs;
 
 #[test]
-fn accepts_model_via_tokens_flag() {
-    let repo = setup_temp_repo();
-    let content = "This is a test file with some content.";
-    create_file(repo.path(), "test.txt", content.as_bytes());
+fn cli_model_overrides_config() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_path = temp_dir.path().join("yek.toml");
+    fs::write(
+        &config_path,
+        "tokenizer_model = \"mistral\"\ntokens = true\n",
+    )
+    .unwrap();
 
-    let output_dir = repo.path().join("yek-output");
-    ensure_empty_output_dir(&output_dir);
+    let test_file_path = temp_dir.path().join("test.txt");
+    fs::write(
+        &test_file_path,
+        "This is a simple file with some words in it.\n",
+    )
+    .unwrap();
 
-    let debug_output = repo.path().join("debug.log");
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
-        .arg("--tokens=openai")
-        .arg("--debug")
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .env("YEK_DEBUG_OUTPUT", &debug_output)
-        .output()
-        .expect("Failed to execute command");
+    let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
+    cmd.arg("--config")
+        .arg(config_path)
+        .arg("--tokens=deepseek") // Should override config
+        .arg(temp_dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Token mode enabled with model: deepseek",
+        ));
 
-    assert!(output.status.success());
-
-    // Read debug output
-    let debug_log = fs::read_to_string(&debug_output).expect("Failed to read debug log");
-    println!("debug log: {}", debug_log);
-
-    // Verify token mode is enabled
-    assert!(
-        debug_log.contains("Token mode enabled"),
-        "Should be in token mode"
+    assert_output_file_contains(
+        temp_dir.path(),
+        &[
+            ">>>> test.txt",
+            "This is a simple file with some words in it.\n",
+        ],
     );
+
+    // Clean up the temporary directory
+    temp_dir.close().unwrap();
 }
 
 #[test]
 fn accepts_model_from_config() {
-    let repo = setup_temp_repo();
-    let content = "This is a test file with some content.";
-    create_file(repo.path(), "test.txt", content.as_bytes());
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_path = temp_dir.path().join("yek.toml");
+    fs::write(
+        &config_path,
+        "tokenizer_model = \"openai\"\ntokens = true\n",
+    )
+    .unwrap();
 
-    // Create config file with tokenizer model
-    create_file(
-        repo.path(),
-        "yek.toml",
-        r#"
-tokenizer_model = "openai"
-"#
-        .as_bytes(),
-    );
+    // Create a dummy test.txt file
+    fs::write(temp_dir.path().join("test.txt"), "Test content\n").unwrap();
 
-    let output_dir = repo.path().join("yek-output");
-    ensure_empty_output_dir(&output_dir);
+    let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
+    cmd.arg("--config")
+        .arg(config_path)
+        .arg(temp_dir.path())
+        .env("YEK_DEBUG_OUTPUT", temp_dir.path().join("debug.log"))
+        .assert()
+        .success();
 
-    let debug_output = repo.path().join("debug.log");
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
-        .arg("--tokens") // Just enable token mode, model from config
-        .arg("--debug")
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .env("YEK_DEBUG_OUTPUT", &debug_output)
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(output.status.success());
-
-    // Read debug output
-    let debug_log = fs::read_to_string(&debug_output).expect("Failed to read debug log");
-    println!("debug log: {}", debug_log);
-
-    // Verify token mode is enabled
-    assert!(
-        debug_log.contains("Token mode enabled"),
-        "Should be in token mode"
-    );
-}
-
-#[test]
-fn cli_model_overrides_config() {
-    let repo = setup_temp_repo();
-    let content = "This is a test file with some content.";
-    create_file(repo.path(), "test.txt", content.as_bytes());
-
-    // Create config file with one model
-    create_file(
-        repo.path(),
-        "yek.toml",
-        r#"
-tokenizer_model = "openai"
-"#
-        .as_bytes(),
-    );
-
-    let output_dir = repo.path().join("yek-output");
-    ensure_empty_output_dir(&output_dir);
-
-    let debug_output = repo.path().join("debug.log");
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
-        .arg("--tokens=openai") // Override config model
-        .arg("--debug")
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .env("YEK_DEBUG_OUTPUT", &debug_output)
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(output.status.success());
-
-    // Read debug output
-    let debug_log = fs::read_to_string(&debug_output).expect("Failed to read debug log");
-    println!("debug log: {}", debug_log);
-
-    // Verify token mode is enabled with CLI model
+    // Verify that the debug log contains the expected message
+    let debug_log = fs::read_to_string(temp_dir.path().join("debug.log")).unwrap();
     assert!(
         debug_log.contains("Token mode enabled with model: openai"),
-        "Should enable token mode with specified model"
+        "Should enable token mode with model from config"
     );
+
+    // Clean up the temporary directory
+    temp_dir.close().unwrap();
 }
 
 #[test]
-fn defaults_to_openai_when_no_model_specified() {
-    let repo = setup_temp_repo();
-    let content = "This is a test file with some content.";
-    create_file(repo.path(), "test.txt", content.as_bytes());
+fn default_tokens_is_false() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
+    cmd.arg(temp_dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Token mode enabled").not());
 
-    let output_dir = repo.path().join("yek-output");
-    ensure_empty_output_dir(&output_dir);
-
-    let debug_output = repo.path().join("debug.log");
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
-        .arg("--tokens") // No model specified
-        .arg("--debug")
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .env("YEK_DEBUG_OUTPUT", &debug_output)
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(output.status.success());
-
-    // Read debug output
-    let debug_log = fs::read_to_string(&debug_output).expect("Failed to read debug log");
-    println!("debug log: {}", debug_log);
-
-    // Verify token mode is enabled
-    assert!(
-        debug_log.contains("Token mode enabled with default model: openai"),
-        "Should use default openai model"
-    );
+    // Clean up the temporary directory
+    temp_dir.close().unwrap();
 }
 
 #[test]
-fn fails_on_invalid_model() {
-    let repo = setup_temp_repo();
-    let content = "This is a test file with some content.";
-    create_file(repo.path(), "test.txt", content.as_bytes());
+fn cli_tokens_enables_token_mode() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
+    cmd.arg("--tokens")
+        .arg(temp_dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Token mode enabled with model: openai",
+        ));
 
-    let output_dir = repo.path().join("yek-output");
-    ensure_empty_output_dir(&output_dir);
+    // Clean up the temporary directory
+    temp_dir.close().unwrap();
+}
 
-    let debug_output = repo.path().join("debug.log");
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
-        .arg("--tokens=invalid-model") // Invalid model
-        .arg("--debug")
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .env("YEK_DEBUG_OUTPUT", &debug_output)
-        .output()
-        .expect("Failed to execute command");
+#[test]
+fn counts_tokens_using_tokenizer() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let test_file_path = temp_dir.path().join("test.txt");
+    fs::write(
+        &test_file_path,
+        "This is a simple file with some words in it.\n",
+    )
+    .unwrap();
 
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("Unsupported model"),
-        "Should indicate invalid model"
+    // Create a temporary config file specifying the model
+    let config_path = temp_dir.path().join("yek.toml");
+    fs::write(
+        &config_path,
+        "tokenizer_model = \"deepseek\"\ntokens = true\n",
+    )
+    .unwrap();
+
+    let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
+    cmd.arg("--config")
+        .arg(&config_path)
+        .arg(temp_dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("deepseek"));
+
+    // Verify that the test file content is in the output
+    assert_output_file_contains(
+        temp_dir.path(),
+        &[
+            ">>>> test.txt",
+            "This is a simple file with some words in it.\n",
+        ],
     );
+
+    // Clean up the temporary directory
+    temp_dir.close().unwrap();
+}
+
+#[test]
+fn unsupported_model() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
+    cmd.arg("--tokens=unsupported_model")
+        .arg(temp_dir.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Unsupported model"));
 }

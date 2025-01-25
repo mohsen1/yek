@@ -4,7 +4,6 @@ use integration_common::{create_file, setup_temp_repo};
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
-use walkdir::WalkDir;
 use yek::{get_recent_commit_times, serialize_repo, PriorityRule, YekConfig};
 
 #[test]
@@ -38,29 +37,18 @@ fn test_git_priority_basic() -> Result<(), Box<dyn std::error::Error>> {
     serialize_repo(repo_path, Some(&config))?;
 
     // Verify output
-    assert!(output_dir.exists(), "Output directory should exist");
-    let mut found_files = 0;
-    let mut found_main = false;
-    let mut found_readme = false;
-    for entry in WalkDir::new(&output_dir) {
-        let entry = entry?;
-        if entry.file_type().is_file() {
-            found_files += 1;
-            let content = fs::read_to_string(entry.path())?;
-            if content.contains("src/main.rs") {
-                found_main = true;
-            }
-            if content.contains("docs/README.md") {
-                found_readme = true;
-            }
-        }
-    }
+    let output_file = output_dir.join("output.txt");
+    assert!(output_file.exists(), "Output file should exist");
+    let content = fs::read_to_string(output_file)?;
+
     assert!(
-        found_files > 0,
-        "Should have created at least one output file"
+        content.contains("src/main.rs"),
+        "Should have included src/main.rs"
     );
-    assert!(found_main, "Should have included src/main.rs");
-    assert!(found_readme, "Should have included docs/README.md");
+    assert!(
+        content.contains("docs/README.md"),
+        "Should have included docs/README.md"
+    );
 
     Ok(())
 }
@@ -151,29 +139,18 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
     serialize_repo(repo_path, Some(&config))?;
 
     // Verify output
-    assert!(output_dir.exists(), "Output directory should exist");
-    let mut found_files = 0;
-    let mut found_main = false;
-    let mut found_readme = false;
-    for entry in WalkDir::new(&output_dir) {
-        let entry = entry?;
-        if entry.file_type().is_file() {
-            found_files += 1;
-            let content = fs::read_to_string(entry.path())?;
-            if content.contains("src/main.rs") {
-                found_main = true;
-            }
-            if content.contains("docs/README.md") {
-                found_readme = true;
-            }
-        }
-    }
+    let output_file = output_dir.join("output.txt");
+    assert!(output_file.exists(), "Output file should exist");
+    let content = fs::read_to_string(output_file)?;
+
     assert!(
-        found_files > 0,
-        "Should have created at least one output file"
+        content.contains("src/main.rs"),
+        "Should have included src/main.rs"
     );
-    assert!(found_main, "Should have included src/main.rs");
-    assert!(found_readme, "Should have included docs/README.md");
+    assert!(
+        content.contains("docs/README.md"),
+        "Should have included docs/README.md"
+    );
 
     Ok(())
 }

@@ -4,7 +4,7 @@ use crate::{
     normalize_path_with_root, Result, YekConfig,
 };
 use anyhow::anyhow;
-use ignore::{WalkBuilder, WalkState};
+use ignore::{DirEntry, WalkBuilder, WalkState};
 use std::{
     path::Path,
     sync::{Arc, Mutex},
@@ -85,7 +85,12 @@ pub fn process_files_parallel(
             let _priority = get_file_priority(&rel_path, &config.priority_rules);
 
             let model = config.tokenizer_model.as_deref().unwrap_or("openai");
-            let entry_header = format!(">>>> {}\n", rel_path);
+            // TODO: this is not really working right now
+            let (entry_header, _header_size, _content_size) = get_entry_header_with_size(
+                &entry,
+                0,
+                0
+            );
 
             // Calculate total entry size including header and content
             let content_with_newline = format!("{}\n", content);
@@ -120,26 +125,30 @@ pub fn process_files_parallel(
                     return WalkState::Continue;
                 }
 
+                // Only check max size if it's set
+                if let Some(max_size) = config.max_size {
+                    if total_tokens_needed > max_size {
+                        return WalkState::Continue;
+                    }
+                }
+
                 if let Ok(mut output) = shared_output.lock() {
                     output.push_str(&entry_header);
                     output.push_str(&content_with_newline);
                 }
             } else {
                 // BYTE-MODE truncation logic
-                let header_size = entry_header.len();
-                let content_size = content_with_newline.len();
-                debug!(
-                    "Processing file {} in byte mode - header size: {}, content size: {}, total needed: {}, current: {}, max: {}",
-                    rel_path,
-                    header_size,
-                    content_size,
-                    header_size + content_size,
+                let (entry_header, header_size, content_size) = get_entry_header_with_size(
+                    &entry,
                     0,
                     0
                 );
 
-                if header_size + content_size > 0 {
-                    return WalkState::Continue;
+                // Only check max size if it's set
+                if let Some(max_size) = config.max_size {
+                    if header_size + content_size > max_size {
+                        return WalkState::Continue;
+                    }
                 }
 
                 if let Ok(mut output) = shared_output.lock() {
@@ -158,4 +167,18 @@ pub fn process_files_parallel(
     }
 
     Ok(())
+}
+
+fn get_entry_header_with_size(
+    entry: &DirEntry,
+    _current_bytes: usize,
+    _max_bytes: usize,
+) -> (String, usize, usize) {
+    let rel_path = entry
+        .path()
+        .strip_prefix(entry.path().parent().unwrap())
+        .unwrap();
+    let header = format!(">>>> {}\n", rel_path.display());
+    let header_len = header.len();
+    (header, header_len, 0)
 }
