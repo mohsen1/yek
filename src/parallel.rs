@@ -1,10 +1,10 @@
 use crate::{
-    get_file_priority, get_recent_commit_times, is_ignored, is_text_file,
+    get_recent_commit_times, is_ignored, is_text_file,
     model_manager::{self},
     normalize_path_with_root, Result, YekConfig,
 };
 use anyhow::anyhow;
-use ignore::{DirEntry, WalkBuilder, WalkState};
+use ignore::{WalkBuilder, WalkState};
 use std::{
     path::Path,
     sync::{Arc, Mutex},
@@ -56,7 +56,7 @@ pub fn process_files_parallel(
             }
 
             let path = entry.path();
-            let rel_path = normalize_path_with_root(&base_dir, path);
+            let rel_path = normalize_path_with_root(path, &base_dir);
 
             // Skip if path is ignored
             if is_ignored(&rel_path, &config.ignore_patterns) {
@@ -82,16 +82,8 @@ pub fn process_files_parallel(
                 }
             };
 
-            // Calculate priority
-            let _priority = get_file_priority(&rel_path, &config.priority_rules);
-
             let model = config.tokenizer_model.as_deref().unwrap_or("openai");
-            // TODO: this is not really working right now
-            let (entry_header, _header_size, _content_size) = get_entry_header_with_size(
-                &entry,
-                0,
-                0
-            );
+            let entry_header = format!(">>>> {}\n", rel_path);
 
             // Calculate total entry size including header and content
             let content_with_newline = format!("{}\n", content);
@@ -112,19 +104,6 @@ pub fn process_files_parallel(
                     }
                 };
                 let total_tokens_needed = header_tokens.len() + content_tokens.len();
-                debug!(
-                    "Processing file {} in token mode - header tokens: {}, content tokens: {}, total needed: {}, current: {}, max: {}",
-                    rel_path,
-                    header_tokens.len(),
-                    content_tokens.len(),
-                    total_tokens_needed,
-                    0,
-                    0
-                );
-
-                if total_tokens_needed > 0 {
-                    return WalkState::Continue;
-                }
 
                 // Only check max size if it's set
                 if let Some(max_size) = config.max_size {
@@ -139,11 +118,8 @@ pub fn process_files_parallel(
                 }
             } else {
                 // BYTE-MODE truncation logic
-                let (entry_header, header_size, content_size) = get_entry_header_with_size(
-                    &entry,
-                    0,
-                    0
-                );
+                let header_size = entry_header.len();
+                let content_size = content_with_newline.len();
 
                 // Only check max size if it's set
                 if let Some(max_size) = config.max_size {
@@ -171,15 +147,13 @@ pub fn process_files_parallel(
 }
 
 fn get_entry_header_with_size(
-    entry: &DirEntry,
+    rel_path: &str,
     _current_bytes: usize,
     _max_bytes: usize,
 ) -> (String, usize, usize) {
-    let rel_path = entry
-        .path()
-        .strip_prefix(entry.path().parent().unwrap())
-        .unwrap();
-    let header = format!(">>>> {}\n", rel_path.display());
+    // TODO: use a value in config for >>>>
+    // in future we will have --json mode which will be more flexible
+    let header = format!(">>>> {}\n", rel_path);
     let header_len = header.len();
     (header, header_len, 0)
 }

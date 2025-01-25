@@ -84,14 +84,6 @@ jobs:
           name: attempts-log
           path: attempts.txt
 
-      - name: Push changes
-        if: always() && ${{ github.event.inputs.pr-on-fail }}
-        run: |
-          git checkout -b ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
-          git push origin ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create PR
         if: always() && ${{ github.event.inputs.pr-on-fail }}
         uses: peter-evans/create-pull-request@v5

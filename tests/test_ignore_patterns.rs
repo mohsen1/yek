@@ -7,17 +7,18 @@ fn respects_gitignore() {
     let repo = setup_temp_repo();
     let output_dir = repo.path().join("output");
 
-    create_file(repo.path(), ".gitignore", "ignore_me/**\n".as_bytes());
-    create_file(
-        repo.path(),
-        "ignore_me/foo.txt",
+    // Create and commit .gitignore and keep_me/foo.txt
+    create_file(repo.path(), ".gitignore", b"ignore_me/**\n");
+    create_file(repo.path(), "keep_me/foo.txt", b"should be included");
+
+    // Create ignored file without adding to git (untracked)
+    let ignore_me_dir = repo.path().join("ignore_me");
+    std::fs::create_dir_all(&ignore_me_dir).unwrap();
+    std::fs::write(
+        ignore_me_dir.join("foo.txt"),
         "should be ignored".as_bytes(),
-    );
-    create_file(
-        repo.path(),
-        "keep_me/foo.txt",
-        "should be included".as_bytes(),
-    );
+    )
+    .unwrap();
 
     let mut cmd = AssertCommand::cargo_bin("yek").unwrap();
     let output = cmd

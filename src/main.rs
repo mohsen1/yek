@@ -2,7 +2,6 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use tracing::Level;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
@@ -47,33 +46,19 @@ struct Args {
 
 fn init_logging() {
     let debug_output = std::env::var("YEK_DEBUG_OUTPUT").ok();
-    let level = if debug_output.is_some() {
-        Level::DEBUG
-    } else {
-        Level::INFO
-    };
-
-    let filter =
-        EnvFilter::from_default_env().add_directive(format!("yek={}", level).parse().unwrap());
+    let filter = EnvFilter::from_default_env().add_directive("yek=debug".parse().unwrap());
 
     if let Some(path) = debug_output {
-        let file = std::fs::File::create(path).unwrap();
-        let file_subscriber = fmt::layer()
-            .with_writer(file)
-            .without_time()
-            .with_target(false);
-        let std_subscriber = fmt::layer().with_ansi(atty::is(atty::Stream::Stderr));
+        let file = std::fs::File::create(path).expect("Failed to create debug log file");
+        let file_subscriber = fmt::layer().with_writer(file).with_ansi(false);
 
         Registry::default()
             .with(filter)
             .with(file_subscriber)
-            .with(std_subscriber)
             .init();
     } else {
         fmt()
-            .with_max_level(level)
-            .without_time()
-            .with_target(false)
+            .with_env_filter(filter)
             .with_ansi(std::io::stdout().is_terminal())
             .init();
     }
