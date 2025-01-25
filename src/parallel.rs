@@ -145,15 +145,3 @@ pub fn process_files_parallel(
 
     Ok(())
 }
-
-fn get_entry_header_with_size(
-    rel_path: &str,
-    _current_bytes: usize,
-    _max_bytes: usize,
-) -> (String, usize, usize) {
-    // TODO: use a value in config for >>>>
-    // in future we will have --json mode which will be more flexible
-    let header = format!(">>>> {}\n", rel_path);
-    let header_len = header.len();
-    (header, header_len, 0)
-}

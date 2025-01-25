@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   loop:
@@ -84,11 +85,13 @@ jobs:
           name: attempts-log
           path: attempts.txt
 
-      - name: Create PR
+      - name: Create PR or Issue
         if: always() && ${{ github.event.inputs.pr-on-fail }}
         uses: peter-evans/create-pull-request@v5
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ env.GH_TOKEN }}
           commit-message: "AI Fix"
           title: "AI Fix for ${{ env.BRANCH }} (Attempts: ${{ env.MAX_ATTEMPTS }})"
           body: |
