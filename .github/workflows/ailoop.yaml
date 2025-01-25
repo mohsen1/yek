@@ -34,7 +34,7 @@ jobs:
         timeout-minutes: 360
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          FIREWORKS_AI_APIK_KEY: ${{ secrets.FIREWORKS_AI_API_KEY }}
+          FIREWORKS_AI_API_KEY: ${{ secrets.FIREWORKS_AI_API_KEY }}
         run: |
           set -e
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
