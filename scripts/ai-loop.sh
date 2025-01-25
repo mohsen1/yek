@@ -38,7 +38,15 @@ for i in $(seq 1 $attempts); do
 
     # Run askds and print output to console and log
     echo "=== askds Output ===" | tee -a attempts.txt
-    askds --serialize="yek --max-size=100KB | cat" --test-file-pattern='["tests/*.rs"]' --fix --auto-apply --system-prompt=./prompts/fix-tests.txt "$(tail -c 250000 attempts.txt)" 2>&1 | tee -a attempts.txt
+    askds \
+        --hide-ui \
+        --fix \
+        --auto-apply \
+        --serialize="yek --max-size=100KB | cat" \
+        --test-file-pattern='tests/*.rs' \
+        --source-file-pattern='src/**/*.rs' \
+        --system-prompt=./prompts/fix-tests.txt \
+        "$(tail -c 250000 attempts.txt)" 2>&1 | tee -a attempts.txt
     echo "=== End askds Output ===" | tee -a attempts.txt
 
     # Commit changes if any
