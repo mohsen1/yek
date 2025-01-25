@@ -67,12 +67,15 @@ jobs:
 
       - name: Run AI Fix
         timeout-minutes: 360
+        id: ai_fix
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           FIREWORKS_AI_API_KEY: ${{ secrets.FIREWORKS_AI_API_KEY }}
           RUST_TEST_TIMEOUT: 300
           MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
-        run: bash ./scripts/ai-loop.sh
+        run: |
+          bash ./scripts/ai-loop.sh
+          echo "success=$?" >> "$GITHUB_OUTPUT"
 
       - name: Upload attempts log
         uses: actions/upload-artifact@v3
@@ -97,7 +100,7 @@ jobs:
           title: "AI Fix for ${{ env.BRANCH }} (Attempts: ${{ env.MAX_ATTEMPTS }})"
           body: |
             ## AI Fix Results
-            - Successfully fixed: ${{ env.success }}
+            - Successfully fixed: ${{ steps.ai_fix.outputs.success == '0' && 'Yes' || 'No' }}
             - Total attempts made: ${{ env.MAX_ATTEMPTS }}
             - Source branch: `${{ env.BRANCH }}`
             - Fix branch: `${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}`
