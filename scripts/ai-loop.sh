@@ -36,8 +36,11 @@ for i in $(seq 1 $attempts); do
         break
     fi
 
-    # Run askds and print output to console and log
-    echo "=== askds Output ===" | tee -a attempts.txt
+    # Create temp file for askds input
+    tail -c 250000 attempts.txt >askds_input.tmp
+
+    # Run askds and capture output
+    echo "=== askds Output ===" >>attempts.txt
     askds \
         --hide-ui \
         --fix \
@@ -46,8 +49,14 @@ for i in $(seq 1 $attempts); do
         --test-file-pattern='tests/*.rs' \
         --source-file-pattern='src/**/*.rs' \
         --system-prompt=./prompts/fix-tests.txt \
-        "$(tail -c 250000 attempts.txt)" 2>&1 | tee -a attempts.txt
-    echo "=== End askds Output ===" | tee -a attempts.txt
+        "$(cat askds_input.tmp)" >askds_output.tmp 2>&1
+
+    # Append askds output to attempts.txt
+    cat askds_output.tmp >>attempts.txt
+    echo "=== End askds Output ===" >>attempts.txt
+
+    # Cleanup temp files
+    rm askds_input.tmp askds_output.tmp
 
     # Commit changes if any
     if ! git diff --quiet; then
