@@ -104,7 +104,7 @@ jobs:
             exit 1
           }
           # Verify output exists
-          test -f repo-serialized/chunk-0.txt || {
+          test -f repo-serialized/output.txt || {
             echo "Error: Output file not found"
             ls -la repo-serialized/ || true
             exit 1
@@ -204,7 +204,7 @@ jobs:
             exit 1
           }
           # Verify output exists
-          if (-not (Test-Path repo-serialized/chunk-0.txt)) {
+          if (-not (Test-Path repo-serialized/output.txt)) {
             Write-Error "Output file not found"
             Get-ChildItem repo-serialized -ErrorAction SilentlyContinue
             exit 1
@@ -299,7 +299,7 @@ jobs:
             exit 1
           }
           # Verify output exists
-          test -f repo-serialized/chunk-0.txt || {
+          test -f repo-serialized/output.txt || {
             echo "Error: Output file not found"
             ls -la repo-serialized/ || true
             exit 1

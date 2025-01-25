@@ -2,11 +2,11 @@
 name = "yek"
 version = "0.13.8"
 edition = "2021"
-description = "A tool to serialize a repository into chunks of text files"
+description = "A tool to serialize a repository into a single text file"
 license = "MIT"
 repository = "https://github.com/mohsen-w-elsayed/yek"
 readme = "README.md"
-keywords = ["git", "repository", "serialization", "text", "chunks"]
+keywords = ["git", "repository", "serialization", "text"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
@@ -30,6 +30,10 @@ walkdir = "2.4"
 path-slash = "0.2.1"
 git2 = { version = "0.18.2", features = ["vendored-openssl", "https"] }
 crossbeam-channel = "0.5"
+serde_json = "1.0.107"
+tiktoken-rs = "0.5.2"
+tokenizers = "0.15.0"
+lazy_static = "1.5.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"
@@ -40,6 +44,8 @@ criterion = "0.5"
 rand = "0.8"
 git-cliff = "1.4.0"
 regex = "1.10.3"
+tokio = { version = "1.0", features = ["rt", "time", "macros"] }
+env_logger = "0.11"
 
 [[bench]]
 name = "serialization"
@@ -49,5 +55,5 @@ harness = false
 opt-level = 3
 lto = true
 codegen-units = 1
-panic = 'abort'
+panic = "abort"
 strip = true

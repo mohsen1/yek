@@ -2,67 +2,72 @@ use anyhow::{anyhow, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::{self};
-use std::io::Read;
-use std::io::{self, Write};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command as SysCommand, Stdio};
+use std::{fs, str};
 use tracing::debug;
 
 mod defaults;
+pub mod model_manager;
 mod parallel;
 
-use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
+use defaults::BINARY_FILE_EXTENSIONS;
 use parallel::process_files_parallel;
 
 /// Convert a glob pattern to a regex pattern
 fn glob_to_regex(pattern: &str) -> String {
     let mut regex = String::with_capacity(pattern.len() * 2);
-    let mut chars = pattern.chars().peekable();
+    regex.push('^'); // Match from the start of the path
 
+    let mut chars = pattern.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
             '*' => {
                 if chars.peek() == Some(&'*') {
-                    chars.next(); // consume second *
-                    regex.push_str(".*");
+                    chars.next();
+                    regex.push_str(".*"); // Match anything with .*
                 } else {
-                    regex.push_str("[^/]*");
+                    regex.push_str("[^/]*"); // Match any character except /
                 }
             }
-            '?' => regex.push('.'),
-            '.' => regex.push_str("\\."),
-            '/' => regex.push('/'),
+            '?' => regex.push('.'),       // Match any single character
+            '.' => regex.push_str("\\."), // Escape dots
+            '/' => regex.push_str("[/]"), // Forward slash
             '[' => {
                 regex.push('[');
-                for c in chars.by_ref() {
-                    if c == ']' {
-                        regex.push(']');
-                        break;
+                if let Some(&'^') = chars.peek() {
+                    chars.next();
+                    regex.push('^'); // Negated character class
+                }
+                // Parse character class, escape special characters as needed
+                while let Some(c) = chars.peek() {
+                    let c = *c;
+                    chars.next();
+                    match c {
+                        ']' => {
+                            regex.push(']');
+                            break;
+                        }
+                        '\\' => {
+                            regex.push_str(r"\\");
+                            if let Some(c) = chars.next() {
+                                regex.push(c);
+                            }
+                        }
+                        '-' => regex.push('-'),
+                        _ => regex.push(c),
                     }
-                    regex.push(c);
                 }
             }
-            '{' => {
-                regex.push('(');
-                for c in chars.by_ref() {
-                    if c == '}' {
-                        regex.push(')');
-                        break;
-                    } else if c == ',' {
-                        regex.push('|');
-                    } else {
-                        regex.push(c);
-                    }
-                }
-            }
-            c if c.is_alphanumeric() || c == '_' || c == '-' => regex.push(c),
-            c => {
-                regex.push('\\');
-                regex.push(c);
-            }
+            '{' => regex.push('('), // Start of alternation group
+            '}' => regex.push(')'), // End of alternation group
+            ',' => regex.push('|'), // Alternation separator
+            c => regex.push_str(&regex::escape(&c.to_string())), // Escape other special characters
         }
     }
+
+    regex.push('$'); // Match until the end of the path
     regex
 }
 
@@ -89,7 +94,7 @@ impl PriorityRule {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YekConfig {
     #[serde(default)]
     pub ignore_patterns: Vec<String>,
@@ -105,32 +110,92 @@ pub struct YekConfig {
     pub stream: bool,
     #[serde(default)]
     pub token_mode: bool,
+    #[serde(default)]
+    pub tokenizer_model: Option<String>,
+    #[serde(default)]
+    pub max_files: Option<usize>,
+}
+
+impl Default for YekConfig {
+    fn default() -> Self {
+        Self {
+            stream: false,
+            output_dir: None,
+            priority_rules: vec![],
+            binary_extensions: vec![
+                "jpg".to_string(),
+                "jpeg".to_string(),
+                "png".to_string(),
+                "gif".to_string(),
+                "bin".to_string(),
+                "zip".to_string(),
+                "exe".to_string(),
+                "dll".to_string(),
+                "so".to_string(),
+                "dylib".to_string(),
+                "class".to_string(),
+                "jar".to_string(),
+                "pyc".to_string(),
+                "pyo".to_string(),
+                "pyd".to_string(),
+            ],
+            ignore_patterns: vec![],
+            token_mode: false,
+            tokenizer_model: None,
+            max_size: None,
+            max_files: None,
+        }
+    }
+}
+
+impl YekConfig {
+    pub fn merge(&mut self, other: &YekConfig) {
+        // Only override output_dir if present in other config
+        if other.output_dir.is_some() {
+            self.output_dir = other.output_dir.clone();
+        }
+        self.stream = other.stream;
+        self.token_mode = other.token_mode;
+        if other.max_size.is_some() {
+            self.max_size = other.max_size;
+        }
+        if other.max_files.is_some() {
+            self.max_files = other.max_files;
+        }
+        if other.tokenizer_model.is_some() {
+            self.tokenizer_model = other.tokenizer_model.clone();
+        }
+        // Merge other fields as needed, for example:
+        self.ignore_patterns.extend(other.ignore_patterns.clone());
+        self.priority_rules.extend(other.priority_rules.clone());
+        self.binary_extensions
+            .extend(other.binary_extensions.clone());
+    }
 }
 
 /// Check if file is text by extension or scanning first chunk for null bytes.
 pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Result<bool> {
-    // First check extension - fast path
+    // Check user-provided binary extensions first, permitting no leading dot
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-        let ext_lc = ext.to_lowercase();
-        // If it's in the known text extensions list, it's definitely text
-        if TEXT_FILE_EXTENSIONS.contains(&ext_lc.as_str()) {
-            return Ok(true);
-        }
-        // If it's in the binary extensions list (built-in or user-defined), it's definitely binary
-        if BINARY_FILE_EXTENSIONS.contains(&ext_lc.as_str())
-            || user_binary_extensions
-                .iter()
-                .any(|e| e.trim_start_matches('.') == ext_lc)
+        let ext_lower = ext.to_lowercase();
+        if user_binary_extensions
+            .iter()
+            .any(|e| e.trim_start_matches('.') == ext_lower)
         {
             return Ok(false);
         }
-        // Unknown extension - treat as binary
-        return Ok(false);
     }
 
-    // No extension - scan content
+    // Check default binary extensions
+    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+        if BINARY_FILE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+            return Ok(false);
+        }
+    }
+
+    // If no extension or not in binary list, check content
     let mut file = fs::File::open(path)?;
-    let mut buffer = [0; 512];
+    let mut buffer = [0; 512]; // Read a small chunk to check for null bytes
     let n = file.read(&mut buffer)?;
 
     // Check for null bytes which typically indicate binary content
@@ -219,8 +284,13 @@ pub fn get_recent_commit_times(repo_path: &Path) -> Option<HashMap<String, u64>>
 /// Validate the config object, returning any errors found
 #[derive(Debug)]
 pub struct ConfigError {
-    pub field: String,
     pub message: String,
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
 }
 
 pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
@@ -230,20 +300,17 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
     for rule in &config.priority_rules {
         if rule.score < 0 || rule.score > 1000 {
             errors.push(ConfigError {
-                field: "priority_rules".to_string(),
                 message: format!("Priority score {} must be between 0 and 1000", rule.score),
             });
         }
         if rule.pattern.is_empty() {
             errors.push(ConfigError {
-                field: "priority_rules".to_string(),
                 message: "Priority rule must have a pattern".to_string(),
             });
         }
         // Validate regex pattern
         if let Err(e) = Regex::new(&rule.pattern) {
             errors.push(ConfigError {
-                field: "priority_rules".to_string(),
                 message: format!("Invalid regex pattern '{}': {}", rule.pattern, e),
             });
         }
@@ -261,7 +328,6 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
 
         if let Err(e) = Regex::new(&regex_pattern) {
             errors.push(ConfigError {
-                field: "ignore_patterns".to_string(),
                 message: format!("Invalid pattern '{}': {}", pattern, e),
             });
         }
@@ -271,7 +337,6 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
     if let Some(size) = config.max_size {
         if size == 0 {
             errors.push(ConfigError {
-                field: "max_size".to_string(),
                 message: "Max size cannot be 0".to_string(),
             });
         }
@@ -282,7 +347,6 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
         let path = Path::new(dir);
         if path.exists() && !path.is_dir() {
             errors.push(ConfigError {
-                field: "output_dir".to_string(),
                 message: format!(
                     "Output path '{}' exists but is not a directory",
                     dir.display()
@@ -292,7 +356,6 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
 
         if let Err(e) = std::fs::create_dir_all(path) {
             errors.push(ConfigError {
-                field: "output_dir".to_string(),
                 message: format!("Cannot create output directory '{}': {}", dir.display(), e),
             });
         }
@@ -301,227 +364,55 @@ pub fn validate_config(config: &YekConfig) -> Vec<ConfigError> {
     errors
 }
 
-pub const DEFAULT_CHUNK_SIZE: usize = 10 * 1024 * 1024; // 10MB in README
-
-/// Write a single chunk either to stdout or file
-fn write_single_chunk(
-    content: &str,
-    index: usize,
-    part_index: Option<usize>,
-    out_dir: &Path,
-    is_stream: bool,
-) -> io::Result<()> {
-    if is_stream {
-        let mut stdout = io::stdout();
-        write!(stdout, "{}", content)?;
-        stdout.flush()?;
-    } else {
-        // Always use chunk index in filename
-        let mut file_name = format!("chunk-{}", index);
-        if let Some(part_i) = part_index {
-            file_name = format!("chunk-{}-part-{}", index, part_i);
-        }
-        let path = out_dir.join(format!("{}.txt", file_name));
-        fs::create_dir_all(path.parent().unwrap())?;
-        fs::write(path, content.as_bytes())?;
+/// Returns a relative, normalized path string (forward slashes on all platforms).
+pub fn normalize_path(path: &Path) -> String {
+    if path.to_str() == Some(".") {
+        return ".".to_string();
     }
-    Ok(())
+
+    let path_str = path.to_string_lossy().replace('\\', "/");
+    let stripped = path_str.strip_prefix("./").unwrap_or(&path_str);
+    let trimmed = stripped.trim_start_matches('/').trim_end_matches('/');
+
+    if trimmed.is_empty() {
+        ".".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
-/// The aggregator that writes chunk-* files or streams to stdout.
-fn write_chunks(
-    entries: &[(String, String, i32)],
-    config: &YekConfig,
-    is_stream: bool,
-) -> Result<()> {
-    debug!("Starting write_chunks with {} entries", entries.len());
-    let chunk_size = config.max_size.unwrap_or(DEFAULT_CHUNK_SIZE);
-    let token_mode = config.token_mode;
-    let mut total_chunks = 0;
-
-    // Sort entries by priority (ascending)
-    let mut sorted_entries = entries.to_vec();
-    sorted_entries.sort_by_key(|(_, _, prio)| *prio);
-
-    // For chunk files:
-    let out_dir = if !is_stream {
-        config
-            .output_dir
-            .as_ref()
-            .expect("output_dir is None but streaming is false")
-    } else {
-        // dummy
-        Path::new(".")
+pub fn normalize_path_with_root(path: &Path, base: &Path) -> String {
+    let path = match path.strip_prefix(base) {
+        Ok(p) => p,
+        Err(_) => path,
     };
-    debug!("Output directory: {:?}", out_dir);
-
-    let mut chunk_idx = 0;
-    let mut buffer = String::new();
-    let mut used_size = 0_usize;
-
-    // Process each file
-    for (rel_path, content, _prio) in sorted_entries {
-        debug!("Processing file: {}", rel_path);
-        if token_mode {
-            // Count tokens
-            let tokens: Vec<&str> = content.split_whitespace().collect();
-            let file_tokens = tokens.len();
-            debug!("Token mode: {} tokens in file", file_tokens);
-
-            // If file exceeds chunk_size by itself, do forced splits
-            if file_tokens >= chunk_size {
-                debug!("File exceeds chunk size, splitting into multiple chunks");
-                // Flush current buffer first
-                if !buffer.is_empty() {
-                    debug!("Flushing buffer before large file");
-                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
-                    total_chunks += 1;
-                    buffer.clear();
-                    used_size = 0;
-                    chunk_idx += 1;
-                }
-
-                // Split large file into chunks
-                let mut start = 0;
-                let mut part = 0;
-                while start < file_tokens {
-                    let end = (start + chunk_size).min(file_tokens);
-                    let chunk_tokens = &tokens[start..end];
-                    let chunk_str = format!(
-                        "chunk {}\n>>>> {}:part {}\n{}\n",
-                        chunk_idx,
-                        rel_path,
-                        part,
-                        chunk_tokens.join(" ")
-                    );
-                    debug!("Writing large file part {}", part);
-                    write_single_chunk(&chunk_str, chunk_idx, Some(part), out_dir, is_stream)?;
-                    total_chunks += 1;
-                    chunk_idx += 1;
-                    part += 1;
-                    start = end;
-                }
-            } else {
-                // Small enough to fit in one chunk
-                let overhead = 10 + rel_path.len();
-                let add_size = file_tokens + overhead;
-
-                if used_size + add_size > chunk_size && !buffer.is_empty() {
-                    debug!("Flushing buffer due to size limit");
-                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
-                    total_chunks += 1;
-                    buffer.clear();
-                    used_size = 0;
-                    chunk_idx += 1;
-                }
-
-                debug!("Adding file to buffer");
-                buffer.push_str(&format!("chunk {}\n>>>> {}\n", chunk_idx, rel_path));
-                buffer.push_str(&content);
-                buffer.push('\n');
-                used_size += add_size;
-            }
-        } else {
-            // Byte mode
-            let file_len = content.len();
-            debug!("Byte mode: {} bytes in file", file_len);
-
-            // If file exceeds chunk_size by itself, do forced splits
-            if file_len >= chunk_size {
-                debug!("File exceeds chunk size, splitting into multiple chunks");
-                // Flush current buffer first
-                if !buffer.is_empty() {
-                    debug!("Flushing buffer before large file");
-                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
-                    total_chunks += 1;
-                    buffer.clear();
-                    used_size = 0;
-                    chunk_idx += 1;
-                }
-
-                // Split large file into chunks
-                let mut start = 0;
-                let mut part = 0;
-                while start < file_len {
-                    let end = (start + chunk_size).min(file_len);
-                    let chunk_data = &content.as_bytes()[start..end];
-                    let chunk_str = format!(
-                        "chunk {}\n>>>> {}:part {}\n{}\n",
-                        chunk_idx,
-                        rel_path,
-                        part,
-                        String::from_utf8_lossy(chunk_data)
-                    );
-                    debug!("Writing large file part {}", part);
-                    write_single_chunk(&chunk_str, chunk_idx, Some(part), out_dir, is_stream)?;
-                    total_chunks += 1;
-                    chunk_idx += 1;
-                    part += 1;
-                    start = end;
-                }
-            } else {
-                // Small enough to fit in one chunk
-                let overhead = 10 + rel_path.len();
-                let add_size = file_len + overhead;
-
-                if used_size + add_size > chunk_size && !buffer.is_empty() {
-                    debug!("Flushing buffer due to size limit");
-                    write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
-                    total_chunks += 1;
-                    buffer.clear();
-                    used_size = 0;
-                    chunk_idx += 1;
-                }
-
-                debug!("Adding file to buffer");
-                buffer.push_str(&format!("chunk {}\n>>>> {}\n", chunk_idx, rel_path));
-                buffer.push_str(&content);
-                buffer.push('\n');
-                used_size += add_size;
-            }
-        }
-    }
-
-    // Flush final chunk if not empty
-    if !buffer.is_empty() {
-        debug!("Flushing final buffer");
-        write_single_chunk(&buffer, chunk_idx, None, out_dir, is_stream)?;
-        total_chunks += 1;
-    }
-
-    // Print final output message
-    if !is_stream {
-        match total_chunks {
-            0 => {} // No files written (edge case)
-            1 => {
-                let path = out_dir.join("chunk-0.txt");
-                println!("Wrote: {}", path.display());
-            }
-            _ => {
-                println!("Wrote {} chunks in {}", total_chunks, out_dir.display());
-            }
-        }
-    }
-
-    debug!("Finished write_chunks");
-    Ok(())
+    normalize_path(path)
 }
 
 /// The main function that the tests call.
 pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     let config = cfg.cloned().unwrap_or_default();
+    let _is_stream = config.stream;
 
     // Process files in parallel
-    let processed_files = process_files_parallel(repo_path, &config)?;
+    let mut output = String::new();
+    process_files_parallel(repo_path, &config, &mut output)?;
 
-    // Convert to the format expected by write_chunks
-    let entries: Vec<(String, String, i32)> = processed_files
-        .into_iter()
-        .map(|f| (f.rel_path, f.content, f.priority))
-        .collect();
-
-    // Write chunks
-    write_chunks(&entries, &config, config.stream)?;
+    if config.stream {
+        // Write to stdout
+        print!("{}", output);
+    } else {
+        // Determine output directory
+        let output_dir = config
+            .output_dir
+            .as_deref()
+            .unwrap_or_else(|| Path::new("."));
+        // Create directory if it doesn't exist
+        fs::create_dir_all(output_dir)?;
+        // Write to output.txt in the output directory
+        let output_path = output_dir.join("output.txt");
+        fs::write(output_path, output)?;
+    }
 
     Ok(())
 }
@@ -557,7 +448,8 @@ pub fn find_config_file(start_path: &Path) -> Option<PathBuf> {
 }
 
 /// Merge config from a TOML file if present
-pub fn load_config_file(path: &Path) -> Option<YekConfig> {
+pub fn load_config_file(path: impl AsRef<Path>) -> Option<YekConfig> {
+    let path = path.as_ref();
     debug!("Attempting to load config from: {}", path.display());
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
@@ -575,7 +467,7 @@ pub fn load_config_file(path: &Path) -> Option<YekConfig> {
             if !errors.is_empty() {
                 eprintln!("Invalid configuration in {}:", path.display());
                 for error in errors {
-                    eprintln!("  {}: {}", error.field, error.message);
+                    eprintln!("  {}", error.message);
                 }
                 None
             } else {
@@ -585,84 +477,6 @@ pub fn load_config_file(path: &Path) -> Option<YekConfig> {
         Err(e) => {
             eprintln!("Failed to parse config file: {}", e);
             None
-        }
-    }
-}
-
-/// Rank-based approach to compute how "recent" each file is (0=oldest, 1=newest).
-/// Then scale it to a user-defined or default max boost.
-#[allow(dead_code)]
-fn compute_recentness_boost(
-    commit_times: &HashMap<String, u64>,
-    max_boost: i32,
-) -> HashMap<String, i32> {
-    if commit_times.is_empty() {
-        return HashMap::new();
-    }
-
-    // Sort by ascending commit time => first is oldest
-    let mut sorted: Vec<(&String, &u64)> = commit_times.iter().collect();
-    sorted.sort_by_key(|(_, t)| **t);
-
-    // oldest file => rank=0, newest => rank=1
-    let last_index = sorted.len().saturating_sub(1) as f64;
-    if last_index < 1.0 {
-        // If there's only one file, or zero, no boosts make sense
-        let mut single = HashMap::new();
-        for file in commit_times.keys() {
-            single.insert(file.clone(), 0);
-        }
-        return single;
-    }
-
-    let mut result = HashMap::new();
-    for (i, (path, _time)) in sorted.iter().enumerate() {
-        let rank = i as f64 / last_index; // 0.0..1.0 (older files get lower rank)
-        let boost = (rank * max_boost as f64).round() as i32; // Newer files get higher boost
-        result.insert((*path).clone(), boost);
-    }
-    result
-}
-
-#[cfg(target_family = "windows")]
-#[allow(dead_code)]
-fn is_effectively_absolute(path: &std::path::Path) -> bool {
-    if path.is_absolute() {
-        return true;
-    }
-    // Also treat a leading slash/backslash as absolute
-    match path.to_str() {
-        Some(s) => s.starts_with('/') || s.starts_with('\\'),
-        None => false,
-    }
-}
-
-#[cfg(not(target_family = "windows"))]
-#[allow(dead_code)]
-fn is_effectively_absolute(path: &std::path::Path) -> bool {
-    path.is_absolute()
-}
-
-/// Returns a relative, normalized path string (forward slashes on all platforms).
-pub fn normalize_path(path: &Path, base: &Path) -> String {
-    // Handle current directory specially
-    if path.to_str() == Some(".") {
-        return ".".to_string();
-    }
-
-    // Resolve both paths to their canonical forms to handle symlinks
-    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let canonical_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
-
-    // Attempt to strip the base directory from the file path
-    match canonical_path.strip_prefix(&canonical_base) {
-        Ok(rel_path) => {
-            // Convert to forward slashes and return as relative path
-            rel_path.to_string_lossy().replace('\\', "/")
-        }
-        Err(_) => {
-            // Return the absolute path without adding an extra leading slash
-            canonical_path.to_string_lossy().replace('\\', "/")
         }
     }
 }
@@ -697,4 +511,19 @@ pub fn parse_size_input(input: &str, is_tokens: bool) -> Result<usize> {
         }
         Err(anyhow!("Invalid size string: {}", input))
     }
+}
+
+pub fn is_ignored(path: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|p| {
+        let pattern = if p.starts_with('^') || p.ends_with('$') {
+            p.to_string()
+        } else {
+            glob_to_regex(p)
+        };
+        if let Ok(re) = Regex::new(&pattern) {
+            re.is_match(path)
+        } else {
+            false
+        }
+    })
 }

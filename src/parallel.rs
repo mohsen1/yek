@@ -1,159 +1,161 @@
-use crate::{get_file_priority, glob_to_regex, is_text_file, normalize_path, Result, YekConfig};
-use crossbeam::channel::bounded;
+use crate::{
+    get_file_priority, get_recent_commit_times, is_ignored, is_text_file,
+    model_manager::{self},
+    normalize_path_with_root, Result, YekConfig,
+};
+use anyhow::anyhow;
 use ignore::{WalkBuilder, WalkState};
-use regex::Regex;
 use std::{
-    collections::HashSet,
     path::Path,
     sync::{Arc, Mutex},
-    thread,
 };
 use tracing::debug;
 
-#[derive(Debug)]
-pub struct ProcessedFile {
-    pub priority: i32,
-    pub file_index: usize,
-    pub rel_path: String,
-    pub content: String,
-}
+pub fn process_files_parallel(
+    base_dir: &Path,
+    config: &YekConfig,
+    output_content: &mut String,
+) -> Result<()> {
+    // Validate token mode configuration first
+    if config.token_mode {
+        let model = config.tokenizer_model.as_deref().unwrap_or("openai");
+        if !model_manager::SUPPORTED_MODEL_FAMILIES.contains(&model) {
+            return Err(anyhow!(
+                "Unsupported model '{}'. Supported models: {}",
+                model,
+                model_manager::SUPPORTED_MODEL_FAMILIES.join(", ")
+            ));
+        }
+    }
 
-pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec<ProcessedFile>> {
-    let (tx, rx) = bounded(1024);
-    let num_threads = num_cpus::get().min(16); // Cap at 16 threads
+    // Get Git commit times for prioritization
+    let git_times = get_recent_commit_times(base_dir);
+    debug!("Git commit times: {:?}", git_times);
 
-    let config = Arc::new(config.clone());
-    let base_dir = Arc::new(base_dir.to_path_buf());
-    let processed_files = Arc::new(Mutex::new(HashSet::new()));
+    // Create thread-safe shared output content
+    let shared_output = Arc::new(Mutex::new(String::new()));
 
-    // Spawn worker threads
-    let mut handles = Vec::new();
-    for _ in 0..num_threads {
-        let tx = tx.clone();
-        let config = Arc::clone(&config);
-        let base_dir = Arc::clone(&base_dir);
-        let processed_files = Arc::clone(&processed_files);
+    // Process files in parallel
+    let walker = WalkBuilder::new(base_dir).build_parallel();
+    walker.run(|| {
+        let base_dir = base_dir.to_path_buf();
+        let config = config.clone();
+        let shared_output = Arc::clone(&shared_output);
+        Box::new(move |entry| {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => {
+                    debug!("Error walking directory: {}", e);
+                    return WalkState::Continue;
+                }
+            };
 
-        let handle = thread::spawn(move || -> Result<()> {
-            let file_index = Arc::new(Mutex::new(0_usize));
+            if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+                return WalkState::Continue;
+            }
 
-            // Configure walker for this thread
-            let mut builder = WalkBuilder::new(&*base_dir);
-            builder
-                .hidden(true)
-                .git_ignore(true)
-                .follow_links(false)
-                .standard_filters(true)
-                .require_git(false)
-                .threads(1); // Single thread per walker
+            let path = entry.path();
+            let rel_path = normalize_path_with_root(&base_dir, path);
 
-            let walker = builder.build_parallel();
+            // Skip if path is ignored
+            if is_ignored(&rel_path, &config.ignore_patterns) {
+                debug!("Skipping ignored file: {}", rel_path);
+                return WalkState::Continue;
+            }
 
-            let file_index = Arc::clone(&file_index);
-            walker.run(|| {
-                let tx = tx.clone();
-                let config = Arc::clone(&config);
-                let base_dir = Arc::clone(&base_dir);
-                let file_index = Arc::clone(&file_index);
-                let processed_files = Arc::clone(&processed_files);
+            // Skip if not a text file
+            if !is_text_file(path, &config.binary_extensions).unwrap_or_else(|e| {
+                debug!("Error checking if file is text: {}", e);
+                false
+            }) {
+                debug!("Skipping binary file: {}", rel_path);
+                return WalkState::Continue;
+            }
 
-                Box::new(move |entry| {
-                    let entry = match entry {
-                        Ok(e) => e,
-                        Err(_) => return WalkState::Continue,
-                    };
+            // Read file content
+            let content = match std::fs::read_to_string(path) {
+                Ok(content) => content,
+                Err(e) => {
+                    debug!("Error reading file {}: {}", rel_path, e);
+                    return WalkState::Continue;
+                }
+            };
 
-                    if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+            // Calculate priority
+            let _priority = get_file_priority(&rel_path, &config.priority_rules);
+
+            let model = config.tokenizer_model.as_deref().unwrap_or("openai");
+            let entry_header = format!(">>>> {}\n", rel_path);
+
+            // Calculate total entry size including header and content
+            let content_with_newline = format!("{}\n", content);
+            if config.token_mode {
+                // TOKEN-MODE truncation logic
+                let header_tokens = match model_manager::tokenize(&entry_header, model) {
+                    Ok(tokens) => tokens,
+                    Err(e) => {
+                        debug!("Error tokenizing header: {}", e);
                         return WalkState::Continue;
                     }
-
-                    let path = entry.path().to_path_buf();
-                    let rel_path = normalize_path(&path, &base_dir);
-
-                    // Check if file has already been processed
-                    {
-                        let mut processed = processed_files.lock().unwrap();
-                        if !processed.insert(rel_path.clone()) {
-                            // File was already processed
-                            return WalkState::Continue;
-                        }
-                    }
-
-                    // Skip files matching ignore patterns from yek.toml
-                    if config.ignore_patterns.iter().any(|p| {
-                        let pattern = if p.starts_with('^') || p.ends_with('$') {
-                            p.to_string()
-                        } else {
-                            glob_to_regex(p)
-                        };
-                        if let Ok(re) = Regex::new(&pattern) {
-                            re.is_match(&rel_path)
-                        } else {
-                            false
-                        }
-                    }) {
-                        debug!("Skipping {} - matched ignore pattern", rel_path);
+                };
+                let content_tokens = match model_manager::tokenize(&content_with_newline, model) {
+                    Ok(tokens) => tokens,
+                    Err(e) => {
+                        debug!("Error tokenizing content: {}", e);
                         return WalkState::Continue;
                     }
+                };
+                let total_tokens_needed = header_tokens.len() + content_tokens.len();
+                debug!(
+                    "Processing file {} in token mode - header tokens: {}, content tokens: {}, total needed: {}, current: {}, max: {}",
+                    rel_path,
+                    header_tokens.len(),
+                    content_tokens.len(),
+                    total_tokens_needed,
+                    0,
+                    0
+                );
 
-                    // Skip binary files unless explicitly allowed
-                    match is_text_file(&path, &config.binary_extensions) {
-                        Ok(is_text) if !is_text => {
-                            debug!("Skipping binary file: {}", rel_path);
-                            return WalkState::Continue;
-                        }
-                        Err(_) => return WalkState::Continue,
-                        _ => {}
-                    }
+                if total_tokens_needed > 0 {
+                    return WalkState::Continue;
+                }
 
-                    // Read and process file
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        let priority = get_file_priority(&rel_path, &config.priority_rules);
+                if let Ok(mut output) = shared_output.lock() {
+                    output.push_str(&entry_header);
+                    output.push_str(&content_with_newline);
+                }
+            } else {
+                // BYTE-MODE truncation logic
+                let header_size = entry_header.len();
+                let content_size = content_with_newline.len();
+                debug!(
+                    "Processing file {} in byte mode - header size: {}, content size: {}, total needed: {}, current: {}, max: {}",
+                    rel_path,
+                    header_size,
+                    content_size,
+                    header_size + content_size,
+                    0,
+                    0
+                );
 
-                        let mut index = file_index.lock().unwrap();
-                        let processed = ProcessedFile {
-                            priority,
-                            file_index: *index,
-                            rel_path,
-                            content,
-                        };
+                if header_size + content_size > 0 {
+                    return WalkState::Continue;
+                }
 
-                        if tx.send(processed).is_ok() {
-                            *index += 1;
-                        }
-                    }
+                if let Ok(mut output) = shared_output.lock() {
+                    output.push_str(&entry_header);
+                    output.push_str(&content_with_newline);
+                }
+            }
 
-                    WalkState::Continue
-                })
-            });
-
-            Ok(())
-        });
-        handles.push(handle);
-    }
-
-    // Drop original sender
-    drop(tx);
-
-    // Collect results
-    let mut results = Vec::new();
-    while let Ok(processed) = rx.recv() {
-        results.push(processed);
-    }
-
-    // Wait for all threads
-    for handle in handles {
-        handle.join().unwrap()?;
-    }
-
-    debug!("Processed {} files in parallel", results.len());
-
-    // Sort by priority (ascending) and file index (ascending)
-    results.sort_by(|a, b| {
-        a.priority
-            .cmp(&b.priority)
-            .then_with(|| a.file_index.cmp(&b.file_index))
+            WalkState::Continue
+        })
     });
 
-    Ok(results)
+    // Copy shared output back to output_content
+    if let Ok(shared) = shared_output.lock() {
+        output_content.push_str(&shared);
+    }
+
+    Ok(())
 }

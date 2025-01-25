@@ -1,7 +1,44 @@
 mod integration_common;
+use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
 use std::fs;
 use yek::{find_config_file, load_config_file, serialize_repo, YekConfig};
+
+/// Helper to run yek in streaming mode (pipe to stdout)
+#[allow(dead_code)]
+fn run_stream_mode(dir: &std::path::Path) -> String {
+    let output = Command::cargo_bin("yek")
+        .unwrap()
+        .current_dir(dir)
+        .env("TERM", "dumb") // Force non-interactive mode
+        .env("NO_COLOR", "1") // Disable color output
+        .env("CI", "1") // Force CI mode
+        .output()
+        .expect("Failed to execute command");
+
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// Helper to run yek in file mode (write to output directory)
+#[allow(dead_code)]
+fn run_file_mode(dir: &std::path::Path) -> String {
+    let output_dir = dir.join("output");
+    let _ = Command::cargo_bin("yek")
+        .unwrap()
+        .current_dir(dir)
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .assert()
+        .success();
+
+    // Read all part files
+    let mut content = String::new();
+    for entry in fs::read_dir(output_dir).unwrap() {
+        let path = entry.unwrap().path();
+        content.push_str(&fs::read_to_string(path).unwrap());
+    }
+    content
+}
 
 #[test]
 fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,34 +58,30 @@ fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> ignore_me.txt"),
+        !content.contains(">>>> ignore_me.txt"),
         "ignore_me.txt should be ignored"
     );
     assert!(
-        combined_content.contains(">>>> keep_me.txt"),
+        content.contains(">>>> keep_me.txt"),
         "keep_me.txt should be kept"
     );
 
@@ -83,38 +116,34 @@ fn test_gitignore_subdirectory() -> Result<(), Box<dyn std::error::Error>> {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> otherdir/settings.temp"),
+        !content.contains(">>>> otherdir/settings.temp"),
         "settings.temp should be ignored by root .gitignore"
     );
     assert!(
-        !combined_content.contains(">>>> subdir/secret.conf"),
+        !content.contains(">>>> subdir/secret.conf"),
         "secret.conf should be ignored by subdirectory .gitignore"
     );
     assert!(
-        combined_content.contains(">>>> subdir/app.rs"),
+        content.contains(">>>> subdir/app.rs"),
         "app.rs should be kept"
     );
 
@@ -152,46 +181,42 @@ temp/*
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> error.log"),
+        !content.contains(">>>> error.log"),
         "error.log should be ignored"
     );
     assert!(
-        !combined_content.contains(">>>> build/output.exe"),
+        !content.contains(">>>> build/output.exe"),
         "build/output.exe should be ignored"
     );
     assert!(
-        !combined_content.contains(">>>> temp/junk.tmp"),
+        !content.contains(">>>> temp/junk.tmp"),
         "temp/junk.tmp should be ignored"
     );
     assert!(
-        combined_content.contains(">>>> temp/keep.me"),
+        content.contains(">>>> temp/keep.me"),
         "temp/keep.me should be kept (negated pattern)"
     );
     assert!(
-        combined_content.contains(">>>> src/main.rs"),
+        content.contains(">>>> src/main.rs"),
         "src/main.rs should be kept"
     );
 
@@ -206,7 +231,7 @@ fn test_gitignore_and_yek_toml() -> Result<(), Box<dyn std::error::Error>> {
     create_file(
         repo.path(),
         "yek.toml",
-        b"ignore_patterns = [\"^exclude/.*$\"]\n",
+        b"ignore_patterns = [\"exclude/**\"]\n",
     );
 
     // Create .gitignore
@@ -233,42 +258,38 @@ fn test_gitignore_and_yek_toml() -> Result<(), Box<dyn std::error::Error>> {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> exclude/secret.txt"),
+        !content.contains(">>>> exclude/secret.txt"),
         "exclude/secret.txt should be ignored by yek.toml"
     );
     assert!(
-        !combined_content.contains(">>>> test.tmp"),
+        !content.contains(">>>> test.tmp"),
         "test.tmp should be ignored by .gitignore"
     );
     assert!(
-        !combined_content.contains(">>>> node_modules/lib.js"),
+        !content.contains(">>>> node_modules/lib.js"),
         "node_modules/lib.js should be ignored by .gitignore"
     );
     assert!(
-        combined_content.contains(">>>> src/index.rs"),
+        content.contains(">>>> src/index.rs"),
         "src/index.rs should be kept"
     );
 
@@ -282,7 +303,7 @@ fn test_gitignore_binary_files() -> Result<(), Box<dyn std::error::Error>> {
     // Create test files with binary content
     create_file(repo.path(), "binary.jpg", b"\xFF\xD8\xFF\xDB"); // JPEG magic bytes
     create_file(repo.path(), "text.txt", b"normal text");
-    create_file(repo.path(), "unknown.xyz", b"unknown format");
+    create_file(repo.path(), "unknown.xyz", b"unknown\0format"); // Add null byte
 
     // Run serialization
     let output_dir = repo.path().join("test_output");
@@ -293,38 +314,31 @@ fn test_gitignore_binary_files() -> Result<(), Box<dyn std::error::Error>> {
             file_cfg.output_dir = Some(output_dir.clone());
             file_cfg
         } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
+            YekConfig {
+                output_dir: Some(output_dir.clone()),
+                ..Default::default()
+            }
         }
     } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+        YekConfig {
+            output_dir: Some(output_dir.clone()),
+            ..Default::default()
+        }
     };
 
     serialize_repo(repo.path(), Some(&config))?;
 
-    // Read all chunk contents
-    let mut combined_content = String::new();
-    for entry in fs::read_dir(&output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            combined_content.push_str(&fs::read_to_string(path)?);
-        }
-    }
+    // Read output file
+    let output_file = output_dir.join("output.txt");
+    let content = fs::read_to_string(&output_file)?;
 
     assert!(
-        !combined_content.contains(">>>> binary.jpg"),
+        !content.contains(">>>> binary.jpg"),
         "binary.jpg should be ignored as a binary file"
     );
+    assert!(content.contains(">>>> text.txt"), "text.txt should be kept");
     assert!(
-        combined_content.contains(">>>> text.txt"),
-        "text.txt should be kept"
-    );
-    assert!(
-        !combined_content.contains(">>>> unknown.xyz"),
+        !content.contains(">>>> unknown.xyz"),
         "unknown.xyz should be ignored as a binary file (unknown extension)"
     );
 

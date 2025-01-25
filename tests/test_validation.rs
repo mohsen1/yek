@@ -15,13 +15,10 @@ fn fails_on_invalid_regex_in_config() {
     );
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    cmd.current_dir(repo.path())
-        .assert()
-        .success() // The tool doesn't "fail," it just logs invalid config
-        .stderr(
-            predicate::str::contains("Invalid configuration in")
-                .and(predicate::str::contains("Invalid pattern")),
-        );
+    cmd.current_dir(repo.path()).assert().failure().stderr(
+        predicate::str::contains("Invalid configuration")
+            .and(predicate::str::contains("Invalid pattern")),
+    );
 }
 
 #[test]
@@ -39,8 +36,8 @@ pattern = ".*"
     );
 
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    cmd.current_dir(repo.path()).assert().success().stderr(
-        predicate::str::contains("Invalid configuration in")
+    cmd.current_dir(repo.path()).assert().failure().stderr(
+        predicate::str::contains("Invalid configuration")
             .and(predicate::str::contains("must be between 0 and 1000")),
     );
 }

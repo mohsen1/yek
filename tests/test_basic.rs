@@ -15,8 +15,10 @@ fn basic_file_output_test() {
     fs::write(&test_file, "test content").unwrap();
 
     // Run serialization
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
+    let config = YekConfig {
+        output_dir: Some(output_dir.clone()),
+        ..Default::default()
+    };
     serialize_repo(temp.path(), Some(&config)).unwrap();
 
     // Verify output
@@ -29,10 +31,9 @@ fn basic_file_output_test() {
         println!("File contents:\n{}", content);
     }
 
-    // Check that the first chunk exists and contains our test file
-    let chunk_0 = output_dir.join("chunk-0.txt");
-    assert!(chunk_0.exists(), "Should write first chunk");
-    let content = fs::read_to_string(chunk_0).unwrap();
+    let outputfile = output_dir.join("output.txt");
+    assert!(outputfile.exists(), "Should write output file");
+    let content = fs::read_to_string(outputfile).unwrap();
     assert!(
         content.contains("test content"),
         "Should contain file content"
@@ -48,8 +49,10 @@ fn basic_pipe_test() {
     fs::write(&test_file, "test content").unwrap();
 
     // Run serialization in stream mode
-    let mut config = YekConfig::default();
-    config.stream = true;
+    let config = YekConfig {
+        stream: true,
+        ..Default::default()
+    };
     serialize_repo(temp.path(), Some(&config)).unwrap();
 
     // The output should be written to stdout, which we can't easily capture in a test

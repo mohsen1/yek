@@ -1,11 +1,10 @@
 # `yek`
 
-A [fast](#performance) Rust based tool to read text-based files in a repository or directory, chunk them, and serialize them for LLM consumption. By default, the tool:
+A [fast](#performance) Rust based tool to read text-based files in a repository or directory and serialize them for LLM consumption. By default, the tool:
 
 - Uses `.gitignore` rules to skip unwanted files.
 - Uses the Git history to infer what files are important.
 - Infers additional ignore patterns (binary, large, etc.).
-- Splits content into chunks based on either approximate "token" count or byte size.
 - Automatically detects if output is being piped and streams content instead of writing to files.
 - Supports processing multiple directories in a single command.
 - Configurable via a `yek.toml` file.
@@ -24,7 +23,7 @@ Consider having a simple repo like this:
     └── test.rs
 ```
 
-Running `yek` in this directory will produce a single file and write it to the temp directory with the following content:
+Running `yek` in this directory will produce a single file with the following content:
 
 ```txt
 >>>> README.md
@@ -78,11 +77,11 @@ export PATH=$(pwd)/target/release:$PATH
 
 ## Usage
 
-`yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. It will serialize all files in the repository into chunks of 10MB by default. The file will be written to the temp directory and file path will be printed to the console.
+`yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. The output will be written to a single file named `output.txt` in the current directory, or streamed to stdout if piped.
 
 ### Examples
 
-Process current directory and write to temp directory:
+Process current directory and write to output.txt:
 
 ```bash
 yek
@@ -97,17 +96,26 @@ yek src/ | pbcopy
 Cap the max size to 128K tokens and only process the `src` directory:
 
 ```bash
-yek --max-size 128K --tokens src/
+yek --max-size 128K src/
+```
+
+Do actual token counting and use the `deepseek` model tokenizer:
+
+```bash
+yek --max-size 128K --tokens deepseek
 ```
 
 > [!NOTE]
-> When multiple chunks are written, the last chunk will contain the highest-priority files.
+> Token counting can be slow, so it's disabled by default.
 
 Cap the max size to 100KB and only process the `src` directory, writing to a specific directory:
 
 ```bash
 yek --max-size 100KB --output-dir /tmp/yek src/
 ```
+
+> [!NOTE]
+> When max-size is reached, `yek` will throw away all of the less important files and generate
 
 Process multiple directories:
 
@@ -120,7 +128,7 @@ yek src/ tests/
 ```bash
 yek --help
 
-Repository content chunker and serializer for LLM consumption
+Repository content serializer for LLM consumption
 
 Usage: yek [OPTIONS] [directories]...
 
@@ -128,12 +136,12 @@ Arguments:
   [directories]...  Directories to process [default: .]
 
 Options:
-      --max-size <max-size>      Maximum size per chunk (e.g. '10MB', '128KB', '1GB') [default: 10MB]
-      --tokens                   Count size in tokens instead of bytes
+      --max-size <max-size>      Maximum size of output
+      --tokens [<MODEL_FAMILY>]  Count size in tokens using specified model family.
+                                 Options: openai, claude, mistral, deepseek, llama [default: openai]
       --debug                    Enable debug output
-      --output-dir <output-dir>  Output directory for chunks
+      --output-dir <output-dir>  Output directory for output file
   -h, --help                     Print help
-  -V, --version                  Print version
 ```
 
 ## Configuration File
@@ -144,12 +152,22 @@ You can place a file called `yek.toml` at your project root or pass a custom pat
 2. Define file priority rules for processing order
 3. Add additional binary file extensions to ignore (extends the built-in list)
 4. Configure Git-based priority boost
+5. Configure tokenizer model for token counting
 
 ### Example `yek.toml`
 
 This is optional, you can configure the `yek.toml` file at the root of your project.
 
 ```toml
+# Output directory for the output file
+output_dir = "yek-output"
+
+# Maximum size of output
+max_size = "128K"
+
+# Tokenizer model for token counting (defaults to 'deepseek-reasoner')
+tokens = "deepseek"
+
 # Add patterns to ignore (in addition to .gitignore)
 ignore_patterns = [
   "node_modules/",
