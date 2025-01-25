@@ -34,7 +34,7 @@ jobs:
         timeout-minutes: 360
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          FIREWORKS_AI_APIK_KEY: ${{ secrets.FIREWORKS_AI_APIK_KEY }}
+          FIREWORKS_AI_APIK_KEY: ${{ secrets.FIREWORKS_AI_API_KEY }}
         run: |
           set -e
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -100,7 +100,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "AI Fix"
-          title: "AI Fix"
-          body: "AI Fix"
+          title: "AI Fix for ${{ github.event.inputs.branch }}"
+          body: "Please review very carefully!"
           branch: ${{ github.event.inputs.branch }}-ai-fix-${{ env.SHORT_DATE }}
           base: ${{ github.event.inputs.branch }}
