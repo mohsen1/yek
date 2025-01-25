@@ -3,7 +3,7 @@ name: AI Fix Loop
 on:
   push:
     branches:
-      - ai-loop # Remove me after testing
+      - tokenizer # Remove me after testing
   workflow_dispatch:
     inputs:
       branch:
