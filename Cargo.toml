@@ -11,6 +11,7 @@ categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 anyhow = "1.0"
+atty = "0.2"
 byte-unit = "4.0"
 clap = { version = "4.4", features = ["derive"] }
 crossbeam = "0.8"
@@ -43,7 +44,6 @@ tempfile = "3.9"
 criterion = "0.5"
 rand = "0.8"
 git-cliff = "1.4.0"
-regex = "1.10.3"
 tokio = { version = "1.0", features = ["rt", "time", "macros"] }
 env_logger = "0.11"
 

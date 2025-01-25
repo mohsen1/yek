@@ -226,7 +226,7 @@ fn test_dir_config() -> Result<()> {
 #[test]
 fn test_max_size() -> Result<()> {
     let mut setup = TestSetup::new();
-    setup.with_git().create_file("test.txt", &"A".repeat(5000));
+    setup.with_git().create_file("test.txt", "A".repeat(5000));
 
     // Test with size smaller than header + minimal content
     let (output, _) = setup.run(&["--max-size=10"]);

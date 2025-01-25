@@ -1,7 +1,6 @@
 #[path = "integration_common.rs"]
 mod integration_common;
 use assert_cmd::Command;
-use env_logger;
 use integration_common::{create_file, ensure_empty_output_dir, setup_temp_repo};
 use std::fs;
 use yek::model_manager;

@@ -26,6 +26,7 @@ pub fn process_files_parallel(
                 model_manager::SUPPORTED_MODEL_FAMILIES.join(", ")
             ));
         }
+        debug!("Token mode enabled with model: {}", model);
     }
 
     // Get Git commit times for prioritization

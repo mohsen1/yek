@@ -67,6 +67,7 @@ jobs:
 
       - name: Run AI Fix
         timeout-minutes: 360
+        continue-on-error: true
         id: ai_fix
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

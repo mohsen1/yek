@@ -2,8 +2,11 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-use tracing::{subscriber, Level};
+use tracing::Level;
+use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::Registry;
 use yek::{
     find_config_file, load_config_file, parse_size_input, serialize_repo, validate_config,
     YekConfig,
@@ -42,35 +45,45 @@ struct Args {
     debug: bool,
 }
 
-fn main() -> Result<()> {
-    let args = Args::parse();
-
-    // Setup logging
-    let level = if args.debug {
+fn init_logging() {
+    let debug_output = std::env::var("YEK_DEBUG_OUTPUT").ok();
+    let level = if debug_output.is_some() {
         Level::DEBUG
     } else {
         Level::INFO
     };
 
-    // Configure logging output
-    if let Ok(debug_output) = std::env::var("YEK_DEBUG_OUTPUT") {
-        let file = std::fs::File::create(debug_output)?;
-        let subscriber = fmt()
-            .with_max_level(level)
+    let filter =
+        EnvFilter::from_default_env().add_directive(format!("yek={}", level).parse().unwrap());
+
+    if let Some(path) = debug_output {
+        let file = std::fs::File::create(path).unwrap();
+        let file_subscriber = fmt::layer()
             .with_writer(file)
             .without_time()
-            .with_target(false)
-            .with_ansi(false)
-            .finish();
-        subscriber::set_global_default(subscriber)?;
+            .with_target(false);
+        let std_subscriber = fmt::layer().with_ansi(atty::is(atty::Stream::Stderr));
+
+        Registry::default()
+            .with(filter)
+            .with(file_subscriber)
+            .with(std_subscriber)
+            .init();
     } else {
         fmt()
             .with_max_level(level)
             .without_time()
             .with_target(false)
-            .with_ansi(true)
+            .with_ansi(std::io::stdout().is_terminal())
             .init();
     }
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+
+    // Setup logging
+    init_logging();
 
     // Load and merge configurations
     let mut config = YekConfig::default();
