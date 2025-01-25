@@ -35,6 +35,9 @@ jobs:
       - name: Install askds
         run: npm install -g askds
 
+      - name: Install Yek
+        run: curl -fsSL https://bodo.run/yek.sh | bash
+
       - name: Build
         run: cargo build
 
