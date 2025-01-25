@@ -40,20 +40,32 @@ for i in $(seq 1 $attempts); do
     askds_input=$(tail -c 250000 attempts.txt | sed 's/===/---/g')
     echo "$askds_input" >askds_input.tmp
 
-    # Run askds and capture output while streaming to console
+    # Run askds and stream output to both console and variable
     echo "--- askds Output ---" | tee -a attempts.txt
-    ../askds/dist/index.js \
-        --hide-ui \
-        --fix \
-        --auto-apply \
-        --serialize="yek --max-size=100KB | cat" \
-        --test-file-pattern='tests/*.rs' \
-        --source-file-pattern='src/**/*.rs' \
-        --system-prompt=./prompts/fix-tests.txt \
-        --run="cat askds_input.tmp" \
-        2>&1 | tee -a attempts.txt
-    echo "--- End askds Output ---" | tee -a attempts.txt
 
+    askds_output=$(
+        askds \
+            --hide-ui \
+            --fix \
+            --auto-apply \
+            --serialize="yek --max-size=100KB | cat" \
+            --test-file-pattern='tests/*.rs' \
+            --source-file-pattern='src/**/*.rs' \
+            --system-prompt=./prompts/fix-tests.txt \
+            --run="cat askds_input.tmp" 2>&1 | tee /dev/stderr
+    )
+    askds_exit_code=$?
+
+    if [ $askds_exit_code -ne 0 ]; then
+        echo "askds failed with exit code $askds_exit_code" >>attempts.txt
+        echo "askds failed. Guessing we ran out of context window. Trimming attempts.txt to last 30KB"
+        tail -c 30000 attempts.txt >attempts.tmp
+        mv attempts.tmp attempts.txt
+        continue
+    fi
+
+    echo "$askds_output" >>attempts.txt
+    echo "--- End askds Output ---" >>attempts.txt
     # Cleanup temp files
     rm askds_input.tmp
 

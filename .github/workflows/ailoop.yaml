@@ -1,9 +1,6 @@
 name: AI Fix Loop
 
 on:
-  push:
-    branches:
-      - tokenizer # Remove me after testing
   workflow_dispatch:
     inputs:
       branch:
@@ -14,6 +11,10 @@ on:
       attempts:
         description: Maximum number of attempts
         default: "40"
+      pr-on-fail:
+        description: "Create a PR on failure"
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -27,6 +28,7 @@ jobs:
     env:
       MAX_ATTEMPTS: ${{ github.event.inputs.attempts || '40' }}
       BRANCH: ${{ github.event.inputs.branch || 'tokenizer' }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,7 +50,7 @@ jobs:
           node-version: "20"
 
       - name: Install askds
-        run: npm install -g askds
+        run: npm install -g askds@latest
 
       - name: Install Yek
         run: curl -fsSL https://bodo.run/yek.sh | bash
@@ -79,7 +81,7 @@ jobs:
           path: attempts.txt
 
       - name: Push changes
-        if: success()
+        if: always() && ${{ github.event.inputs.pr-on-fail }}
         run: |
           git checkout -b ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
           git push origin ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
@@ -87,7 +89,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create PR
-        if: success()
+        if: always() && ${{ github.event.inputs.pr-on-fail }}
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -95,6 +97,7 @@ jobs:
           title: "AI Fix for ${{ env.BRANCH }} (Attempts: ${{ env.MAX_ATTEMPTS }})"
           body: |
             ## AI Fix Results
+            - Successfully fixed: ${{ env.success }}
             - Total attempts made: ${{ env.MAX_ATTEMPTS }}
             - Source branch: `${{ env.BRANCH }}`
             - Fix branch: `${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}`
@@ -102,6 +105,6 @@ jobs:
             **Important Notes:**
             - Review all changes carefully
             - Verify test results
-            - Check the [workflow artifacts](#) for detailed attempt logs
+            - Check the workflow artifacts for detailed attempt logs
           branch: ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
           base: ${{ env.BRANCH }}
