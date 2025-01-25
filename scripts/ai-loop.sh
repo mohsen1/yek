@@ -41,7 +41,7 @@ for i in $(seq 1 $attempts); do
 
     # Run askds and capture output while streaming to console
     echo "--- askds Output ---" | tee -a attempts.txt
-    askds \
+    ../../askds/dist/index.js \
         --hide-ui \
         --fix \
         --auto-apply \
