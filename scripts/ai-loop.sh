@@ -19,7 +19,7 @@ for i in $(seq 1 $attempts); do
     echo "=== Attempt $i/$attempts ==="
 
     # Run tests and print output to console
-    test_output=$(cargo test --test-threads=1 2>&1)
+    test_output=$(cargo test -- --test-threads=1 2>&1)
     test_exit_code=$?
     echo "$test_output" >test_output.txt
 
@@ -49,9 +49,9 @@ for i in $(seq 1 $attempts); do
     echo "test_output.txt: size $(du -sh test_output.txt | awk '{print $1}')"
 
     # Run askds to fix the tests
-    node ../askds/dist/index.js \
+    node askds \
         --hide-ui \
-        --timeout=480 \
+        --timeout=4800 \
         --fix \
         --auto-apply \
         --serialize="yek --max-size=100KB | cat" \
