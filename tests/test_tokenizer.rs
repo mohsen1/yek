@@ -1,3 +1,5 @@
+use std::fs;
+
 #[test]
 fn accepts_model_from_config() {
     let temp_dir = tempfile::tempdir().unwrap();
