@@ -281,6 +281,59 @@ fn custom_config_test(c: &mut Criterion) {
     group.finish();
 }
 
+#[test]
+fn custom_config_test() {
+    use std::fs;
+    use tempfile::TempDir;
+    use yek::{serialize_repo, PriorityRule, YekConfig};
+
+    let temp = TempDir::new().unwrap();
+    let output_dir = temp.path().join("yek-output");
+    fs::create_dir_all(&output_dir).unwrap();
+
+    // Create test files
+    let files = vec![
+        ("high_pri.txt", "high priority content", 1000),
+        ("low_pri.txt", "low priority content", 10),
+        ("ignored.txt", "should be ignored", 0),
+    ];
+    for (name, content, _) in &files {
+        let path = temp.path().join(name);
+        fs::write(&path, content).unwrap();
+    }
+
+    // Create custom config
+    let config = YekConfig {
+        ignore_patterns: vec!["ignored.txt".to_string()],
+        priority_rules: vec![
+            PriorityRule {
+                pattern: "high_pri.txt".to_string(),
+                score: 1000,
+            },
+            PriorityRule {
+                pattern: "low_pri.txt".to_string(),
+                score: 10,
+            },
+        ],
+        output_dir: Some(output_dir.clone()),
+        ..Default::default()
+    };
+
+    serialize_repo(temp.path(), Some(&config)).unwrap();
+
+    // Verify output
+    let output_path = output_dir.join("output.txt");
+    let content = fs::read_to_string(output_path).unwrap();
+
+    // Check ignored file is excluded
+    assert!(!content.contains("ignored.txt"));
+
+    // Check priority order (higher priority comes first)
+    let high_pos = content.find("high_pri.txt").unwrap();
+    let low_pos = content.find("low_pri.txt").unwrap();
+    assert!(high_pos < low_pos, "High priority file should appear first");
+}
+
 criterion_group! {
     name = benches;
     config = Criterion::default()

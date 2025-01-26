@@ -351,23 +351,26 @@ pub fn serialize_repo(repo_path: &Path, cfg: Option<&YekConfig>) -> Result<()> {
     let _is_stream = config.stream;
 
     // Process files in parallel
-    let mut output = String::new();
-    process_files_parallel(repo_path, &config, &mut output)?;
 
+    let mut output = Vec::new();
+    process_files_parallel(repo_path, &config, &mut output)?;
+    let final_output = output.join("\n");
     if config.stream {
         // Write to stdout
-        print!("{}", output);
+        print!("{}", final_output);
     } else {
         // Determine output directory
         let output_dir = config
             .output_dir
             .as_deref()
             .unwrap_or_else(|| Path::new("."));
+
         // Create directory if it doesn't exist
         fs::create_dir_all(output_dir)?;
+
         // Write to output.txt in the output directory
         let output_path = output_dir.join("output.txt");
-        fs::write(output_path, output)?;
+        fs::write(output_path, final_output)?;
     }
 
     Ok(())

@@ -20,7 +20,7 @@ for i in $(seq 1 $attempts); do
     test_exit_code=$?
     echo "$test_output" >test_output.tmp
 
-    # Append last attempt to test output if it exists
+    # Append last attempt if it exists
     if [ -f last_attempt.txt ]; then
         echo "## Last time we tried this but we failed:"
         cat last_attempt.txt >>test_output.tmp
@@ -47,7 +47,7 @@ for i in $(seq 1 $attempts); do
         --system-prompt=./prompts/fix-tests.txt \
         --run="cat test_output.tmp" || true
 
-    rm last_attempt.txt
+    rm -f last_attempt.txt
     cargo fmt
     cargo clippy --fix --allow-dirty
 
@@ -63,6 +63,8 @@ for i in $(seq 1 $attempts); do
     fi
 done
 
+rm -f last_attempt.txt
+
 if [ $success -ne 1 ]; then
     if [ "$GITHUB_ACTIONS" ]; then
         echo "ATTEMPTS=$attempts" >>$GITHUB_ENV
@@ -72,4 +74,14 @@ if [ $success -ne 1 ]; then
         echo "Failed after $attempts attempts"
         exit 1
     fi
+fi
+
+# Ensure formatting and linting passes before proceeding
+if ! cargo fmt --check; then
+    echo "Error: Code formatting check failed. Run 'cargo fmt' to fix formatting issues."
+    exit 1
+fi
+if ! cargo clippy --all-targets -- -D warnings; then
+    echo "Error: Clippy lints found. Fix the reported issues before continuing."
+    exit 1
 fi

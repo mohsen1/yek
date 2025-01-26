@@ -1,10 +1,10 @@
-IMPORTANT: To run tests, **alwasy** run the following command This command take a long time to return. Wait at least 5 minutes
+IMPORTANT: To run tests, **always** run the following command. This command takes a long time to return. Wait at least 5 minutes.
 askds --system-prompt="./prompts/fix-tests.txt" cargo test
 
 WAIT A LONG TIME FOR askds to run the tests and find the issues.
 
-use the output of the command to fix the tests.
+Use the output of the command to fix the tests.
 
 IMPORTANT: Before committing, run `cargo fmt` and `cargo clippy` and `askds --system-prompt="./prompts/fix-tests.txt" cargo test` to ensure code is formatted and linted correctly.
 
-IMPORTANT never commit without running the tests.
+IMPORTANT: Never commit without running the tests.

@@ -14,7 +14,7 @@ use tracing::debug;
 pub fn process_files_parallel(
     base_dir: &Path,
     config: &YekConfig,
-    output_content: &mut String,
+    output_content: &mut Vec<String>,
 ) -> Result<()> {
     // Validate token mode configuration first
     if config.token_mode {
@@ -106,7 +106,7 @@ pub fn process_files_parallel(
 
     // Copy shared output back to output_content
     if let Ok(shared) = shared_output.lock() {
-        output_content.push_str(&shared);
+        output_content.push(shared.to_string());
     } else {
         return Err(anyhow!("Failed to acquire final lock for output"));
     }

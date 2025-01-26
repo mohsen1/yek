@@ -38,7 +38,7 @@ yek --max-size 100KB --output-dir /tmp/yek src/
 ```
 
 > [!NOTE]
-> When max-size is reached, `yek` will throw away all of the less important files and generate
+> When max-size is reached, `yek` processes files in priority order until the limit is reached, then skips remaining files.
 
 Process multiple directories:
 
