@@ -50,7 +50,6 @@ for i in $(seq 1 $attempts); do
 
     # Run askds to fix the tests
     node ../askds/dist/index.js \
-        --debug \
         --hide-ui \
         --timeout=480 \
         --fix \
