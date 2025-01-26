@@ -9,7 +9,7 @@ fn cli_model_overrides_config() {
     let config_path = temp_dir.path().join("yek.toml");
     fs::write(
         &config_path,
-        "tokenizer_model = \"mistral\"\ntokens = true\n",
+        "tokenizer_model = \"mistral\"\ntoken_mode = true\n",
     )
     .unwrap();
 
@@ -49,7 +49,7 @@ fn accepts_model_from_config() {
     let config_path = temp_dir.path().join("yek.toml");
     fs::write(
         &config_path,
-        "tokenizer_model = \"openai\"\ntokens = true\n",
+        "tokenizer_model = \"openai\"\ntoken_mode = true\n",
     )
     .unwrap();
 
@@ -118,7 +118,7 @@ fn counts_tokens_using_tokenizer() {
     let config_path = temp_dir.path().join("yek.toml");
     fs::write(
         &config_path,
-        "tokenizer_model = \"deepseek\"\ntokens = true\n",
+        "tokenizer_model = \"deepseek\"\ntoken_mode = true\n",
     )
     .unwrap();
 
