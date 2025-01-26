@@ -1,8 +1,6 @@
 output_dir = "./repo-serialized"
 
-ignore_patterns = [
-    "^repo-serialized/",
-]
+ignore_patterns = ["repo-serialized/"]
 
 [[priority_rules]]
 score = 100

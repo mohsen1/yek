@@ -19,7 +19,7 @@ for i in $(seq 1 $attempts); do
     echo "=== Attempt $i/$attempts ==="
 
     # Run tests and print output to console
-    test_output=$(cargo test -- --test accepts_model_from_config --test-threads=1 2>&1)
+    test_output=$(cargo test --test-threads=1 2>&1)
     test_exit_code=$?
     echo "$test_output" >test_output.txt
 
@@ -31,8 +31,6 @@ for i in $(seq 1 $attempts); do
             mv failures.txt test_output.txt
         fi
     fi
-
-    cat test_output.txt
 
     # Exit loop if tests passed
     if [ $test_exit_code -eq 0 ]; then
@@ -52,6 +50,7 @@ for i in $(seq 1 $attempts); do
 
     # Run askds to fix the tests
     askds \
+        --debug \
         --hide-ui \
         --timeout=480 \
         --fix \
@@ -62,15 +61,16 @@ for i in $(seq 1 $attempts); do
         --system-prompt=./prompts/fix-tests.txt \
         --run="cat test_output.txt" || true
 
-    rm -f last_attempt.txt
-    cargo clippy --all-targets --fix --allow-dirty -- -D warnings
-    cargo fmt
+    # Run clippy and fmt to fix the code style
+    cargo clippy --all-targets --fix --allow-dirty || true
+    cargo fmt || true
 
     # Commit changes if any
     if ! git diff --quiet; then
         git add .
         git commit -m "fix attempt $i (${BRANCH})"
         echo "Applied fixes for ${BRANCH} tests"
+        rm -f last_attempt.txt
     else
         echo "No changes in attempt $i"
         cp test_output.txt last_attempt.txt
