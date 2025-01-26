@@ -10,6 +10,9 @@ fi
 attempts=${MAX_ATTEMPTS:-40}
 BRANCH=${BRANCH:-tokenizer}
 
+# Get stack trace for debugging
+export RUST_BACKTRACE=1
+
 success=0
 
 for i in $(seq 1 $attempts); do
@@ -36,9 +39,19 @@ for i in $(seq 1 $attempts); do
         break
     fi
 
+    # Remove all the lines before "failures:" in test_output.tmp
+    sed -n '/failures:/,/===/p' test_output.tmp >test_output.tmp
+
+    # Chop test_output.tmp to 100KB (from bottom) to avoid Context Window overflow
+    tail -c 100KB test_output.tmp >test_output.tmp
+
+    echo "Running askds to fix the tests"
+    echo "test_output.tmp: size $(du -sh test_output.tmp | awk '{print $1}')"
+
     # Run askds to fix the tests
     askds \
         --hide-ui \
+        --timeout=480 \
         --fix \
         --auto-apply \
         --serialize="yek --max-size=100KB | cat" \
