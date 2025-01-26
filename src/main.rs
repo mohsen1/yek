@@ -12,25 +12,14 @@ use yek::{
 };
 
 fn glob_to_regex(pattern: &str) -> String {
-    let special_chars = ['+', '(', ')', '|', '^', '$', '@', '%'];
-    let mut result = pattern.to_string();
-
-    // Escape special regex characters first
-    for c in special_chars.iter() {
-        result = result.replace(*c, &format!("\\{}", c));
-    }
-
-    // Then handle glob patterns
-    result = result
+    pattern
         .replace(".", "\\.")
         .replace("*", ".*")
         .replace("?", ".")
         .replace("[!", "[^")
         .replace("{", "(")
         .replace("}", ")")
-        .replace(",", "|");
-
-    result
+        .replace(",", "|")
 }
 
 #[derive(Parser, Debug)]
