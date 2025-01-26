@@ -123,6 +123,8 @@ fn test_basic_processing() -> Result<()> {
     let (stdout, _) = setup.run(&[])?;
     assert!(stdout.contains("file1.txt"));
     assert!(stdout.contains("file2.txt"));
+    assert!(stdout.contains("content1"));
+    assert!(stdout.contains("content2"));
     Ok(())
 }
 
