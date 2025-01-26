@@ -88,7 +88,7 @@ output_dir = "yek-output"
 # Maximum size of output
 max_size = "128K"
 
-# Tokenizer model for token counting (defaults to 'deepseek-reasoner')
+# Tokenizer model for token counting (defaults to 'openai')
 tokens = "deepseek"
 
 # Add patterns to ignore (in addition to .gitignore)

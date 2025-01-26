@@ -6,5 +6,4 @@ pub const SUPPORTED_MODEL_FAMILIES: &[&str] = &[
     "llama",     // All Meta Llama models
     "deepseek",  // DeepSeek models
     "codellama", // All Meta CodeLlama models
-    "gemma",     // Google Gemma models
 ];

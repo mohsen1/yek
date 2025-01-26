@@ -2,20 +2,6 @@ output_dir = "./repo-serialized"
 
 ignore_patterns = [
     "^repo-serialized/",
-    "^.*\\.txt$",
-    "^tests/.*",
-    "^scripts/.*",
-    "^.github/.*",
-    "^.cargo/.*",
-    "^Cargo\\.lock$",
-    "^benchmarks/",
-    "^src/defaults\\.rs$",
-    "README\\.md",
-    "CHANGELOG\\.md",
-    "^LICENSE$",
-    "^README$",
-    "^prompts/.*$",
-    "^\\.sh$"
 ]
 
 [[priority_rules]]
@@ -36,4 +22,4 @@ pattern = "^scripts/"
 
 [[priority_rules]]
 score = 10
-pattern = "^src/defaults\\.rs$" 
+pattern = "^src/defaults\\.rs$"

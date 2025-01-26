@@ -11,11 +11,11 @@ fn priority_rules_are_applied() {
         "yek.toml",
         r#"
 [[priority_rules]]
-score = 10
+score = 1
 pattern = "^very_important/"
 
 [[priority_rules]]
-score = 1
+score = 10
 pattern = "^less_important/"
 "#
         .as_bytes(),

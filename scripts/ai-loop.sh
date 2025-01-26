@@ -48,8 +48,8 @@ for i in $(seq 1 $attempts); do
         --run="cat test_output.tmp" || true
 
     rm -f last_attempt.txt
+    cargo clippy --all-targets --fix --allow-dirty -- -D warnings
     cargo fmt
-    cargo clippy --fix --allow-dirty
 
     # Commit changes if any
     if ! git diff --quiet; then
@@ -85,3 +85,6 @@ if ! cargo clippy --all-targets -- -D warnings; then
     echo "Error: Clippy lints found. Fix the reported issues before continuing."
     exit 1
 fi
+
+cargo fmt || exit 1
+cargo clippy --fix --allow-dirty --allow-staged || exit 1
