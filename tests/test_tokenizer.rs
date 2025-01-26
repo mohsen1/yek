@@ -23,13 +23,20 @@ fn cli_model_overrides_config() {
     let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
     cmd.arg("--config")
         .arg(config_path)
-        .arg("--token-model=deepseek") // Should override config
+        .arg("--token-model=claude") // Using a different model to properly test override
         .arg(temp_dir.path())
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "Token mode enabled with model: deepseek",
+            "Token mode enabled with model: claude",
         ));
+
+    // Verify that the original config model was overridden
+    let debug_log = fs::read_to_string(temp_dir.path().join("debug.log")).unwrap();
+    assert!(
+        !debug_log.contains("Token mode enabled with model: mistral"),
+        "Should not use model from config"
+    );
 
     assert_output_file_contains(
         temp_dir.path(),

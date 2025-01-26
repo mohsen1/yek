@@ -131,6 +131,6 @@ token_mode = true
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("Unsupported tokenizer model"),
-        "Should indicate invalid model"
+        "Should indicate unsupported model"
     );
 }

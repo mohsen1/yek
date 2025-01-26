@@ -10,7 +10,6 @@ ignore_patterns = [
     "^Cargo\\.lock$",
     "^benchmarks/",
     "^src/defaults\\.rs$",
-    "^\\.github/.*$",
     "README\\.md",
     "CHANGELOG\\.md",
     "^LICENSE$",
