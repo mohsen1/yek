@@ -1,0 +1,58 @@
+[
+  {
+    "path": "prompts/pr1.txt",
+    "line": 580,
+    "body": "logic: serialize_repo discards processed_files and returns Ok(()) without writing any output",
+    "created_at": "2025-01-26T04:36:42Z",
+    "url": "https://github.com/bodo-run/yek/pull/55#discussion_r1929656999"
+  },
+  {
+    "path": "src/main.rs",
+    "line": 23,
+    "body": "logic: glob_to_regex function doesn't escape special regex characters which could lead to invalid patterns. Need to escape characters like +, (, ), |, etc.",
+    "created_at": "2025-01-26T04:37:28Z",
+    "url": "https://github.com/bodo-run/yek/pull/55#discussion_r1929657087"
+  },
+  {
+    "path": "tests/git_priority_tests.rs",
+    "line": 236,
+    "body": "logic: temp_dir is created but never used for the repository - repo uses a different temporary directory. This could lead to resource leaks since temp_dir isn't being cleaned up properly.",
+    "created_at": "2025-01-26T04:38:03Z",
+    "url": "https://github.com/bodo-run/yek/pull/55#discussion_r1929657143"
+  },
+  {
+    "path": "tests/test_max_size.rs",
+    "line": 78,
+    "body": "logic: This test content appears to be debug text accidentally left in the test. Should use more representative test content that better simulates real usage.",
+    "created_at": "2025-01-26T04:39:28Z",
+    "url": "https://github.com/bodo-run/yek/pull/55#discussion_r1929657278"
+  },
+  {
+    "path": "tests/test_max_size.rs",
+    "line": 63,
+    "body": "logic: The error message suggests the content should be exactly 51200 bytes, but the assertion only checks if it's less than or equal. This could hide issues where the content is much smaller than expected.",
+    "created_at": "2025-01-26T04:39:28Z",
+    "url": "https://github.com/bodo-run/yek/pull/55#discussion_r1929657279"
+  },
+  {
+    "path": "tests/test_ignore_patterns.rs",
+    "line": 29,
+    "body": "logic: Command output status should be checked with `assert!(cmd.status.success())` before proceeding",
+    "created_at": "2025-01-26T04:39:30Z",
+    "url": "https://github.com/bodo-run/yek/pull/55#discussion_r1929657281"
+  },
+  {
+    "path": "tests/test_normalize_path.rs",
+    "line": 11,
+    "body": "logic: The behavior for paths outside the base directory has changed significantly - previously it preserved the full path ('/other/path/baz.txt'), now it only keeps the filename ('baz.txt'). This could cause issues if multiple files have the same name but different paths.",
+    "created_at": "2025-01-26T04:39:43Z",
+    "url": "https://github.com/bodo-run/yek/pull/55#discussion_r1929657324"
+  },
+  {
+    "path": "tests/test_supported_models.rs",
+    "line": 89,
+    "body": "logic: Missing test for case where token_mode=true but tokenizer_model is not specified (should use default 'openai')",
+    "created_at": "2025-01-26T04:40:33Z",
+    "url": "https://github.com/bodo-run/yek/pull/55#discussion_r1929657514"
+  }
+]

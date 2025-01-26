@@ -21,12 +21,15 @@ fn respects_gitignore() {
     .unwrap();
 
     let mut cmd = AssertCommand::cargo_bin("yek").unwrap();
-    cmd.current_dir(repo.path())
+    let output = cmd
+        .current_dir(repo.path())
         .arg("--debug")
         .arg("--output-dir")
         .arg(&output_dir)
         .output()
         .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command failed with: {:?}", output);
 
     // Read the output file
     let output_file = output_dir.join("output.txt");

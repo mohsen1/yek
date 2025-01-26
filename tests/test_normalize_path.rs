@@ -8,7 +8,11 @@ fn test_normalize_with_base() {
     let other_path = Path::new("/other/path/baz.txt");
 
     assert_eq!(normalize_path_with_root(&path, base), "foo/bar.txt");
-    assert_eq!(normalize_path_with_root(other_path, base), "baz.txt");
+    assert_eq!(
+        normalize_path_with_root(other_path, base),
+        "/other/path/baz.txt",
+        "Should preserve full path for files outside base directory"
+    );
 }
 
 #[test]
