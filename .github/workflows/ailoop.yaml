@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   loop:
@@ -67,6 +68,7 @@ jobs:
 
       - name: Run AI Fix
         timeout-minutes: 360
+        continue-on-error: true
         id: ai_fix
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -83,19 +85,13 @@ jobs:
           name: attempts-log
           path: attempts.txt
 
-      - name: Push changes
-        if: always() && ${{ github.event.inputs.pr-on-fail }}
-        run: |
-          git checkout -b ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
-          git push origin ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create PR
+      - name: Create PR or Issue
         if: always() && ${{ github.event.inputs.pr-on-fail }}
         uses: peter-evans/create-pull-request@v5
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ env.GH_TOKEN }}
           commit-message: "AI Fix"
           title: "AI Fix for ${{ env.BRANCH }} (Attempts: ${{ env.MAX_ATTEMPTS }})"
           body: |
