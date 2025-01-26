@@ -27,14 +27,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      MAX_ATTEMPTS: ${{ github.event.inputs.attempts || '40' }}
-      BRANCH: ${{ github.event.inputs.branch || 'main' }}
+      MAX_ATTEMPTS: ${{ github.event.inputs.attempts }}
+      BRANCH: ${{ github.event.inputs.branch }}
 
     steps:
+      - name: Print inputs
+        run: |
+          echo "MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}"
+          echo "BRANCH: ${{ env.BRANCH }}"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.BRANCH }}
+          ref: ${{ github.event.inputs.branch }}
           fetch-depth: 0
 
       - name: Cache Rust dependencies
