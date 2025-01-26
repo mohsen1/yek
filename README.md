@@ -77,7 +77,7 @@ export PATH=$(pwd)/target/release:$PATH
 
 ## Usage
 
-`yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. The output will be written to a single file named `output.txt` in the current directory, or streamed to stdout if piped.
+`yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. The output will be written to a single file named `output.txt` in the `yek-output` directory by default, or streamed to stdout if piped.
 
 ### Examples
 
@@ -115,7 +115,7 @@ yek --max-size 100KB --output-dir /tmp/yek src/
 ```
 
 > [!NOTE]
-> When max-size is reached, `yek` will throw away all of the less important files and generate
+> When max-size is reached, `yek` will throw away all of the less important files and generate output with only the most important files that fit within the size limit.
 
 Process multiple directories:
 
@@ -165,7 +165,7 @@ output_dir = "yek-output"
 # Maximum size of output
 max_size = "128K"
 
-# Tokenizer model for token counting (defaults to 'deepseek-reasoner')
+# Tokenizer model for token counting (defaults to 'openai')
 tokens = "deepseek"
 
 # Add patterns to ignore (in addition to .gitignore)

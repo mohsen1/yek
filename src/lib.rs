@@ -17,58 +17,14 @@ use parallel::process_files_parallel;
 
 /// Convert a glob pattern to a regex pattern
 fn glob_to_regex(pattern: &str) -> String {
-    let mut regex = String::with_capacity(pattern.len() * 2);
-    regex.push('^'); // Match from the start of the path
-
-    let mut chars = pattern.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '*' => {
-                if chars.peek() == Some(&'*') {
-                    chars.next();
-                    regex.push_str(".*"); // Match anything with .*
-                } else {
-                    regex.push_str("[^/]*"); // Match any character except /
-                }
-            }
-            '?' => regex.push('.'),       // Match any single character
-            '.' => regex.push_str("\\."), // Escape dots
-            '/' => regex.push_str("[/]"), // Forward slash
-            '[' => {
-                regex.push('[');
-                if let Some(&'^') = chars.peek() {
-                    chars.next();
-                    regex.push('^'); // Negated character class
-                }
-                // Parse character class, escape special characters as needed
-                while let Some(c) = chars.peek() {
-                    let c = *c;
-                    chars.next();
-                    match c {
-                        ']' => {
-                            regex.push(']');
-                            break;
-                        }
-                        '\\' => {
-                            regex.push_str(r"\\");
-                            if let Some(c) = chars.next() {
-                                regex.push(c);
-                            }
-                        }
-                        '-' => regex.push('-'),
-                        _ => regex.push(c),
-                    }
-                }
-            }
-            '{' => regex.push('('), // Start of alternation group
-            '}' => regex.push(')'), // End of alternation group
-            ',' => regex.push('|'), // Alternation separator
-            c => regex.push_str(&regex::escape(&c.to_string())), // Escape other special characters
-        }
-    }
-
-    regex.push('$'); // Match until the end of the path
-    regex
+    pattern
+        .replace(".", "\\.")
+        .replace("*", "[^/]*") // Match any character except /
+        .replace("?", "[^/]") // Match any single character except /
+        .replace("[!", "[^")
+        .replace("{", "(")
+        .replace("}", ")")
+        .replace(",", "|")
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -516,10 +472,20 @@ pub fn parse_size_input(input: &str, is_tokens: bool) -> Result<usize> {
 pub fn is_ignored(path: &str, patterns: &[String]) -> bool {
     patterns.iter().any(|p| {
         let pattern = if p.starts_with('^') || p.ends_with('$') {
+            // If it's already a regex pattern, use it as is
             p.to_string()
         } else {
-            glob_to_regex(p)
+            // Convert glob pattern to regex, handling special cases
+            let mut pattern = glob_to_regex(p);
+            if !pattern.starts_with('^') {
+                pattern = format!("^{}", pattern);
+            }
+            if !pattern.ends_with('$') {
+                pattern = format!("{}$", pattern);
+            }
+            pattern
         };
+
         if let Ok(re) = Regex::new(&pattern) {
             re.is_match(path)
         } else {

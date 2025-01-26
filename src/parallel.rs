@@ -42,6 +42,7 @@ pub fn process_files_parallel(
         let base_dir = base_dir.to_path_buf();
         let config = config.clone();
         let shared_output = Arc::clone(&shared_output);
+        let git_times = git_times.clone();
         Box::new(move |entry| {
             let entry = match entry {
                 Ok(entry) => entry,
@@ -58,9 +59,16 @@ pub fn process_files_parallel(
             let path = entry.path();
             let rel_path = normalize_path_with_root(path, &base_dir);
 
+            // Calculate priority based on git history
+            let priority = if let Some(times) = &git_times {
+                times.get(&rel_path).copied().unwrap_or(0)
+            } else {
+                0
+            };
+
             // Skip if path is ignored
             if is_ignored(&rel_path, &config.ignore_patterns) {
-                debug!("Skipping ignored file: {}", rel_path);
+                debug!("Skipping ignored path: {}", rel_path);
                 return WalkState::Continue;
             }
 
@@ -73,65 +81,23 @@ pub fn process_files_parallel(
                 return WalkState::Continue;
             }
 
-            // Read file content
-            let content = match std::fs::read_to_string(path) {
+            // Process file based on priority
+            let mut output = shared_output.lock().unwrap();
+            let file_content = match process_file(&rel_path, &base_dir, &config) {
                 Ok(content) => content,
                 Err(e) => {
-                    debug!("Error reading file {}: {}", rel_path, e);
+                    debug!("Error processing file {}: {}", rel_path, e);
                     return WalkState::Continue;
                 }
             };
 
-            let model = config.tokenizer_model.as_deref().unwrap_or("openai");
-            let entry_header = format!(">>>> {}\n", rel_path);
-
-            // Calculate total entry size including header and content
-            let content_with_newline = format!("{}\n", content);
-            if config.token_mode {
-                // TOKEN-MODE truncation logic
-                let header_tokens = match model_manager::tokenize(&entry_header, model) {
-                    Ok(tokens) => tokens,
-                    Err(e) => {
-                        debug!("Error tokenizing header: {}", e);
-                        return WalkState::Continue;
-                    }
-                };
-                let content_tokens = match model_manager::tokenize(&content_with_newline, model) {
-                    Ok(tokens) => tokens,
-                    Err(e) => {
-                        debug!("Error tokenizing content: {}", e);
-                        return WalkState::Continue;
-                    }
-                };
-                let total_tokens_needed = header_tokens.len() + content_tokens.len();
-
-                // Only check max size if it's set
-                if let Some(max_size) = config.max_size {
-                    if total_tokens_needed > max_size {
-                        return WalkState::Continue;
-                    }
-                }
-
-                if let Ok(mut output) = shared_output.lock() {
-                    output.push_str(&entry_header);
-                    output.push_str(&content_with_newline);
-                }
+            // Insert content based on priority
+            if priority > 0 {
+                // Higher priority files go at the start
+                output.insert_str(0, &file_content);
             } else {
-                // BYTE-MODE truncation logic
-                let header_size = entry_header.len();
-                let content_size = content_with_newline.len();
-
-                // Only check max size if it's set
-                if let Some(max_size) = config.max_size {
-                    if header_size + content_size > max_size {
-                        return WalkState::Continue;
-                    }
-                }
-
-                if let Ok(mut output) = shared_output.lock() {
-                    output.push_str(&entry_header);
-                    output.push_str(&content_with_newline);
-                }
+                // Lower priority files go at the end
+                output.push_str(&file_content);
             }
 
             WalkState::Continue
@@ -141,7 +107,47 @@ pub fn process_files_parallel(
     // Copy shared output back to output_content
     if let Ok(shared) = shared_output.lock() {
         output_content.push_str(&shared);
+    } else {
+        return Err(anyhow!("Failed to acquire final lock for output"));
     }
 
     Ok(())
+}
+
+fn process_file(rel_path: &str, base_dir: &Path, config: &YekConfig) -> Result<String> {
+    let path = base_dir.join(rel_path);
+    let content = std::fs::read_to_string(&path)?;
+    let model = config.tokenizer_model.as_deref().unwrap_or("openai");
+    let entry_header = format!(">>>> {}\n", rel_path);
+    let content_with_newline = format!("{}\n", content);
+
+    // Check size limits before processing
+    if let Some(max_size) = config.max_size {
+        if config.token_mode {
+            // TOKEN-MODE size check
+            let header_tokens = model_manager::tokenize(&entry_header, model)?;
+            let content_tokens = model_manager::tokenize(&content_with_newline, model)?;
+            let total_tokens = header_tokens.len() + content_tokens.len();
+
+            if total_tokens > max_size {
+                debug!(
+                    "File {} exceeds token limit: {} > {}",
+                    rel_path, total_tokens, max_size
+                );
+                return Err(anyhow!("File too large"));
+            }
+        } else {
+            // BYTE-MODE size check
+            let total_bytes = entry_header.len() + content_with_newline.len();
+            if total_bytes > max_size {
+                debug!(
+                    "File {} exceeds byte limit: {} > {}",
+                    rel_path, total_bytes, max_size
+                );
+                return Err(anyhow!("File too large"));
+            }
+        }
+    }
+
+    Ok(format!("{}{}", entry_header, content_with_newline))
 }

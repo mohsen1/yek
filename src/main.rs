@@ -11,6 +11,17 @@ use yek::{
     YekConfig,
 };
 
+fn glob_to_regex(pattern: &str) -> String {
+    pattern
+        .replace(".", "\\.")
+        .replace("*", ".*")
+        .replace("?", ".")
+        .replace("[!", "[^")
+        .replace("{", "(")
+        .replace("}", ")")
+        .replace(",", "|")
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 #[command(after_help = "See https://github.com/mohsen-w-elsayed/yek for detailed documentation.")]
@@ -26,6 +37,10 @@ struct Args {
     /// Maximum output size (supports K/KB/M/MB suffixes)
     #[arg(long, value_name = "SIZE")]
     max_size: Option<String>,
+
+    /// Include only files matching pattern
+    #[arg(long, value_name = "PATTERN")]
+    include: Option<String>,
 
     #[arg(long, value_name = "MODEL")]
     #[arg(num_args = 0..=1, require_equals = true, default_missing_value = "openai")]
@@ -67,46 +82,53 @@ fn init_logging() {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Setup logging
-    init_logging();
-
-    // Load and merge configurations
-    let mut config = YekConfig::default();
-
-    // Load config from file if specified
-    let config_path = args
-        .config
-        .clone()
-        .or_else(|| find_config_file(Path::new(".")));
-    if let Some(config_path) = config_path {
-        if config_path.exists() {
-            let file_config = load_config_file(&config_path);
-            match file_config {
-                Some(file_config) => {
-                    config.merge(&file_config);
-                }
-                None => {
-                    return Err(anyhow!(
-                        "Failed to load config from: {}",
-                        config_path.display()
-                    ));
-                }
-            }
-        }
+    if args.debug {
+        init_logging();
     }
+
+    // Load config file
+    let mut config = if let Some(config_path) = args.config {
+        if let Some(cfg) = load_config_file(&config_path) {
+            cfg
+        } else {
+            return Err(anyhow!(
+                "Failed to load config from: {}",
+                config_path.display()
+            ));
+        }
+    } else if let Some(config_path) = find_config_file(std::env::current_dir()?.as_path()) {
+        if let Some(cfg) = load_config_file(&config_path) {
+            cfg
+        } else {
+            return Err(anyhow!(
+                "Failed to load config from: {}",
+                config_path.display()
+            ));
+        }
+    } else {
+        YekConfig::default()
+    };
 
     // Apply command-line arguments
-    if let Some(size_str) = args.max_size {
-        config.max_size = Some(parse_size_input(&size_str, config.token_mode)?);
-    }
-
     if let Some(model) = args.tokens {
         config.token_mode = true;
         config.tokenizer_model = Some(model);
     }
 
+    if let Some(size_str) = args.max_size {
+        config.max_size = Some(parse_size_input(&size_str, config.token_mode)?);
+    }
+
     if let Some(output_dir) = &args.output_dir {
         config.output_dir = Some(output_dir.clone());
+    }
+
+    // Add include pattern if specified
+    if let Some(include) = args.include {
+        // Convert glob pattern to regex for matching
+        let include_pattern = glob_to_regex(&include);
+        // Create a negative lookahead pattern that matches everything except the include pattern
+        config.ignore_patterns = vec![format!("^(?!{}$).*$", include_pattern)];
     }
 
     // Determine if we should stream based on output_dir and stdout
@@ -114,8 +136,8 @@ fn main() -> Result<()> {
         // Output directory is specified, don't stream
         false
     } else {
-        // No output directory, check if we're piping!
-        std::io::stdout().is_terminal()
+        // No output directory, stream if we're piping
+        !std::io::stdout().is_terminal()
     };
 
     // Validate the merged configuration

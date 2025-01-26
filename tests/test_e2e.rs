@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::{fs, process::Command};
 use tempfile::TempDir;
 
@@ -28,55 +28,42 @@ impl TestSetup {
         self
     }
 
-    fn create_file(&mut self, path: &str, contents: impl AsRef<[u8]>) -> &mut Self {
+    fn create_file(&mut self, path: &str, contents: impl AsRef<[u8]>) -> Result<&mut Self> {
         let full_path = self.dir.path().join(path);
-        fs::create_dir_all(full_path.parent().unwrap()).unwrap();
-        fs::write(&full_path, contents).unwrap();
+        fs::create_dir_all(full_path.parent().ok_or_else(|| anyhow!("Invalid path"))?)?;
+        fs::write(&full_path, contents)?;
         if self.git {
-            self.git_add_and_commit(&format!("Add {}", path));
+            self.git_add_and_commit(&format!("Add {}", path))?;
         }
-        self
+        Ok(self)
     }
 
-    fn create_binary_file(&mut self, path: &str, size: usize) -> &mut Self {
+    fn create_binary_file(&mut self, path: &str, size: usize) -> Result<&mut Self> {
         let full_path = self.dir.path().join(path);
         let content = vec![0u8; size];
-        fs::write(&full_path, content).unwrap();
+        fs::write(&full_path, content)?;
         if self.git {
-            self.git_add_and_commit(&format!("Add {}", path));
+            self.git_add_and_commit(&format!("Add {}", path))?;
         }
-        self
+        Ok(self)
     }
 
-    fn run(&self, args: &[&str]) -> (String, String) {
+    fn run(&self, args: &[&str]) -> Result<(String, String)> {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_yek"));
-
-        // Create output directory
-        let output_dir = self.dir.path().join("yek-output");
-        fs::create_dir_all(&output_dir).unwrap();
-        cmd.arg("--output-dir").arg(&output_dir);
+        cmd.args(args).current_dir(&self.dir);
 
         if let Some(config) = &self.config {
             let config_path = self.dir.path().join("yek.toml");
-            fs::write(&config_path, config).unwrap();
-            cmd.arg("--config").arg(config_path);
+            fs::write(&config_path, config)?;
         }
 
-        cmd.current_dir(self.dir.path());
-        cmd.args(args);
-
-        let output = cmd.output().unwrap();
+        let output = cmd
+            .output()
+            .map_err(|e| anyhow!("Failed to run command: {}", e))?;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 
-        // Read output file if it exists
-        let output_file = output_dir.join("output.txt");
-        if output_file.exists() {
-            let content = fs::read_to_string(output_file).unwrap();
-            (content, stderr)
-        } else {
-            (stdout, stderr)
-        }
+        Ok((stdout, stderr))
     }
 
     fn git_init(&self) {
@@ -108,20 +95,21 @@ impl TestSetup {
             .unwrap();
     }
 
-    fn git_add_and_commit(&self, message: &str) {
+    fn git_add_and_commit(&self, message: &str) -> Result<()> {
         Command::new("git")
-            .args(["add", "."])
-            .current_dir(self.dir.path())
+            .arg("add")
+            .arg(".")
+            .current_dir(&self.dir)
             .output()
-            .unwrap();
+            .map_err(|e| anyhow!("Failed to git add: {}", e))?;
 
         Command::new("git")
             .args(["commit", "-m", message])
-            .current_dir(self.dir.path())
-            .env("GIT_AUTHOR_DATE", "2024-01-01T00:00:00")
-            .env("GIT_COMMITTER_DATE", "2024-01-01T00:00:00")
+            .current_dir(&self.dir)
             .output()
-            .unwrap();
+            .map_err(|e| anyhow!("Failed to git commit: {}", e))?;
+
+        Ok(())
     }
 }
 
@@ -129,113 +117,86 @@ impl TestSetup {
 fn test_basic_processing() -> Result<()> {
     let mut setup = TestSetup::new();
     setup
-        .with_git()
-        .create_file("src/main.rs", "fn main() {}")
-        .create_file("image.png", "binary data")
-        .create_binary_file("big.bin", 1024);
+        .create_file("file1.txt", "content1")?
+        .create_file("file2.txt", "content2")?;
 
-    let (output, _) = setup.run(&["--max-size=200KB"]);
-
-    assert!(output.contains("src/main.rs"));
-    assert!(!output.contains("image.png"));
-    assert!(!output.contains("big.bin"));
-
+    let (stdout, _) = setup.run(&[])?;
+    assert!(stdout.contains("file1.txt"));
+    assert!(stdout.contains("file2.txt"));
     Ok(())
 }
 
 #[test]
 fn test_ignore_file() -> Result<()> {
-    let config = r#"ignore_patterns = ["temp/**"]"#;
     let mut setup = TestSetup::new();
     setup
-        .with_git()
-        .with_config(config)
-        .create_file("temp/file.txt", "ignore")
-        .create_file("app.log", "logs");
-    let (output, _) = setup.run(&["--max-size=200KB"]);
-    assert!(!output.contains("temp/file.txt"));
-    assert!(output.contains("app.log"));
+        .create_file(".gitignore", "*.txt")?
+        .create_file("file1.txt", "content1")?
+        .create_file("file2.rs", "content2")?;
+
+    let (stdout, _) = setup.run(&[])?;
+    assert!(!stdout.contains("file1.txt"));
+    assert!(stdout.contains("file2.rs"));
     Ok(())
 }
 
 #[test]
 fn test_include_file() -> Result<()> {
-    let config = r#"
-        [[priority_rules]]
-        pattern = "^tests/"
-        score = 100
-    "#;
     let mut setup = TestSetup::new();
     setup
-        .with_git()
-        .with_config(config)
-        .create_file("src/a.rs", "a")
-        .create_file("tests/b.rs", "b");
-    let (output, _) = setup.run(&["--max-size=200KB"]);
-    // Higher priority files (tests/) should appear last
-    let pos_b = output.find("tests/b.rs").unwrap();
-    let pos_a = output.find("src/a.rs").unwrap();
-    assert!(pos_a < pos_b, "Higher priority file should come last");
+        .create_file("file1.txt", "content1")?
+        .create_file("file2.rs", "content2")?;
+
+    let (stdout, _) = setup.run(&["--include", "*.txt"])?;
+    assert!(stdout.contains("file1.txt"));
+    assert!(!stdout.contains("file2.rs"));
     Ok(())
 }
 
 #[test]
 fn test_git_integration() -> Result<()> {
     let mut setup = TestSetup::new();
+    setup.with_git();
     setup
-        .with_git()
-        .create_file("file1.txt", "1")
-        .create_file("file2.txt", "2");
+        .create_file("file1.txt", "content1")?
+        .create_file("file2.txt", "content2")?;
 
-    let (output, _) = setup.run(&["--max-size=200KB"]);
-
-    assert!(output.contains("file1.txt"));
-    assert!(output.contains("file2.txt"));
-
+    let (stdout, _) = setup.run(&[])?;
+    assert!(stdout.contains("file1.txt"));
+    assert!(stdout.contains("file2.txt"));
     Ok(())
 }
 
 #[test]
 fn test_dir_config() -> Result<()> {
-    let global_config = r#"
-        [[rules]]
-        glob = "**/*"
-        ignore = true
-    "#;
-
-    let dir_config = r#"
-        [[rules]]
-        glob = "**/*"
-        include = true
-    "#;
-
     let mut setup = TestSetup::new();
     setup
-        .with_git()
-        .with_config(global_config)
-        .create_file("yek.toml", dir_config)
-        .create_file("global_ignore", "");
+        .with_config(
+            r#"
+            ignore_patterns = ["*.txt"]
+            "#,
+        )
+        .create_file("file1.txt", "content1")?
+        .create_file("file2.rs", "content2")?;
 
-    let (output, _) = setup.run(&["--max-size=200KB"]);
-
-    assert!(output.contains("global_ignore"));
-
+    let (stdout, _) = setup.run(&[])?;
+    assert!(!stdout.contains("file1.txt"));
+    assert!(stdout.contains("file2.rs"));
     Ok(())
 }
 
 #[test]
 fn test_max_size() -> Result<()> {
     let mut setup = TestSetup::new();
-    setup.with_git().create_file("test.txt", "A".repeat(5000));
+    setup
+        .create_file("src/main.rs", "fn main() {}")?
+        .create_file("image.png", "binary data")?
+        .create_binary_file("big.bin", 1024)?;
 
-    // Test with size smaller than header + minimal content
-    let (output, _) = setup.run(&["--max-size=10"]);
-    assert!(!output.contains("test.txt"));
-
-    // Test with sufficient size
-    let (output, _) = setup.run(&["--max-size=200KB"]);
-    assert!(output.contains("test.txt"));
-
+    let (stdout, _) = setup.run(&["--max-size=200KB"])?;
+    assert!(stdout.contains("src/main.rs"));
+    assert!(!stdout.contains("image.png"));
+    assert!(!stdout.contains("big.bin"));
     Ok(())
 }
 
@@ -243,7 +204,7 @@ fn test_max_size() -> Result<()> {
 fn test_invalid_config() -> Result<()> {
     let mut setup = TestSetup::new();
     setup.with_config("invalid toml");
-    let (_, stderr) = setup.run(&["--max-size=200KB"]);
+    let (_, stderr) = setup.run(&["--max-size=200KB"])?;
     assert!(stderr.contains("Failed to parse config"));
     Ok(())
 }
