@@ -49,7 +49,7 @@ for i in $(seq 1 $attempts); do
     echo "test_output.txt: size $(du -sh test_output.txt | awk '{print $1}')"
 
     # Run askds to fix the tests
-    askds \
+    ../askds/index/dist.js \
         --debug \
         --hide-ui \
         --timeout=480 \
