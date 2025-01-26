@@ -25,6 +25,8 @@ fn cli_model_overrides_config() {
         .arg(config_path)
         .arg("--tokens=deepseek") // Should override config
         .arg(temp_dir.path())
+        .arg("--debug") // Add debug flag to enable debug logging
+        .env("YEK_DEBUG_OUTPUT", temp_dir.path().join("debug.log"))
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -80,6 +82,7 @@ fn default_tokens_is_false() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
     cmd.arg(temp_dir.path())
+        .arg("--debug") // Add debug flag to enable debug logging
         .assert()
         .success()
         .stdout(predicate::str::contains("Token mode enabled").not());
@@ -94,6 +97,7 @@ fn cli_tokens_enables_token_mode() {
     let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
     cmd.arg("--tokens")
         .arg(temp_dir.path())
+        .arg("--debug") // Add debug flag to enable debug logging
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -126,6 +130,7 @@ fn counts_tokens_using_tokenizer() {
     cmd.arg("--config")
         .arg(&config_path)
         .arg(temp_dir.path())
+        .arg("--debug") // Add debug flag to enable debug logging
         .assert()
         .success()
         .stdout(predicate::str::contains("deepseek"));
@@ -149,6 +154,7 @@ fn unsupported_model() {
     let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
     cmd.arg("--tokens=unsupported_model")
         .arg(temp_dir.path())
+        .arg("--debug") // Add debug flag to enable debug logging
         .assert()
         .failure()
         .stderr(predicate::str::contains("Unsupported model"));
