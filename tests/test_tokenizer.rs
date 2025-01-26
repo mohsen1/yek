@@ -23,7 +23,7 @@ fn cli_model_overrides_config() {
     let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
     cmd.arg("--config")
         .arg(config_path)
-        .arg("--tokens=deepseek") // Should override config
+        .arg("--token-model=deepseek") // Should override config
         .arg(temp_dir.path())
         .assert()
         .success()
@@ -147,7 +147,7 @@ fn counts_tokens_using_tokenizer() {
 fn unsupported_model() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mut cmd = assert_cmd::Command::cargo_bin("yek").unwrap();
-    cmd.arg("--tokens=unsupported_model")
+    cmd.arg("--token-model=unsupported_model")
         .arg(temp_dir.path())
         .assert()
         .failure()
