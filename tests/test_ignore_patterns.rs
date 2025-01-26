@@ -29,7 +29,10 @@ fn respects_gitignore() {
         .output()
         .expect("Failed to execute command");
 
-    assert!(output.status.success(), "Command failed with: {:?}", output);
+    assert!(
+        output.status.success(),
+        "Command failed to execute successfully"
+    );
 
     // Read the output file
     let output_file = output_dir.join("output.txt");

@@ -10,8 +10,7 @@ fn test_normalize_with_base() {
     assert_eq!(normalize_path_with_root(&path, base), "foo/bar.txt");
     assert_eq!(
         normalize_path_with_root(other_path, base),
-        "/other/path/baz.txt",
-        "Should preserve full path for files outside base directory"
+        "/other/path/baz.txt"
     );
 }
 
