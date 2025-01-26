@@ -21,8 +21,18 @@ for i in $(seq 1 $attempts); do
     # Run tests and print output to console
     test_output=$(cargo test -- --test accepts_model_from_config --test-threads=1 2>&1)
     test_exit_code=$?
-    touch test_output.txt
     echo "$test_output" >test_output.txt
+
+    # Process failures if tests failed
+    if [ $test_exit_code -ne 0 ]; then
+        # Extract the relevant error information
+        grep -A 300 "failures:" test_output.txt >failures.txt
+        if [ -s failures.txt ]; then
+            mv failures.txt test_output.txt
+        fi
+    fi
+
+    cat test_output.txt
 
     # Exit loop if tests passed
     if [ $test_exit_code -eq 0 ]; then
@@ -34,12 +44,8 @@ for i in $(seq 1 $attempts); do
         break
     fi
 
-    # Extract the relevant error information
-    grep -A 50 "failures:" test_output.txt >temp.txt || true
-    mv temp.txt test_output.txt
-
     # Chop test_output.txt to 100KB (from bottom) to avoid Context Window overflow
-    tail -c 100KB test_output.txt >test_output.txt
+    tail -c 100KB test_output.txt >test_output.tmp && mv test_output.tmp test_output.txt
 
     echo "Running askds to fix the tests"
     echo "test_output.txt: size $(du -sh test_output.txt | awk '{print $1}')"
