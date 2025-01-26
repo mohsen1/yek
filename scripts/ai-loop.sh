@@ -21,13 +21,8 @@ for i in $(seq 1 $attempts); do
     # Run tests and print output to console
     test_output=$(cargo test -- --test accepts_model_from_config --test-threads=1 2>&1)
     test_exit_code=$?
-    echo "$test_output" >test_output.tmp
-
-    # Append last attempt if it exists
-    if [ -f last_attempt.txt ]; then
-        echo "## Last time we tried this but we failed:"
-        cat last_attempt.txt >>test_output.tmp
-    fi
+    touch test_output.txt
+    echo "$test_output" >test_output.txt
 
     # Exit loop if tests passed
     if [ $test_exit_code -eq 0 ]; then
@@ -39,14 +34,15 @@ for i in $(seq 1 $attempts); do
         break
     fi
 
-    # Remove all the lines before "failures:" in test_output.tmp
-    sed -n '/failures:/,/===/p' test_output.tmp >test_output.tmp
+    # Extract the relevant error information
+    grep -A 50 "failures:" test_output.txt >temp.txt || true
+    mv temp.txt test_output.txt
 
-    # Chop test_output.tmp to 100KB (from bottom) to avoid Context Window overflow
-    tail -c 100KB test_output.tmp >test_output.tmp
+    # Chop test_output.txt to 100KB (from bottom) to avoid Context Window overflow
+    tail -c 100KB test_output.txt >test_output.txt
 
     echo "Running askds to fix the tests"
-    echo "test_output.tmp: size $(du -sh test_output.tmp | awk '{print $1}')"
+    echo "test_output.txt: size $(du -sh test_output.txt | awk '{print $1}')"
 
     # Run askds to fix the tests
     askds \
@@ -58,7 +54,7 @@ for i in $(seq 1 $attempts); do
         --test-file-pattern='tests/*.rs' \
         --source-file-pattern='src/**/*.rs' \
         --system-prompt=./prompts/fix-tests.txt \
-        --run="cat test_output.tmp" || true
+        --run="cat test_output.txt" || true
 
     rm -f last_attempt.txt
     cargo clippy --all-targets --fix --allow-dirty -- -D warnings
@@ -71,7 +67,7 @@ for i in $(seq 1 $attempts); do
         echo "Applied fixes for ${BRANCH} tests"
     else
         echo "No changes in attempt $i"
-        cp test_output.tmp last_attempt.txt
+        cp test_output.txt last_attempt.txt
         continue
     fi
 done
