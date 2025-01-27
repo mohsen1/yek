@@ -9,19 +9,16 @@ pub const BINARY_FILE_EXTENSIONS: &[&str] = &[
 
     // Java / .NET / Archives
     "class", "jar", "war", "ear",
-    "resources", // sometimes included in Java archives
     "nupkg", // NuGet package
-    "exe.config", // sometimes for .NET
-    "dll.config",
     
     // Archives & Compressed
     "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "lz4", "lz", "zst", "lzma",
-    "cab", "ar", "cpio", "rpm", "deb", "pkg", "crx", "bin", "dmg", "hfs", "img",
+    "cab", "ar", "cpio", "rpm", "deb", "pkg", "crx", "dmg", "hfs",
     "cso", // Compressed ISO
-    "bz", "tbz", "tbz2", "tlz", "txz", "z", "Z", "apk", "xapk",
+    "bz", "tbz", "tbz2", "tlz", "txz", "z", "Z", "xapk",
 
     // Disk & Container Images
-    "iso", "img", "dmg", "vhd", "vhdx", "vmdk", "vdi", "qcow", "qcow2",
+    "vhd", "vhdx", "vmdk", "vdi", "qcow", "qcow2",
     "mdf", "mds", "nrg", "uif",
 
     // Documents & Office
@@ -38,15 +35,14 @@ pub const BINARY_FILE_EXTENSIONS: &[&str] = &[
 
     // Spreadsheets, DB, and Misc Data
     "db", "sqlite", "db3", "s3db", "frm", "myd", "myi", // MySQL
-    "mdb", "bak", "nsf", // Lotus Notes
+    "bak", "nsf", // Lotus Notes
     "gdb", "fdb", // Firebird
-    "mdb", // Access DB
     "wdb", // Works DB
 
     // Images
     "jpg", "jpeg", "png", "gif", "bmp", "ico", "tiff", "tif", "webp", "jfif", "jp2",
     "psd", "psb", "xcf", "ai", "eps", "raw", "arw", "cr2", "nef", "dng", "raf", "orf",
-    "sr2", "heic", "heif", "icns", "img", "bpg",
+    "sr2", "heic", "heif", "icns", "bpg",
 
     // Audio
     "mp3", "mp2", "aac", "ac3", "wav", "ogg", "oga", "flac", "alac", "m4a", "mp4a",
@@ -61,7 +57,7 @@ pub const BINARY_FILE_EXTENSIONS: &[&str] = &[
     "ttf", "otf", "woff", "woff2", "eot", "fon", "psf",
 
     // Firmware / BIOS / ROM / Game Data
-    "rom", "iso", "bin", "gba", "gbc", "nds", "n64", "z64", "v64", "gcm", "ciso", "wbfs",
+    "rom", "gba", "gbc", "nds", "n64", "z64", "v64", "gcm", "ciso", "wbfs",
     "pak", "wad", "dat", "sav", "rpx",
 
     // Flash / Vector
@@ -77,20 +73,15 @@ pub const BINARY_FILE_EXTENSIONS: &[&str] = &[
     // Other
     "swp", "swo", // Vim swap files
     "pch", // Precompiled header
-    "xex", "elf", // Console executables
+    "xex", // Console executables
     "dmp", "mdmp", // Memory dump
     "bkf", "bkp", // Backup
-    "pak", // Common game data archives
-    "idx", "dat", "vcd", // Various binary data
-    "icns", // macOS icon
+    "idx", "vcd", // Various binary data
     "hlp", "chm", // Windows help
     "torrent", // BitTorrent
     "mar", // Mozilla archive
-    "qcow", "qcow2", // QEMU disk
-    "apk", "aab", // Android package/bundle
-    "crx", // Chrome extension
+    "aab", // Android bundle
     "appx", // Windows app package
-    "xap", // Windows Phone app
 ];
 
 /// Default sets of ignore patterns (separate from .gitignore)
@@ -121,9 +112,8 @@ pub fn default_ignore_patterns() -> Vec<Regex> {
         r"^\.turbo/",
         r"^coverage/",
         r"^test-results/",
-        r"\.gitignore",
         r"pnpm-lock\.yaml",
-        r"yek\.toml",
+        r"tyk\.toml",
         r"package-lock\.json",
         r"yarn\.lock",
         r"Cargo\.lock",
