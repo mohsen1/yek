@@ -48,13 +48,19 @@ for i in $(seq 1 $attempts); do
     echo "Running askds to fix the tests"
     echo "test_output.txt: size $(du -sh test_output.txt | awk '{print $1}')"
 
+    # Get full path to yek
+    YEK_PATH=$(which yek)
+
+    # Full serialize command
+    SERIALIZE_CMD="$YEK_PATH --max-size=100KB | cat"
+
     # Run askds to fix the tests
     node askds \
         --hide-ui \
         --timeout=4800 \
         --fix \
         --auto-apply \
-        --serialize="yek --max-size=100KB | cat" \
+        --serialize="$SERIALIZE_CMD" \
         --test-file-pattern='tests/*.rs' \
         --source-file-pattern='src/**/*.rs' \
         --system-prompt=./prompts/fix-tests.txt \
