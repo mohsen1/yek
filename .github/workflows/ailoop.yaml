@@ -36,6 +36,9 @@ jobs:
           echo "MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}"
           echo "BRANCH: ${{ env.BRANCH }}"
 
+      - name: Install yek
+        run: curl -fsSL https://bodo.run/yek.sh | bash
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
