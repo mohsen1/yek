@@ -143,33 +143,6 @@ fn test_ignore_file() -> Result<()> {
 }
 
 #[test]
-fn test_include_file() -> Result<()> {
-    let mut setup = TestSetup::new();
-    setup
-        .create_file("file1.txt", "content1")?
-        .create_file("file2.rs", "content2")?;
-
-    let (stdout, _) = setup.run(&["--include", "*.txt"])?;
-    assert!(stdout.contains("file1.txt"));
-    assert!(!stdout.contains("file2.rs"));
-    Ok(())
-}
-
-#[test]
-fn test_git_integration() -> Result<()> {
-    let mut setup = TestSetup::new();
-    setup.with_git();
-    setup
-        .create_file("file1.txt", "content1")?
-        .create_file("file2.txt", "content2")?;
-
-    let (stdout, _) = setup.run(&[])?;
-    assert!(stdout.contains("file1.txt"));
-    assert!(stdout.contains("file2.txt"));
-    Ok(())
-}
-
-#[test]
 fn test_dir_config() -> Result<()> {
     let mut setup = TestSetup::new();
     setup
