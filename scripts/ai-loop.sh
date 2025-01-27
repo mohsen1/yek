@@ -55,7 +55,7 @@ for i in $(seq 1 $attempts); do
     SERIALIZE_CMD="$YEK_PATH --max-size=100KB | cat"
 
     # Run askds to fix the tests
-    node askds \
+    askds \
         --hide-ui \
         --timeout=4800 \
         --fix \
