@@ -1,4 +1,4 @@
-use crate::{get_file_priority, glob_to_regex, is_text_file, normalize_path, Result, YekConfig};
+use crate::{config::FullYekConfig, is_text_file, priority::get_file_priority, Result};
 use crossbeam::channel::bounded;
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
@@ -18,7 +18,10 @@ pub struct ProcessedFile {
     pub content: String,
 }
 
-pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec<ProcessedFile>> {
+pub fn process_files_parallel(
+    base_dir: &Path,
+    config: &FullYekConfig,
+) -> Result<Vec<ProcessedFile>> {
     let (tx, rx) = bounded(1024);
     let num_threads = num_cpus::get().min(16); // Cap at 16 threads
 
@@ -79,19 +82,17 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
                         }
                     }
 
-                    // Skip files matching ignore patterns from yek.toml
-                    if config.ignore_patterns.iter().any(|p| {
-                        let pattern = if p.starts_with('^') || p.ends_with('$') {
-                            p.to_string()
-                        } else {
-                            glob_to_regex(p)
-                        };
-                        if let Ok(re) = Regex::new(&pattern) {
+                    // Skip files matching ignore patterns from yek co
+                    let ignore_patterns = config.ignore_patterns.clone();
+                    let is_ignored = ignore_patterns.iter().any(|p| {
+                        let str = p.to_string();
+                        if let Ok(re) = Regex::new(&str) {
                             re.is_match(&rel_path)
                         } else {
                             false
                         }
-                    }) {
+                    });
+                    if is_ignored {
                         debug!("Skipping {} - matched ignore pattern", rel_path);
                         return WalkState::Continue;
                     }
@@ -156,4 +157,28 @@ pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec
     });
 
     Ok(results)
+}
+
+/// Returns a relative, normalized path string (forward slashes on all platforms).
+pub fn normalize_path(path: &Path, base: &Path) -> String {
+    // Handle current directory specially
+    if path.to_str() == Some(".") {
+        return ".".to_string();
+    }
+
+    // Resolve both paths to their canonical forms to handle symlinks
+    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let canonical_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+
+    // Attempt to strip the base directory from the file path
+    match canonical_path.strip_prefix(&canonical_base) {
+        Ok(rel_path) => {
+            // Convert to forward slashes and return as relative path
+            rel_path.to_string_lossy().replace('\\', "/")
+        }
+        Err(_) => {
+            // Return the absolute path without adding an extra leading slash
+            canonical_path.to_string_lossy().replace('\\', "/")
+        }
+    }
 }

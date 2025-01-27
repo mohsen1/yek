@@ -313,6 +313,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap-config-file"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd8746a3ccba2bd51bbd9b2b0e93fb9bf0835b975d5bec410abd2a57c8c60bb3"
+dependencies = [
+ "clap",
+ "clap-config-file-core",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "syn",
+ "toml 0.8.19",
+]
+
+[[package]]
+name = "clap-config-file-core"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704cfbf116f75f6098487bb0f312b3d8cf9750feb200f7aadcd76cbb2d560eda"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
 name = "clap_builder"
 version = "4.5.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -713,6 +741,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b09cf3155332e944990140d967ff5eceb70df778b34f77d8075db46e4704e6d8"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "fnmatch-regex"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eec03d88df0f4a3d911435c4904b209e2472e3dc93df8483653f02ba6834635"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "regex",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2234,9 +2274,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.136"
+version = "1.0.137"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "336a0c23cf42a38d9eaa7cd22c7040d04e1228a19a933890805ffd00a16437d2"
+checksum = "930cfb6e6abf99298aaad7d29abbef7a9999a9a8806a40088f55f0dcec03146b"
 dependencies = [
  "itoa",
  "memchr",
@@ -2273,6 +2313,19 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serde_yaml"
+version = "0.9.34+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
 ]
 
 [[package]]
@@ -2898,6 +2951,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 
 [[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
+
+[[package]]
 name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3415,9 +3474,11 @@ dependencies = [
  "byte-unit",
  "chrono",
  "clap",
+ "clap-config-file",
  "criterion",
  "crossbeam",
  "crossbeam-channel",
+ "fnmatch-regex",
  "git-cliff",
  "git2",
  "ignore",
@@ -3430,6 +3491,8 @@ dependencies = [
  "regex",
  "serde",
  "serde_derive",
+ "serde_json",
+ "serde_yaml",
  "sha2",
  "tempfile",
  "time",
