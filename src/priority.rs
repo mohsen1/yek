@@ -114,41 +114,56 @@ pub fn get_recent_commit_times(repo_path: &Path) -> Option<HashMap<String, u64>>
              --name-only \
              --no-merges \
              --no-renames \
-             -- . | tr -cd '[:print:]\n' | iconv -f utf-8 -t utf-8 -c",
+             --pretty=format:%ct \
+             -- . | tr -cd '[:print:]\n' | iconv -f utf-8",
         ])
         .current_dir(repo_path)
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
         .ok()?;
 
     if !output.status.success() {
-        debug!("Git log command failed, skipping Git-based prioritization");
+        debug!("Git command failed, skipping Git-based prioritization");
         return None;
     }
 
-    let mut git_times = HashMap::new();
-    let mut current_timestamp = 0_u64;
+    // Parse the output into a map of file → timestamp
+    let output = String::from_utf8_lossy(&output.stdout);
+    let mut lines = output.lines();
 
-    // Process output line by line with UTF-8 conversion
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        if line.is_empty() {
+    // Check if there are any commits
+    if lines.clone().next().is_none() {
+        debug!("No commits found, skipping Git-based prioritization");
+        return None;
+    }
+
+    let mut result = HashMap::new();
+
+    while let Some(timestamp_str) = lines.next() {
+        // Skip empty lines
+        if timestamp_str.is_empty() {
             continue;
         }
 
-        if let Ok(ts) = line.parse::<u64>() {
-            current_timestamp = ts;
-            debug!("Found timestamp: {}", ts);
-        } else {
-            debug!("Found file: {} with timestamp {}", line, current_timestamp);
-            git_times.insert(line.to_string(), current_timestamp);
+        // Parse the timestamp
+        let timestamp = match timestamp_str.parse::<u64>() {
+            Ok(ts) => ts,
+            Err(_) => continue,
+        };
+
+        // Get all files until next timestamp
+        while let Some(file) = lines.next() {
+            if file.is_empty() {
+                break;
+            }
+            // Only store if we can convert path to relative
+            let path = Path::new(file);
+            if !is_effectively_absolute(path) {
+                result.insert(file.to_string(), timestamp);
+            }
         }
     }
 
-    if git_times.is_empty() {
-        debug!("No valid timestamps found, skipping Git-based prioritization");
-        None
-    } else {
-        Some(git_times)
-    }
+    Some(result)
 }
