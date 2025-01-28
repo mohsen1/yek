@@ -10,15 +10,21 @@ mod defaults;
 mod parallel;
 mod priority;
 
-use config::{FullYekConfig, YekConfig};
+use config::FullYekConfig;
 use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
-use parallel::process_files_parallel;
+use parallel::{process_files_parallel, ProcessedFile};
 
 /// The main function that the tests call.
-pub fn serialize_repo(repo_path: &Path, config: &FullYekConfig) -> Result<()> {
-    // Process files in parallel
-    let processed_files = process_files_parallel(repo_path, config)?;
+pub fn serialize_repo(config: &FullYekConfig) -> Result<()> {
+    let mut processed_files = Vec::<ProcessedFile>::new();
 
+    // TODO: Small perf low hanging fruit: process all dirs in parallel
+    for dir in &config.input_dirs {
+        let path = Path::new(dir);
+        // Process files in parallel
+        let dir_files = process_files_parallel(path, config)?;
+        processed_files.extend(dir_files);
+    }
     // Convert to the format expected by write_chunks
     let entries: Vec<(String, String, i32)> = processed_files
         .into_iter()
@@ -31,7 +37,7 @@ pub fn serialize_repo(repo_path: &Path, config: &FullYekConfig) -> Result<()> {
         .collect::<Vec<String>>()
         .join("\n");
 
-    write_output(&output_string, &config)?;
+    write_output(&output_string, config)?;
 
     Ok(())
 }

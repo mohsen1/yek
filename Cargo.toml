@@ -13,7 +13,7 @@ categories = ["command-line-utilities", "development-tools"]
 anyhow = "1.0"
 byte-unit = "4.0"
 clap = { version = "4.4", features = ["derive"] }
-clap-config-file = "0.1.0"
+clap-config-file = { version = "0.3.2", path = "../clap-config-file" }
 fnmatch-regex = "0.2.1"
 crossbeam = "0.8"
 ignore = "0.4"
@@ -34,6 +34,7 @@ git2 = { version = "0.18.2", features = ["vendored-openssl", "https"] }
 crossbeam-channel = "0.5"
 serde_yaml = "0.9.34"
 serde_json = "1.0.137"
+config = "0.15.6"
 
 [dev-dependencies]
 assert_cmd = "2.0"

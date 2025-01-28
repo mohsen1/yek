@@ -9,9 +9,23 @@ use crate::{
     priority::PriorityRule,
 };
 
-#[derive(ClapConfigFile, Clone)]
+#[derive(Clone, Debug, Default, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
+pub enum ConfigFormat {
+    #[default]
+    Toml,
+    Yaml,
+    Json,
+}
+
+#[derive(ClapConfigFile)]
+#[config_file_name = "yek"]
+#[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
-    // --- CLI ---
+    /// Input directories to process
+    #[config_arg(accept_from = "cli_only")]
+    #[config_arg(value_parser = clap::value_parser!(Vec<String>))]
+    pub input_dirs: Vec<String>,
+
     /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
     #[config_arg(long = "max-size", default_value = "10MB")]
     pub max_size: String,
@@ -22,40 +36,41 @@ pub struct YekConfig {
 
     /// Enable debug output
     #[config_arg(long, default_value = "false")]
-    pub debug: bool,
+    pub debug: Option<bool>,
 
     /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
     #[config_arg(long = "output-dir")]
     pub output_dir: Option<String>,
 
     /// Ignore patterns
-    #[config_arg(long = "ignore-patterns")]
+    #[config_arg(long = "ignore-patterns", multi_value_behavior = "extend")]
     pub ignore_patterns: Vec<String>,
 
-    // --- config only ---
     /// Priority rules
-    #[config_only]
-    #[config_arg(long = "priority-rules")]
+    #[config_arg(accept_from = "config_only")]
     pub priority_rules: Vec<PriorityRule>,
 
-    #[config_only]
-    #[config_arg(long = "binary-extensions")]
+    /// Binary file extensions to ignore
+    #[config_arg(accept_from = "config_only")]
     pub binary_extensions: Vec<String>,
 
-    // --- internal ---
-    /// One or more directories to process
-
-    // these are not used in the CLI or config file, used internally
     /// Stream output to stdout
     pub stream: bool,
 
     /// Use token mode instead of byte mode
     pub token_mode: bool,
+
+    /// The full path to the output file
+    pub output_file_full_path: String,
+
+    /// The format of the config file. Defaults to "toml"
+    pub config_file_format: ConfigFormat,
 }
 
 // Define a struct that is "complete" yet config with all fields being required
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize)]
 pub struct FullYekConfig {
+    pub input_dirs: Vec<String>,
     pub max_size: String,
     pub tokens: String,
     pub debug: bool,
@@ -65,20 +80,18 @@ pub struct FullYekConfig {
     pub binary_extensions: Vec<String>,
     pub stream: bool,
     pub token_mode: bool,
+    pub output_file_full_path: String,
 }
 
 impl YekConfig {
-    pub fn default() -> FullYekConfig {
-        let defaults = YekConfig::parse_with_default_file_name("yek.toml");
+    /// Initialize the config from CLI arguments + optional `yek.toml`.
+    pub fn init_config() -> FullYekConfig {
+        let (defaults, _, _) = YekConfig::parse_info();
 
-        // Fill in the internal fields
-        // token_mode is true if tokens field is not empty
         let token_mode = !defaults.tokens.is_empty();
-
-        // if tty is false, stream is true
         let stream = !std::io::stdout().is_terminal();
 
-        // Default the output dir to a temp dir in the OS if not provided
+        // Default the output dir to a temp dir if not provided
         let output_dir = if let Some(dir) = defaults.output_dir {
             dir
         } else {
@@ -88,35 +101,43 @@ impl YekConfig {
             output_dir.to_string_lossy().to_string()
         };
 
-        // Merge with BINARY_FILE_EXTENSIONS
+        // Merge user binary extensions with built-ins
         let binary_extensions = defaults
             .binary_extensions
             .into_iter()
             .chain(BINARY_FILE_EXTENSIONS.iter().map(|&s| s.to_string()))
             .collect();
 
-        // Merge with default_ignore_patterns
+        // Merge user ignore patterns with defaults
         let ignore_patterns = defaults
             .ignore_patterns
             .into_iter()
             .chain(default_ignore_patterns().into_iter().map(|p| p.to_string()))
             .collect();
 
+        // TODO: make the output file name based on checksum of input dirs contents
+        // and short circuit if the file already exists
+        // Default the output file to a temp file in the output dir
+        let output_file_full_path = Path::new(&output_dir)
+            .join("yek-output.txt")
+            .to_string_lossy()
+            .to_string();
+
         let final_config = FullYekConfig {
-            // From config file/cli args
+            input_dirs: defaults.input_dirs,
             max_size: defaults.max_size,
             tokens: defaults.tokens,
-            debug: defaults.debug,
-            priority_rules: defaults.priority_rules,
-
-            // Computed
+            debug: defaults.debug.unwrap_or(false),
             output_dir,
             ignore_patterns,
+            priority_rules: defaults.priority_rules,
             binary_extensions,
             stream,
             token_mode,
+            output_file_full_path,
         };
 
+        // Validate the config
         validate_config(&final_config);
 
         final_config
@@ -127,6 +148,7 @@ pub struct ConfigError {
     pub field: String,
     pub message: String,
 }
+
 pub fn validate_config(config: &FullYekConfig) -> Vec<ConfigError> {
     let mut errors = Vec::new();
 

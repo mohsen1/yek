@@ -44,6 +44,7 @@ pub fn get_file_priority(path: &str, rules: &[PriorityRule]) -> i32 {
 /// Get the commit time of the most recent change to each file.
 /// Returns a map from file path (relative to the repo root) → last commit Unix time.
 /// If Git or .git folder is missing, returns None instead of erroring.
+#[allow(dead_code)]
 pub fn get_recent_commit_times(repo_path: &Path) -> Option<HashMap<String, u64>> {
     // Confirm there's a .git folder
     if !repo_path.join(".git").exists() {
