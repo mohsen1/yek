@@ -159,6 +159,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "atty"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
+dependencies = [
+ "hermit-abi 0.1.19",
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -259,6 +270,12 @@ name = "bytes"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "325918d6fe32f23b19878fe4b34794ae41fc19ddbe53b10571a4874d44ffd39b"
+
+[[package]]
+name = "bytesize"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3e368af43e418a04d52505cf3dbc23dda4e3407ae2fa99fd0e4f308ce546acc"
 
 [[package]]
 name = "cast"
@@ -364,9 +381,9 @@ dependencies = [
 
 [[package]]
 name = "clap-config-file"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95341dab410192a0769de9790f691a894fff43ae57113c33ba37ae5bf8588638"
+checksum = "82ffee33ade9089f043c0c04103187aa65de8259fe6a701b483430ce6551dfd9"
 dependencies = [
  "clap",
  "config 0.13.4",
@@ -502,6 +519,15 @@ dependencies = [
  "getrandom",
  "once_cell",
  "tiny-keccak",
+]
+
+[[package]]
+name = "content_inspector"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7bda66e858c683005a53a9a60c69a4aca7eeaa45d124526e389f7aec8e62f38"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -1120,6 +1146,15 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermit-abi"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "hermit-abi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
@@ -1710,6 +1745,12 @@ name = "normalize-line-endings"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
+
+[[package]]
+name = "normalize-path"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5438dd2b2ff4c6df6e1ce22d825ed2fa93ee2922235cc45186991717f0a892d"
 
 [[package]]
 name = "nu-ansi-term"
@@ -3724,11 +3765,14 @@ version = "0.13.8"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "atty",
  "byte-unit",
+ "bytesize",
  "chrono",
  "clap",
  "clap-config-file",
  "config 0.15.6",
+ "content_inspector",
  "criterion",
  "crossbeam",
  "crossbeam-channel",
@@ -3737,6 +3781,7 @@ dependencies = [
  "git2",
  "ignore",
  "indicatif",
+ "normalize-path",
  "num_cpus",
  "path-slash",
  "predicates",

@@ -1,17 +1,13 @@
-use crate::{config::FullYekConfig, is_text_file, priority::get_file_priority, Result};
-use crossbeam::channel::bounded;
-use ignore::{WalkBuilder, WalkState};
+use crate::{config::FullYekConfig, priority::get_file_priority, Result};
+use content_inspector::{inspect, ContentType};
+use path_slash::PathBufExt;
+use rayon::prelude::*;
 use regex::Regex;
-use std::collections::HashMap;
-use std::{
-    collections::HashSet,
-    path::Path,
-    sync::{Arc, Mutex},
-    thread,
-};
+use std::sync::mpsc;
+use std::{collections::HashMap, fs, path::Path};
 use tracing::debug;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProcessedFile {
     pub priority: i32,
     pub file_index: usize,
@@ -25,142 +21,86 @@ pub fn process_files_parallel(
     config: &FullYekConfig,
     boost_map: &HashMap<String, i32>,
 ) -> Result<Vec<ProcessedFile>> {
-    let (tx, rx) = bounded(1024);
-    let num_threads = num_cpus::get().min(16); // Cap at 16 threads
+    let mut walk_builder = ignore::WalkBuilder::new(base_dir);
+    walk_builder
+        .hidden(true)
+        .git_ignore(true)
+        .follow_links(false)
+        .standard_filters(true)
+        .require_git(false);
 
-    let config = Arc::new(config.clone());
-    let base_dir = Arc::new(base_dir.to_path_buf());
-    let processed_files = Arc::new(Mutex::new(HashSet::new()));
-    let boost_map = Arc::new(boost_map.clone());
+    let (processed_files_tx, processed_files_rx) = mpsc::channel();
 
-    // Spawn worker threads
-    let mut handles = Vec::new();
-    for _ in 0..num_threads {
-        let tx = tx.clone();
-        let config = Arc::clone(&config);
-        let base_dir = Arc::clone(&base_dir);
-        let processed_files = Arc::clone(&processed_files);
-        let boost_map = Arc::clone(&boost_map);
+    walk_builder.build_parallel().run(|| {
+        Box::new(|entry| {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => return ignore::WalkState::Continue,
+            };
+            if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+                return ignore::WalkState::Continue;
+            }
 
-        let handle = thread::spawn(move || -> Result<()> {
-            let file_index = Arc::new(Mutex::new(0_usize));
+            let path = entry.path().to_path_buf();
+            let rel_path = normalize_path(&path, base_dir);
 
-            // Configure walker for this thread
-            let mut builder = WalkBuilder::new(&*base_dir);
-            builder
-                .hidden(true)
-                .git_ignore(true)
-                .follow_links(false)
-                .standard_filters(true)
-                .require_git(false)
-                .threads(1); // Single thread per walker
+            processed_files_tx.send((path, rel_path)).unwrap();
+            ignore::WalkState::Continue
+        })
+    });
 
-            let walker = builder.build_parallel();
+    let processed_files = processed_files_rx
+        .iter()
+        .filter_map(|(path, rel_path)| {
+            let ignore_patterns = config.ignore_patterns.clone();
+            let is_ignored = ignore_patterns
+                .iter()
+                .any(|p| Regex::new(p).map_or(false, |re| re.is_match(&rel_path)));
+            if is_ignored {
+                debug!("Skipping {} - matched ignore pattern", rel_path);
+                return None;
+            }
 
-            let file_index = Arc::clone(&file_index);
-            walker.run(|| {
-                let tx = tx.clone();
-                let config = Arc::clone(&config);
-                let base_dir = Arc::clone(&base_dir);
-                let file_index = Arc::clone(&file_index);
-                let processed_files = Arc::clone(&processed_files);
-                let boost_map = Arc::clone(&boost_map);
+            if let Ok(content) = fs::read(&path) {
+                if inspect(&content) == ContentType::BINARY {
+                    debug!("Skipping binary file: {}", rel_path);
+                    return None;
+                }
 
-                Box::new(move |entry| {
-                    let entry = match entry {
-                        Ok(e) => e,
-                        Err(_) => return WalkState::Continue,
-                    };
+                let rule_priority = get_file_priority(&rel_path, &config.priority_rules);
+                let boost = boost_map.get(&rel_path).copied().unwrap_or(0);
+                let combined_priority = rule_priority + boost;
 
-                    if !entry.file_type().is_some_and(|ft| ft.is_file()) {
-                        return WalkState::Continue;
-                    }
-
-                    let path = entry.path().to_path_buf();
-                    let rel_path = normalize_path(&path, &base_dir);
-
-                    // Check if file has already been processed
-                    {
-                        let mut processed = processed_files.lock().unwrap();
-                        if !processed.insert(rel_path.clone()) {
-                            // File was already processed
-                            return WalkState::Continue;
-                        }
-                    }
-
-                    // Skip files matching ignore patterns from yek co
-                    let ignore_patterns = config.ignore_patterns.clone();
-                    let is_ignored = ignore_patterns.iter().any(|p| {
-                        let str = p.to_string();
-                        if let Ok(re) = Regex::new(&str) {
-                            re.is_match(&rel_path)
-                        } else {
-                            false
-                        }
-                    });
-                    if is_ignored {
-                        debug!("Skipping {} - matched ignore pattern", rel_path);
-                        return WalkState::Continue;
-                    }
-
-                    // Skip binary files unless explicitly allowed
-                    match is_text_file(&path, &config.binary_extensions) {
-                        Ok(is_text) if !is_text => {
-                            debug!("Skipping binary file: {}", rel_path);
-                            return WalkState::Continue;
-                        }
-                        Err(_) => return WalkState::Continue,
-                        _ => {}
-                    }
-
-                    // Read and process file
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        let rule_priority = get_file_priority(&rel_path, &config.priority_rules);
-                        let boost = boost_map.get(&rel_path).cloned().unwrap_or(0);
-                        let combined_priority = rule_priority + boost;
-
-                        let mut index = file_index.lock().unwrap();
-                        let processed = ProcessedFile {
-                            priority: combined_priority,
-                            file_index: *index,
-                            rel_path,
-                            content,
-                        };
-
-                        if tx.send(processed).is_ok() {
-                            *index += 1;
-                        }
-                    }
-
-                    WalkState::Continue
+                Some(ProcessedFile {
+                    priority: combined_priority,
+                    file_index: 0, // Placeholder, will be updated later
+                    rel_path,
+                    content: String::from_utf8_lossy(&content).to_string(),
                 })
-            });
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
-            Ok(())
-        });
-        handles.push(handle);
-    }
-
-    // Drop original sender
-    drop(tx);
-
-    // Collect results
-    let mut results = Vec::new();
-    while let Ok(processed) = rx.recv() {
-        results.push(processed);
-    }
-
-    // Wait for all threads
-    for handle in handles {
-        handle.join().unwrap()?;
-    }
+    // Assign unique file_index within each priority group
+    let mut file_index_counters = HashMap::new();
+    let mut results = processed_files
+        .into_iter()
+        .map(|mut file| {
+            let counter = file_index_counters.entry(file.priority).or_insert(0);
+            file.file_index = *counter;
+            *counter += 1;
+            file
+        })
+        .collect::<Vec<_>>();
 
     debug!("Processed {} files in parallel", results.len());
 
-    // Sort by priority (ascending) and file index (ascending)
-    results.sort_by(|a, b| {
+    results.par_sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
+            .reverse()
             .then_with(|| a.file_index.cmp(&b.file_index))
     });
 
@@ -169,24 +109,10 @@ pub fn process_files_parallel(
 
 /// Returns a relative, normalized path string (forward slashes on all platforms).
 pub fn normalize_path(path: &Path, base: &Path) -> String {
-    // Handle current directory specially
-    if path.to_str() == Some(".") {
-        return ".".to_string();
-    }
-
-    // Resolve both paths to their canonical forms to handle symlinks
-    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let canonical_base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
-
-    // Attempt to strip the base directory from the file path
-    match canonical_path.strip_prefix(&canonical_base) {
-        Ok(rel_path) => {
-            // Convert to forward slashes and return as relative path
-            rel_path.to_string_lossy().replace('\\', "/")
-        }
-        Err(_) => {
-            // Return the absolute path without adding an extra leading slash
-            canonical_path.to_string_lossy().replace('\\', "/")
-        }
-    }
+    path.strip_prefix(base)
+        .unwrap_or(path)
+        .to_path_buf()
+        .to_slash()
+        .unwrap_or_default()
+        .to_string()
 }

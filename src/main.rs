@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bytesize::ByteSize;
 use tracing::{debug, Level};
 use tracing_subscriber::FmtSubscriber;
 use yek::{config::YekConfig, serialize_repo};
@@ -28,9 +29,24 @@ fn main() -> Result<()> {
         debug!("Configuration:\n{}", config_str);
     }
 
-    serialize_repo(&full_config)?;
+    let (output, files) = serialize_repo(&full_config)?;
 
-    println!("{}", full_config.output_file_full_path);
+    // if stream is true, print the actual output
+    if full_config.stream {
+        println!("{}", output);
+
+    // if it is a terminal, print the output file path
+    } else {
+        // if debug mode print output size and number of lines and number of files
+        if full_config.debug {
+            let size = ByteSize::b(output.len() as u64);
+            debug!("{} files processed", files.len());
+            debug!("{} generated", size); // human readable size
+            debug!("{} lines generated", output.lines().count());
+        }
+
+        println!("{}", full_config.output_file_full_path);
+    }
 
     Ok(())
 }

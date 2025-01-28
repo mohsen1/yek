@@ -1,40 +1,7 @@
 #[cfg(test)]
 mod config_tests {
-    use yek::config::{parse_size_input, validate_config, FullYekConfig};
+    use yek::config::{validate_config, FullYekConfig};
     use yek::priority::PriorityRule;
-
-    #[test]
-    fn test_parse_size_input_bytes() {
-        assert_eq!(parse_size_input("1024", false).unwrap(), 1024);
-        assert_eq!(parse_size_input("1KB", false).unwrap(), 1024);
-        assert_eq!(parse_size_input("1MB", false).unwrap(), 1024 * 1024);
-        assert_eq!(parse_size_input("1GB", false).unwrap(), 1024 * 1024 * 1024);
-        assert!(parse_size_input("invalid", false).is_err());
-    }
-
-    #[test]
-    fn test_parse_size_input_tokens() {
-        assert_eq!(parse_size_input("100", true).unwrap(), 100);
-        assert_eq!(parse_size_input("1K", true).unwrap(), 1000);
-        assert_eq!(parse_size_input("10K", true).unwrap(), 10000);
-        assert!(parse_size_input("1MB", true).is_err());
-    }
-
-    #[test]
-    fn test_parse_size_input_invalid_tokens() {
-        assert!(parse_size_input("-1", true).is_err());
-        assert!(parse_size_input("abc", true).is_err());
-        assert!(parse_size_input("1.5K", true).is_err());
-        assert!(parse_size_input("1M", true).is_err());
-    }
-
-    #[test]
-    fn test_parse_size_input_edge_cases() {
-        assert!(parse_size_input("", false).is_err());
-        assert!(parse_size_input(" ", false).is_err());
-        assert!(parse_size_input("\t", false).is_err());
-        assert!(parse_size_input("1.5MB", false).is_err());
-    }
 
     #[test]
     fn test_validate_config_valid() {
@@ -56,8 +23,8 @@ mod config_tests {
             git_boost_max: 100,
         };
 
-        let errors = validate_config(&config);
-        assert!(errors.is_empty(), "Expected no validation errors");
+        let result = validate_config(&config);
+        assert!(result.is_ok(), "Expected no validation errors");
     }
 
     #[test]
@@ -77,9 +44,9 @@ mod config_tests {
             git_boost_max: 100,
         };
 
-        let errors = validate_config(&config);
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].field, "max_size");
+        let result = validate_config(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("max_size"));
     }
 
     #[test]
@@ -102,12 +69,11 @@ mod config_tests {
             git_boost_max: 100,
         };
 
-        let errors = validate_config(&config);
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].field, "priority_rules");
-        assert!(errors[0]
-            .message
-            .contains("Priority score 1001 must be between 0 and 1000"));
+        let result = validate_config(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("priority_rules"));
+        assert!(err.contains("Priority score 1001 must be between 0 and 1000"));
     }
 
     #[test]
@@ -130,10 +96,11 @@ mod config_tests {
             git_boost_max: 100,
         };
 
-        let errors = validate_config(&config);
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].field, "priority_rules");
-        assert!(errors[0].message.contains("Invalid regex pattern"));
+        let result = validate_config(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("priority_rules"));
+        assert!(err.contains("Invalid regex pattern"));
     }
 
     #[test]
@@ -153,9 +120,10 @@ mod config_tests {
             git_boost_max: 100,
         };
 
-        let errors = validate_config(&config);
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].field, "ignore_patterns");
-        assert!(errors[0].message.contains("Invalid pattern"));
+        let result = validate_config(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("ignore_patterns"));
+        assert!(err.contains("Invalid pattern"));
     }
 }

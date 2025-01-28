@@ -1,4 +1,5 @@
-use std::{collections::HashMap, path::Path, process::Stdio};
+use git2::Repository;
+use std::{collections::HashMap, path::Path};
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -8,17 +9,6 @@ use tracing::debug;
 pub struct PriorityRule {
     pub pattern: String,
     pub score: i32,
-}
-
-impl PriorityRule {
-    #[allow(dead_code)]
-    fn matches(&self, path: &str) -> bool {
-        if let Ok(re) = Regex::new(&self.pattern) {
-            re.is_match(path)
-        } else {
-            false
-        }
-    }
 }
 
 /// Determine final priority of a file by scanning the priority list
@@ -75,95 +65,80 @@ pub fn compute_recentness_boost(
     result
 }
 
-#[cfg(target_family = "windows")]
-#[allow(dead_code)]
-fn is_effectively_absolute(path: &std::path::Path) -> bool {
-    if path.is_absolute() {
-        return true;
-    }
-    // Also treat a leading slash/backslash as absolute
-    match path.to_str() {
-        Some(s) => s.starts_with('/') || s.starts_with('\\'),
-        None => false,
-    }
-}
-
-#[cfg(not(target_family = "windows"))]
-#[allow(dead_code)]
-fn is_effectively_absolute(path: &std::path::Path) -> bool {
-    path.is_absolute()
-}
-
-/// Get the commit time of the most recent change to each file.
+/// Get the commit time of the most recent change to each file using git2.
 /// Returns a map from file path (relative to the repo root) → last commit Unix time.
 /// If Git or .git folder is missing, returns None instead of erroring.
-#[allow(dead_code)]
-pub fn get_recent_commit_times(repo_path: &Path) -> Option<HashMap<String, u64>> {
-    // Confirm there's a .git folder
-    if !repo_path.join(".git").exists() {
-        debug!("No .git directory found, skipping Git-based prioritization");
-        return None;
-    }
-    // Get all files and their timestamps using bash with proper UTF-8 handling
-    let output = std::process::Command::new("bash")
-        .args([
-            "-c",
-            "export LC_ALL=en_US.UTF-8; export LANG=en_US.UTF-8; \
-             git -c core.quotepath=false log \
-             --format=%ct \
-             --name-only \
-             --no-merges \
-             --no-renames \
-             --pretty=format:%ct \
-             -- . | tr -cd '[:print:]\n' | iconv -f utf-8",
-        ])
-        .current_dir(repo_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        debug!("Git command failed, skipping Git-based prioritization");
-        return None;
-    }
-
-    // Parse the output into a map of file → timestamp
-    let output = String::from_utf8_lossy(&output.stdout);
-    let mut lines = output.lines();
-
-    // Check if there are any commits
-    if lines.clone().next().is_none() {
-        debug!("No commits found, skipping Git-based prioritization");
-        return None;
-    }
-
-    let mut result = HashMap::new();
-
-    while let Some(timestamp_str) = lines.next() {
-        // Skip empty lines
-        if timestamp_str.is_empty() {
-            continue;
+pub fn get_recent_commit_times_git2(repo_path: &Path) -> Option<HashMap<String, u64>> {
+    // Walk up until you find a .git folder but not higher than the base of the given repo_path
+    let mut current_path = repo_path.to_path_buf();
+    while current_path.components().count() > 1 {
+        if current_path.join(".git").exists() {
+            break;
         }
+        current_path = current_path.parent()?.to_path_buf();
+    }
 
-        // Parse the timestamp
-        let timestamp = match timestamp_str.parse::<u64>() {
-            Ok(ts) => ts,
-            Err(_) => continue,
+    let repo = match Repository::open(&current_path) {
+        Ok(repo) => repo,
+        Err(_) => {
+            debug!("Not a Git repository or unable to open: {:?}", current_path);
+            return None;
+        }
+    };
+
+    let mut revwalk = match repo.revwalk() {
+        Ok(revwalk) => revwalk,
+        Err(_) => {
+            debug!("Unable to get revwalk for: {:?}", current_path);
+            return None;
+        }
+    };
+
+    if let Err(e) = revwalk.push_head() {
+        debug!(
+            "Unable to push HEAD to revwalk: {:?} in {:?}",
+            e, current_path
+        );
+        return None;
+    }
+    revwalk.set_sorting(git2::Sort::TIME).ok()?;
+
+    let mut commit_times = HashMap::new();
+    for oid in revwalk {
+        let oid = match oid {
+            Ok(oid) => oid,
+            Err(e) => {
+                debug!("Error during revwalk iteration: {:?}", e);
+                continue;
+            }
         };
+        let commit = match repo.find_commit(oid) {
+            Ok(commit) => commit,
+            Err(e) => {
+                debug!("Failed to find commit for OID {:?}: {:?}", oid, e);
+                continue;
+            }
+        };
+        let tree = match commit.tree() {
+            Ok(tree) => tree,
+            Err(e) => {
+                debug!("Failed to get tree for commit {:?}: {:?}", oid, e);
+                continue;
+            }
+        };
+        let time = commit.time().seconds() as u64;
 
-        // Get all files until next timestamp
-        while let Some(file) = lines.next() {
-            if file.is_empty() {
-                break;
+        tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+            if let Some(name) = entry.name() {
+                if entry.kind() == Some(git2::ObjectType::Blob) {
+                    let full_path = format!("{}{}", root, name);
+                    commit_times.entry(full_path).or_insert(time);
+                }
             }
-            // Only store if we can convert path to relative
-            let path = Path::new(file);
-            if !is_effectively_absolute(path) {
-                result.insert(file.to_string(), timestamp);
-            }
-        }
+            git2::TreeWalkResult::Ok
+        })
+        .ok()?;
     }
 
-    Some(result)
+    Some(commit_times)
 }
