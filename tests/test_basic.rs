@@ -13,7 +13,6 @@ fn basic_file_output_test() {
     let test_file = temp.path().join("test.txt");
     fs::write(&test_file, "test content").unwrap();
 
-    // Run serialization
     let config = FullYekConfig {
         input_dirs: vec![temp.path().to_string_lossy().to_string()],
         max_size: "10MB".to_string(),
@@ -25,27 +24,22 @@ fn basic_file_output_test() {
         binary_extensions: vec![],
         stream: false,
         token_mode: false,
-        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+        // This is the single file name from src/lib.rs -> write_output
+        output_file_full_path: output_dir
+            .join("yek-output.txt")
+            .to_string_lossy()
+            .to_string(),
     };
+
     serialize_repo(&config).unwrap();
 
-    // Verify output
-    println!("Output directory exists: {}", output_dir.exists());
-    println!("Output directory contents:");
-    for entry in fs::read_dir(&output_dir).unwrap() {
-        let entry = entry.unwrap();
-        println!("  {}", entry.path().display());
-        let content = fs::read_to_string(entry.path()).unwrap();
-        println!("File contents:\n{}", content);
-    }
-
-    // Check that the first chunk exists and contains our test file
-    let chunk_0 = output_dir.join("chunk-0.txt");
-    assert!(chunk_0.exists(), "Should write first chunk");
-    let content = fs::read_to_string(chunk_0).unwrap();
+    // Verify single output file
+    let out_file = output_dir.with_extension("txt");
+    assert!(out_file.exists(), "Expected single output file");
+    let content = fs::read_to_string(&out_file).unwrap();
     assert!(
         content.contains("test content"),
-        "Should contain file content"
+        "Output file should contain the test file content"
     );
 }
 
@@ -57,7 +51,7 @@ fn basic_pipe_test() {
     let test_file = temp.path().join("test.txt");
     fs::write(&test_file, "test content").unwrap();
 
-    // Run serialization in stream mode
+    // Run in stream mode
     let config = FullYekConfig {
         input_dirs: vec![temp.path().to_string_lossy().to_string()],
         max_size: "10MB".to_string(),
@@ -71,8 +65,7 @@ fn basic_pipe_test() {
         token_mode: false,
         output_file_full_path: String::new(),
     };
+    // We can't directly capture the stream here in a simple test,
+    // so just ensure it doesn't error.
     serialize_repo(&config).unwrap();
-
-    // The output should be written to stdout, which we can't easily capture in a test
-    // So we just verify that the function runs without error
 }

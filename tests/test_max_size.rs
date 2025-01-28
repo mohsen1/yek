@@ -4,93 +4,32 @@ use assert_cmd::Command;
 use integration_common::{create_file, ensure_empty_output_dir, setup_temp_repo};
 use std::fs;
 
-/// Writes a file larger than the default 10MB limit in tokens or bytes, forcing multiple chunks.
+/// The new code no longer splits into multiple chunks. We only verify that a large file is fully included.
 #[test]
-fn splits_large_file_in_chunks_bytes_mode() {
+fn large_file_included_single_output() {
     let repo = setup_temp_repo();
-    let large_content = "A ".repeat(1024 * 1024 * 11); // ~ 11MB
-    create_file(repo.path(), "BIG.txt", large_content.as_bytes());
+    // ~1MB of text
+    let big_content = "A ".repeat(1024 * 500);
+    create_file(repo.path(), "BIG.txt", big_content.as_bytes());
 
     let output_dir = repo.path().join("yek-output");
     ensure_empty_output_dir(&output_dir);
 
-    let debug_output = repo.path().join("debug.log");
     let mut cmd = Command::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
+    cmd.current_dir(repo.path())
+        // max-size won't actually split anything now, but we'll pass it anyway
         .arg("--max-size")
-        .arg("10MB")
+        .arg("10KB")
         .arg("--debug")
         .arg("--output-dir")
         .arg(&output_dir)
-        .env("YEK_DEBUG_OUTPUT", &debug_output)
-        .output()
-        .expect("Failed to execute command");
+        .assert()
+        .success();
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    println!("stderr: {}", stderr);
-
-    // Read debug output
-    let debug_log = fs::read_to_string(&debug_output).expect("Failed to read debug log");
-    println!("debug log: {}", debug_log);
-
-    // Check debug messages
+    let out_file = output_dir.with_extension("txt");
+    let content = fs::read_to_string(&out_file).expect("Failed to read single output file");
     assert!(
-        debug_log.contains("File exceeds chunk size, splitting into multiple chunks"),
-        "Should indicate file exceeds chunk size"
-    );
-    assert!(
-        debug_log.contains("Writing large file part 0"),
-        "Should write first part"
-    );
-    assert!(
-        debug_log.contains("Writing large file part 1"),
-        "Should write second part"
-    );
-}
-
-#[test]
-fn splits_large_file_in_chunks_token_mode() {
-    let repo = setup_temp_repo();
-    // Each "word" is a token
-    let large_content = "TOKEN ".repeat(200_000); // enough tokens to exceed default
-    create_file(repo.path(), "BIG_token.txt", large_content.as_bytes());
-
-    let output_dir = repo.path().join("yek-output");
-    ensure_empty_output_dir(&output_dir);
-
-    let debug_output = repo.path().join("debug.log");
-    let mut cmd = Command::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
-        .arg("--tokens")
-        .arg("--max-size")
-        .arg("150000") // ~150k tokens
-        .arg("--debug")
-        .arg("--output-dir")
-        .arg(&output_dir)
-        .env("YEK_DEBUG_OUTPUT", &debug_output)
-        .output()
-        .expect("Failed to execute command");
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    println!("stderr: {}", stderr);
-
-    // Read debug output
-    let debug_log = fs::read_to_string(&debug_output).expect("Failed to read debug log");
-    println!("debug log: {}", debug_log);
-
-    // Check debug messages
-    assert!(
-        debug_log.contains("File exceeds chunk size, splitting into multiple chunks"),
-        "Should indicate file exceeds chunk size"
-    );
-    assert!(
-        debug_log.contains("Writing large file part 0"),
-        "Should write first part"
-    );
-    assert!(
-        debug_log.contains("Writing large file part 1"),
-        "Should write second part"
+        content.contains("BIG.txt"),
+        "Single output should still contain the entire large file text"
     );
 }

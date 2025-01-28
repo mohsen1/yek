@@ -65,6 +65,10 @@ pub struct YekConfig {
 
     /// The format of the config file. Defaults to "toml"
     pub config_file_format: ConfigFormat,
+
+    /// Maximum additional boost from Git commit times (0..1000)
+    #[config_arg(accept_from = "config_only")]
+    pub git_boost_max: Option<i32>,
 }
 
 // Define a struct that is "complete" yet config with all fields being required
@@ -81,6 +85,7 @@ pub struct FullYekConfig {
     pub stream: bool,
     pub token_mode: bool,
     pub output_file_full_path: String,
+    pub git_boost_max: i32,
 }
 
 impl YekConfig {
@@ -135,6 +140,7 @@ impl YekConfig {
             stream,
             token_mode,
             output_file_full_path,
+            git_boost_max: defaults.git_boost_max.unwrap_or(100),
         };
 
         // Validate the config

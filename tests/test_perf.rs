@@ -34,9 +34,12 @@ fn bench_serialize_repo(c: &mut Criterion) {
                 binary_extensions: vec![],
                 stream: false,
                 token_mode: false,
-                output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+                output_file_full_path: output_dir
+                    .join("yek-output.txt")
+                    .to_string_lossy()
+                    .to_string(),
             };
-            serialize_repo(black_box(&config)).unwrap()
+            serialize_repo(black_box(&config)).unwrap();
         })
     });
 }

@@ -1,169 +1,209 @@
 mod integration_common;
-use assert_cmd::Command as AssertCommand;
+use assert_cmd::Command;
 use integration_common::{create_file, setup_temp_repo};
-use std::process::Command;
+use std::fs;
 
 #[test]
-fn respects_gitignore() {
+fn test_ignore_patterns_basic() {
     let repo = setup_temp_repo();
-    println!("Created temp repo at: {}", repo.path().display());
-
-    create_file(repo.path(), ".gitignore", "ignore_me/**\n".as_bytes());
-    println!(
-        "Created .gitignore at: {}",
-        repo.path().join(".gitignore").display()
-    );
-
     create_file(
         repo.path(),
-        "ignore_me/foo.txt",
-        "should be ignored".as_bytes(),
-    );
-    println!(
-        "Created ignored file at: {}",
-        repo.path().join("ignore_me/foo.txt").display()
-    );
-
-    create_file(
-        repo.path(),
-        "keep_me/foo.txt",
-        "should be included".as_bytes(),
-    );
-    println!(
-        "Created kept file at: {}",
-        repo.path().join("keep_me/foo.txt").display()
-    );
-
-    let mut cmd = AssertCommand::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(repo.path())
-        .arg("--debug")
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    println!("\nSTDOUT:\n{}", stdout);
-    println!("\nSTDERR:\n{}", String::from_utf8_lossy(&output.stderr));
-
-    // Check that only the non-ignored file is in stdout
-    assert!(
-        stdout.contains(">>>> keep_me/foo.txt"),
-        "Should include non-ignored file"
-    );
-    assert!(
-        !stdout.contains(">>>> ignore_me/foo.txt"),
-        "Should not include ignored file"
-    );
-}
-
-#[test]
-fn respects_custom_config_file() {
-    let repo = setup_temp_repo();
-    let repo_path = repo.path().to_path_buf(); // Store path before repo is moved
-    println!("Created temp repo at: {}", repo_path.display());
-
-    // Initialize git repo
-    let status = Command::new("git")
-        .args(["init"])
-        .current_dir(&repo_path)
-        .status()
-        .expect("Failed to init git repo");
-    assert!(status.success(), "git init failed");
-
-    // Configure git user info
-    let status = Command::new("git")
-        .args(["config", "--global", "user.name", "Test User"])
-        .status()
-        .expect("Failed to configure git user name");
-    assert!(status.success(), "git config user.name failed");
-
-    let status = Command::new("git")
-        .args(["config", "--global", "user.email", "test@example.com"])
-        .status()
-        .expect("Failed to configure git user email");
-    assert!(status.success(), "git config user.email failed");
-
-    create_file(
-        &repo_path,
         "yek.toml",
         r#"
 ignore_patterns = [
-    "^dont_serialize/"
+    "^ignore_me/",
+    "\\.tmp$"
 ]
 "#
         .as_bytes(),
     );
-    println!(
-        "Created yek.toml at: {}",
-        repo_path.join("yek.toml").display()
+
+    create_file(repo.path(), "ignore_me/secret.txt", b"should be ignored");
+    create_file(repo.path(), "keep_me/public.txt", b"should be kept");
+    create_file(repo.path(), "temp.tmp", b"should be ignored");
+
+    let output_dir = repo.path().join("yek-output");
+    fs::create_dir_all(&output_dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("yek").unwrap();
+    cmd.current_dir(repo.path())
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .assert()
+        .success();
+
+    let out_file = output_dir.with_extension("txt");
+    let content = fs::read_to_string(&out_file).unwrap();
+
+    assert!(!content.contains(">>>> ignore_me/secret.txt"));
+    assert!(content.contains(">>>> keep_me/public.txt"));
+    assert!(!content.contains(">>>> temp.tmp"));
+}
+
+#[test]
+fn test_ignore_patterns_regex() {
+    let repo = setup_temp_repo();
+    create_file(
+        repo.path(),
+        "yek.toml",
+        r#"
+ignore_patterns = [
+    "^test_[0-9]+\\.txt$",
+    ".*\\.bak$"
+]
+"#
+        .as_bytes(),
+    );
+
+    create_file(repo.path(), "test_123.txt", b"should be ignored");
+    create_file(repo.path(), "test.txt", b"should be kept");
+    create_file(repo.path(), "file.bak", b"should be ignored");
+
+    let output_dir = repo.path().join("yek-output");
+    fs::create_dir_all(&output_dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("yek").unwrap();
+    cmd.current_dir(repo.path())
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .assert()
+        .success();
+
+    let out_file = output_dir.with_extension("txt");
+    let content = fs::read_to_string(&out_file).unwrap();
+
+    assert!(!content.contains(">>>> test_123.txt"));
+    assert!(content.contains(">>>> test.txt"));
+    assert!(!content.contains(">>>> file.bak"));
+}
+
+#[test]
+fn test_ignore_patterns_nested() {
+    let repo = setup_temp_repo();
+    create_file(
+        repo.path(),
+        "yek.toml",
+        r#"
+ignore_patterns = [
+    "^src/.*\\.bak$",
+    "^test/temp/.*$"
+]
+"#
+        .as_bytes(),
     );
 
     create_file(
-        &repo_path,
-        "dont_serialize/file.rs",
-        "ignored by config".as_bytes(),
+        repo.path().join("src").as_path(),
+        "main.rs.bak",
+        b"should be ignored",
     );
-    println!(
-        "Created ignored file at: {}",
-        repo_path.join("dont_serialize/file.rs").display()
-    );
-
     create_file(
-        &repo_path,
-        "do_serialize/file.rs",
-        "should be included".as_bytes(),
+        repo.path().join("src").as_path(),
+        "main.rs",
+        b"should be kept",
     );
-    println!(
-        "Created kept file at: {}",
-        repo_path.join("do_serialize/file.rs").display()
+    create_file(
+        repo.path().join("test/temp").as_path(),
+        "file.txt",
+        b"should be ignored",
     );
-
-    // Add and commit files
-    let status = Command::new("git")
-        .args(["add", "-f", "."])
-        .current_dir(&repo_path)
-        .status()
-        .expect("Failed to add files to git");
-    assert!(status.success(), "git add failed");
-
-    // Print git status before commit
-    let status = Command::new("git")
-        .args(["status"])
-        .current_dir(&repo_path)
-        .status()
-        .expect("Failed to get git status");
-    assert!(status.success(), "git status failed");
-
-    let status = Command::new("git")
-        .args(["commit", "-m", "Initial commit"])
-        .current_dir(&repo_path)
-        .status()
-        .expect("Failed to commit files");
-    assert!(status.success(), "git commit failed");
-
-    let mut cmd = AssertCommand::cargo_bin("yek").unwrap();
-    let output = cmd
-        .current_dir(&repo_path)
-        .arg("--debug")
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    println!("\nSTDOUT:\n{}", stdout);
-    println!("\nSTDERR:\n{}", String::from_utf8_lossy(&output.stderr));
-
-    // Check that only the non-ignored file is in stdout
-    assert!(
-        stdout.contains(">>>> do_serialize/file.rs"),
-        "Should include non-ignored file"
-    );
-    assert!(
-        !stdout.contains(">>>> dont_serialize/file.rs"),
-        "Should not include ignored file"
+    create_file(
+        repo.path().join("test").as_path(),
+        "test.txt",
+        b"should be kept",
     );
 
-    // Keep repo alive until end of test
-    drop(repo);
+    let output_dir = repo.path().join("yek-output");
+    fs::create_dir_all(&output_dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("yek").unwrap();
+    cmd.current_dir(repo.path())
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .assert()
+        .success();
+
+    let out_file = output_dir.with_extension("txt");
+    let content = fs::read_to_string(&out_file).unwrap();
+
+    assert!(!content.contains(">>>> src/main.rs.bak"));
+    assert!(content.contains(">>>> src/main.rs"));
+    assert!(!content.contains(">>>> test/temp/file.txt"));
+    assert!(content.contains(">>>> test/test.txt"));
+}
+
+#[test]
+fn test_ignore_patterns_with_gitignore() {
+    let repo = setup_temp_repo();
+    create_file(
+        repo.path(),
+        "yek.toml",
+        r#"
+ignore_patterns = [
+    "^custom_ignore/.*$"
+]
+"#
+        .as_bytes(),
+    );
+    create_file(repo.path(), ".gitignore", b"*.tmp\n");
+
+    create_file(repo.path(), "custom_ignore/file.txt", b"should be ignored");
+    create_file(repo.path(), "temp.tmp", b"should be ignored");
+    create_file(repo.path(), "keep.txt", b"should be kept");
+
+    let output_dir = repo.path().join("yek-output");
+    fs::create_dir_all(&output_dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("yek").unwrap();
+    cmd.current_dir(repo.path())
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .assert()
+        .success();
+
+    let out_file = output_dir.with_extension("txt");
+    let content = fs::read_to_string(&out_file).unwrap();
+
+    assert!(!content.contains(">>>> custom_ignore/file.txt"));
+    assert!(!content.contains(">>>> temp.tmp"));
+    assert!(content.contains(">>>> keep.txt"));
+}
+
+#[test]
+fn test_ignore_patterns_case_sensitivity() {
+    let repo = setup_temp_repo();
+    create_file(
+        repo.path(),
+        "yek.toml",
+        r#"
+ignore_patterns = [
+    "^IGNORE/.*$",
+    ".*\\.TMP$"
+]
+"#
+        .as_bytes(),
+    );
+
+    create_file(repo.path(), "IGNORE/file.txt", b"should be ignored");
+    create_file(repo.path(), "ignore/file.txt", b"should be kept");
+    create_file(repo.path(), "test.TMP", b"should be ignored");
+    create_file(repo.path(), "test.tmp", b"should be kept");
+
+    let output_dir = repo.path().join("yek-output");
+    fs::create_dir_all(&output_dir).unwrap();
+
+    let mut cmd = Command::cargo_bin("yek").unwrap();
+    cmd.current_dir(repo.path())
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .assert()
+        .success();
+
+    let out_file = output_dir.with_extension("txt");
+    let content = fs::read_to_string(&out_file).unwrap();
+
+    assert!(!content.contains(">>>> IGNORE/file.txt"));
+    assert!(content.contains(">>>> ignore/file.txt"));
+    assert!(!content.contains(">>>> test.TMP"));
+    assert!(content.contains(">>>> test.tmp"));
 }

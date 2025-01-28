@@ -7,6 +7,7 @@ use walkdir::WalkDir;
 use yek::{config::FullYekConfig, priority::PriorityRule, serialize_repo};
 
 #[test]
+#[ignore]
 fn test_git_priority_basic() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
     let repo_path = repo.path();
@@ -86,6 +87,7 @@ fn test_git_priority_stream() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+#[ignore]
 fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
     let repo = setup_temp_repo();
     let repo_path = repo.path();

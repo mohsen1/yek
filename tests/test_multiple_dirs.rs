@@ -7,13 +7,15 @@ fn multiple_directories_test() {
     let repo1 = setup_temp_repo();
     let repo2 = setup_temp_repo();
 
-    create_file(repo1.path(), "file1.txt", "content1".as_bytes());
-    create_file(repo2.path(), "file2.txt", "content2".as_bytes());
+    create_file(repo1.path(), "file1.txt", b"content1");
+    create_file(repo2.path(), "file2.txt", b"content2");
 
+    // By default, if no output-dir is given and stdout is piped,
+    // we'll get the combined output in stdout.
     let mut cmd = Command::cargo_bin("yek").unwrap();
     cmd.arg(repo1.path().to_str().unwrap())
         .arg(repo2.path().to_str().unwrap())
-        .env("TERM", "dumb") // Force non-interactive mode
+        .env("TERM", "dumb")
         .assert()
         .success()
         .stdout(predicates::str::contains("file1.txt"))

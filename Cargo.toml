@@ -13,7 +13,7 @@ categories = ["command-line-utilities", "development-tools"]
 anyhow = "1.0"
 byte-unit = "4.0"
 clap = { version = "4.4", features = ["derive"] }
-clap-config-file = { version = "0.3.2", path = "../clap-config-file" }
+clap-config-file = { version = "0.3.0" }
 fnmatch-regex = "0.2.1"
 crossbeam = "0.8"
 ignore = "0.4"

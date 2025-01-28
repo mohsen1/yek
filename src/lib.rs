@@ -13,89 +13,51 @@ pub mod priority;
 use config::FullYekConfig;
 use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
 use parallel::{process_files_parallel, ProcessedFile};
+use priority::{compute_recentness_boost, get_recent_commit_times};
 
 pub use parallel::normalize_path;
 
 /// The main function that the tests call.
 pub fn serialize_repo(config: &FullYekConfig) -> Result<()> {
-    let mut processed_files = Vec::<ProcessedFile>::new();
+    // Gather commit times from each input directory
+    let mut combined_commit_times = HashMap::new();
+    for dir in &config.input_dirs {
+        let repo_path = Path::new(dir);
+        if let Some(ct) = get_recent_commit_times(repo_path) {
+            for (file, ts) in ct {
+                // If a file appears in multiple dirs, keep the latest commit time
+                combined_commit_times
+                    .entry(file)
+                    .and_modify(|t| {
+                        if ts > *t {
+                            *t = ts;
+                        }
+                    })
+                    .or_insert(ts);
+            }
+        }
+    }
 
-    // TODO: Small perf low hanging fruit: process all dirs in parallel
+    // Compute a recentness boost for each file
+    let recentness_boost = compute_recentness_boost(&combined_commit_times, config.git_boost_max);
+
+    let mut processed_files = Vec::<ProcessedFile>::new();
     for dir in &config.input_dirs {
         let path = Path::new(dir);
         // Process files in parallel
-        let dir_files = process_files_parallel(path, config)?;
+        let dir_files = process_files_parallel(path, config, &recentness_boost)?;
         processed_files.extend(dir_files);
     }
-    // Convert to the format expected by write_chunks
-    let entries: Vec<(String, String, i32)> = processed_files
-        .into_iter()
-        .map(|f| (f.rel_path, f.content, f.priority))
-        .collect();
 
-    let output_string = entries
+    let output_string = processed_files
         .iter()
-        .map(|e| e.1.to_string())
-        .collect::<Vec<String>>()
+        .map(|f| f.content.clone())
+        .collect::<Vec<_>>()
         .join("\n");
 
     write_output(&output_string, config)?;
 
     Ok(())
-}
-
-/// Rank-based approach to compute how "recent" each file is (0=oldest, 1=newest).
-/// Then scale it to a user-defined or default max boost.
-#[allow(dead_code)]
-fn compute_recentness_boost(
-    commit_times: &HashMap<String, u64>,
-    max_boost: i32,
-) -> HashMap<String, i32> {
-    if commit_times.is_empty() {
-        return HashMap::new();
-    }
-
-    // Sort by ascending commit time => first is oldest
-    let mut sorted: Vec<(&String, &u64)> = commit_times.iter().collect();
-    sorted.sort_by_key(|(_, t)| **t);
-
-    // oldest file => rank=0, newest => rank=1
-    let last_index = sorted.len().saturating_sub(1) as f64;
-    if last_index < 1.0 {
-        // If there's only one file, or zero, no boosts make sense
-        let mut single = HashMap::new();
-        for file in commit_times.keys() {
-            single.insert(file.clone(), 0);
-        }
-        return single;
-    }
-
-    let mut result = HashMap::new();
-    for (i, (path, _time)) in sorted.iter().enumerate() {
-        let rank = i as f64 / last_index; // 0.0..1.0 (older files get lower rank)
-        let boost = (rank * max_boost as f64).round() as i32; // Newer files get higher boost
-        result.insert((*path).clone(), boost);
-    }
-    result
-}
-
-#[cfg(target_family = "windows")]
-#[allow(dead_code)]
-fn is_effectively_absolute(path: &std::path::Path) -> bool {
-    if path.is_absolute() {
-        return true;
-    }
-    // Also treat a leading slash/backslash as absolute
-    match path.to_str() {
-        Some(s) => s.starts_with('/') || s.starts_with('\\'),
-        None => false,
-    }
-}
-
-#[cfg(not(target_family = "windows"))]
-#[allow(dead_code)]
-fn is_effectively_absolute(path: &std::path::Path) -> bool {
-    path.is_absolute()
 }
 
 /// Write a single chunk either to stdout or file

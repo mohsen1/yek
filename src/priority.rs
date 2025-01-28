@@ -41,6 +41,59 @@ pub fn get_file_priority(path: &str, rules: &[PriorityRule]) -> i32 {
         .unwrap_or(0)
 }
 
+/// Rank-based approach to compute how "recent" each file is (0=oldest, 1=newest).
+/// Then scale it to a user-defined or default max boost.
+pub fn compute_recentness_boost(
+    commit_times: &HashMap<String, u64>,
+    max_boost: i32,
+) -> HashMap<String, i32> {
+    if commit_times.is_empty() {
+        return HashMap::new();
+    }
+
+    // Sort by ascending commit time => first is oldest
+    let mut sorted: Vec<(&String, &u64)> = commit_times.iter().collect();
+    sorted.sort_by_key(|(_, t)| **t);
+
+    // oldest file => rank=0, newest => rank=1
+    let last_index = sorted.len().saturating_sub(1) as f64;
+    if last_index < 1.0 {
+        // If there's only one file, or zero, no boosts make sense
+        let mut single = HashMap::new();
+        for file in commit_times.keys() {
+            single.insert(file.clone(), 0);
+        }
+        return single;
+    }
+
+    let mut result = HashMap::new();
+    for (i, (path, _time)) in sorted.iter().enumerate() {
+        let rank = i as f64 / last_index; // 0.0..1.0 (older files get lower rank)
+        let boost = (rank * max_boost as f64).round() as i32; // Newer files get higher boost
+        result.insert((*path).clone(), boost);
+    }
+    result
+}
+
+#[cfg(target_family = "windows")]
+#[allow(dead_code)]
+fn is_effectively_absolute(path: &std::path::Path) -> bool {
+    if path.is_absolute() {
+        return true;
+    }
+    // Also treat a leading slash/backslash as absolute
+    match path.to_str() {
+        Some(s) => s.starts_with('/') || s.starts_with('\\'),
+        None => false,
+    }
+}
+
+#[cfg(not(target_family = "windows"))]
+#[allow(dead_code)]
+fn is_effectively_absolute(path: &std::path::Path) -> bool {
+    path.is_absolute()
+}
+
 /// Get the commit time of the most recent change to each file.
 /// Returns a map from file path (relative to the repo root) → last commit Unix time.
 /// If Git or .git folder is missing, returns None instead of erroring.

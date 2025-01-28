@@ -69,7 +69,6 @@ fn test_windows_installer_with_local_binary() {
 
     fs::write(&installer_script, modified_script).unwrap();
 
-    // Skip the test if PowerShell is not available
     let powershell_check = Command::new("powershell")
         .arg("-Command")
         .arg("$PSVersionTable.PSVersion")
@@ -87,15 +86,11 @@ fn test_windows_installer_with_local_binary() {
         .output()
         .unwrap();
 
-    // Print output for debugging
     println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
     println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
 
     let installed_binary = install_dir.join("yek.exe");
-    assert!(
-        installed_binary.exists(),
-        "Binary was not installed to the expected location"
-    );
+    assert!(installed_binary.exists());
     verify_binary_works(&installed_binary);
 }
 

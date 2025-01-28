@@ -43,19 +43,23 @@ pattern = "^less_important/"
         .assert()
         .success();
 
-    // Read the first chunk file
-    let chunk_0 = fs::read_to_string(output_dir.join("chunk-0.txt")).unwrap();
-    println!("Chunk content:\n{}", chunk_0);
+    let out_file = output_dir.with_extension("txt");
+    assert!(out_file.exists(), "Expected output file");
+    let content = fs::read_to_string(out_file).unwrap();
+    println!("Output:\n{}", content);
 
-    // Check that very_important appears after less_important in the output
-    let very_pos = chunk_0
-        .find(">>>> very_important/one.txt")
-        .expect("very_important/one.txt not found");
-    let less_pos = chunk_0
+    // "less_important" has lower priority => should appear first in the file
+    // "very_important" is higher priority => should appear last
+    let less_pos = content
         .find(">>>> less_important/two.txt")
         .expect("less_important/two.txt not found");
+    let very_pos = content
+        .find(">>>> very_important/one.txt")
+        .expect("very_important/one.txt not found");
+
+    // Higher priority => appears later in final text
     assert!(
         very_pos > less_pos,
-        "very_important should appear after less_important since higher priority files come last"
+        "very_important should appear later in the single output"
     );
 }

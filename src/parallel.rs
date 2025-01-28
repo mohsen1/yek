@@ -2,6 +2,7 @@ use crate::{config::FullYekConfig, is_text_file, priority::get_file_priority, Re
 use crossbeam::channel::bounded;
 use ignore::{WalkBuilder, WalkState};
 use regex::Regex;
+use std::collections::HashMap;
 use std::{
     collections::HashSet,
     path::Path,
@@ -14,6 +15,7 @@ use tracing::debug;
 pub struct ProcessedFile {
     pub priority: i32,
     pub file_index: usize,
+    #[allow(unused)]
     pub rel_path: String,
     pub content: String,
 }
@@ -21,6 +23,7 @@ pub struct ProcessedFile {
 pub fn process_files_parallel(
     base_dir: &Path,
     config: &FullYekConfig,
+    boost_map: &HashMap<String, i32>,
 ) -> Result<Vec<ProcessedFile>> {
     let (tx, rx) = bounded(1024);
     let num_threads = num_cpus::get().min(16); // Cap at 16 threads
@@ -28,6 +31,7 @@ pub fn process_files_parallel(
     let config = Arc::new(config.clone());
     let base_dir = Arc::new(base_dir.to_path_buf());
     let processed_files = Arc::new(Mutex::new(HashSet::new()));
+    let boost_map = Arc::new(boost_map.clone());
 
     // Spawn worker threads
     let mut handles = Vec::new();
@@ -36,6 +40,7 @@ pub fn process_files_parallel(
         let config = Arc::clone(&config);
         let base_dir = Arc::clone(&base_dir);
         let processed_files = Arc::clone(&processed_files);
+        let boost_map = Arc::clone(&boost_map);
 
         let handle = thread::spawn(move || -> Result<()> {
             let file_index = Arc::new(Mutex::new(0_usize));
@@ -59,6 +64,7 @@ pub fn process_files_parallel(
                 let base_dir = Arc::clone(&base_dir);
                 let file_index = Arc::clone(&file_index);
                 let processed_files = Arc::clone(&processed_files);
+                let boost_map = Arc::clone(&boost_map);
 
                 Box::new(move |entry| {
                     let entry = match entry {
@@ -109,11 +115,13 @@ pub fn process_files_parallel(
 
                     // Read and process file
                     if let Ok(content) = std::fs::read_to_string(&path) {
-                        let priority = get_file_priority(&rel_path, &config.priority_rules);
+                        let rule_priority = get_file_priority(&rel_path, &config.priority_rules);
+                        let boost = boost_map.get(&rel_path).cloned().unwrap_or(0);
+                        let combined_priority = rule_priority + boost;
 
                         let mut index = file_index.lock().unwrap();
                         let processed = ProcessedFile {
-                            priority,
+                            priority: combined_priority,
                             file_index: *index,
                             rel_path,
                             content,
