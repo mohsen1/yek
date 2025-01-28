@@ -24,6 +24,7 @@ pub struct YekConfig {
     /// Input directories to process
     #[config_arg(accept_from = "cli_only")]
     #[config_arg(value_parser = clap::value_parser!(Vec<String>))]
+    #[config_arg(long = "input-dirs", required = true)]
     pub input_dirs: Vec<String>,
 
     /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
@@ -186,15 +187,16 @@ pub fn validate_config(config: &FullYekConfig) -> Vec<ConfigError> {
         let regex_str = if pattern.starts_with('^') || pattern.ends_with('$') {
             pattern.to_string()
         } else {
-            fnmatch_regex::glob_to_regex(pattern)
-                .map(|r| r.to_string())
-                .unwrap_or_else(|e| {
+            match fnmatch_regex::glob_to_regex(pattern) {
+                Ok(r) => r.to_string(),
+                Err(e) => {
                     errors.push(ConfigError {
                         field: "ignore_patterns".to_string(),
                         message: format!("Invalid pattern '{}': {}", pattern, e),
                     });
-                    pattern.to_string()
-                })
+                    continue;
+                }
+            }
         };
 
         if let Err(e) = Regex::new(&regex_str) {

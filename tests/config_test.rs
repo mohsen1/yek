@@ -37,50 +37,125 @@ mod config_tests {
     }
 
     #[test]
-    fn test_validate_config() {
-        let valid_config = FullYekConfig {
-            input_dirs: vec!["/test/dir".to_string()],
+    fn test_validate_config_valid() {
+        let config = FullYekConfig {
+            input_dirs: vec![".".to_string()],
             max_size: "10MB".to_string(),
             tokens: "".to_string(),
             debug: false,
-            output_dir: std::env::temp_dir().to_string_lossy().to_string(),
+            output_dir: "output".to_string(),
             ignore_patterns: vec!["*.log".to_string()],
             priority_rules: vec![PriorityRule {
-                pattern: "src/.*\\.rs".to_string(),
-                score: 100,
+                pattern: ".*".to_string(),
+                score: 10,
             }],
             binary_extensions: vec!["bin".to_string()],
             stream: false,
             token_mode: false,
-            output_file_full_path: "output.txt".to_string(),
+            output_file_full_path: "output/file.txt".to_string(),
             git_boost_max: 100,
         };
 
-        let errors = validate_config(&valid_config);
-        assert!(errors.is_empty());
+        let errors = validate_config(&config);
+        assert!(errors.is_empty(), "Expected no validation errors");
+    }
 
-        let invalid_config = FullYekConfig {
-            input_dirs: vec!["/test/dir".to_string()],
+    #[test]
+    fn test_validate_config_invalid_max_size() {
+        let config = FullYekConfig {
+            input_dirs: vec![".".to_string()],
             max_size: "0".to_string(), // Invalid
             tokens: "".to_string(),
             debug: false,
-            output_dir: "/nonexistent/dir".to_string(),
-            ignore_patterns: vec!["[invalid regex".to_string()], // Invalid
-            priority_rules: vec![PriorityRule {
-                pattern: "[invalid regex".to_string(), // Invalid
-                score: 2000,                           // Invalid
-            }],
-            binary_extensions: vec!["bin".to_string()],
+            output_dir: "output".to_string(),
+            ignore_patterns: vec![],
+            priority_rules: vec![],
+            binary_extensions: vec![],
             stream: false,
             token_mode: false,
-            output_file_full_path: "output.txt".to_string(),
+            output_file_full_path: "output/file.txt".to_string(),
             git_boost_max: 100,
         };
 
-        let errors = validate_config(&invalid_config);
-        assert!(!errors.is_empty());
-        assert!(errors.iter().any(|e| e.field == "max_size"));
-        assert!(errors.iter().any(|e| e.field == "priority_rules"));
-        assert!(errors.iter().any(|e| e.field == "ignore_patterns"));
+        let errors = validate_config(&config);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].field, "max_size");
+    }
+
+    #[test]
+    fn test_validate_config_invalid_priority_rule_score() {
+        let config = FullYekConfig {
+            input_dirs: vec![],
+            max_size: "10MB".to_string(),
+            tokens: "".to_string(),
+            debug: false,
+            output_dir: "/tmp/yek".to_string(),
+            ignore_patterns: vec![],
+            priority_rules: vec![PriorityRule {
+                pattern: "foo".to_string(),
+                score: 1001,
+            }],
+            binary_extensions: vec![],
+            stream: false,
+            token_mode: false,
+            output_file_full_path: "/tmp/yek/output.txt".to_string(),
+            git_boost_max: 100,
+        };
+
+        let errors = validate_config(&config);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].field, "priority_rules");
+        assert!(errors[0]
+            .message
+            .contains("Priority score 1001 must be between 0 and 1000"));
+    }
+
+    #[test]
+    fn test_validate_config_invalid_priority_rule_pattern() {
+        let config = FullYekConfig {
+            input_dirs: vec![],
+            max_size: "10MB".to_string(),
+            tokens: "".to_string(),
+            debug: false,
+            output_dir: "/tmp/yek".to_string(),
+            ignore_patterns: vec![],
+            priority_rules: vec![PriorityRule {
+                pattern: "[".to_string(), // Invalid regex
+                score: 100,
+            }],
+            binary_extensions: vec![],
+            stream: false,
+            token_mode: false,
+            output_file_full_path: "/tmp/yek/output.txt".to_string(),
+            git_boost_max: 100,
+        };
+
+        let errors = validate_config(&config);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].field, "priority_rules");
+        assert!(errors[0].message.contains("Invalid regex pattern"));
+    }
+
+    #[test]
+    fn test_validate_config_invalid_ignore_pattern() {
+        let config = FullYekConfig {
+            input_dirs: vec![],
+            max_size: "10MB".to_string(),
+            tokens: "".to_string(),
+            debug: false,
+            output_dir: "/tmp/yek".to_string(),
+            ignore_patterns: vec!["[".to_string()], // Invalid regex
+            priority_rules: vec![],
+            binary_extensions: vec![],
+            stream: false,
+            token_mode: false,
+            output_file_full_path: "/tmp/yek/output.txt".to_string(),
+            git_boost_max: 100,
+        };
+
+        let errors = validate_config(&config);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].field, "ignore_patterns");
+        assert!(errors[0].message.contains("Invalid pattern"));
     }
 }

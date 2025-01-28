@@ -5,11 +5,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
-use yek::{
-    config::{FullYekConfig, YekConfig},
-    priority::PriorityRule,
-    serialize_repo,
-};
+use yek::{config::FullYekConfig, priority::PriorityRule, serialize_repo};
 
 /// Creates a text file of a specified size in bytes.
 fn create_test_data_bytes(dir: &Path, size: usize, file_name: &str) {
@@ -56,7 +52,7 @@ fn bench_single_small_file(c: &mut Criterion) {
     group.throughput(Throughput::Bytes((10 * 1024) as u64));
     group.bench_function("single_small_file", |b| {
         b.iter(|| {
-            let mut config = FullYekConfig {
+            let config = FullYekConfig {
                 input_dirs: vec![temp_dir.path().to_string_lossy().to_string()],
                 max_size: "10MB".to_string(),
                 tokens: String::new(),
