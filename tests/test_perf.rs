@@ -2,8 +2,8 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
+use yek::config::FullYekConfig;
 use yek::serialize_repo;
-use yek::YekConfig;
 
 fn create_test_files(dir: &PathBuf, num_files: usize, file_size: usize) {
     for i in 0..num_files {
@@ -23,9 +23,20 @@ fn bench_serialize_repo(c: &mut Criterion) {
 
     c.bench_function("serialize_repo", |b| {
         b.iter(|| {
-            let mut config = YekConfig::default();
-            config.output_dir = Some(output_dir.clone());
-            serialize_repo(black_box(temp.path()), Some(&config)).unwrap()
+            let config = FullYekConfig {
+                input_dirs: vec![temp.path().to_string_lossy().to_string()],
+                max_size: "10MB".to_string(),
+                tokens: String::new(),
+                debug: false,
+                output_dir: output_dir.to_string_lossy().to_string(),
+                ignore_patterns: vec![],
+                priority_rules: vec![],
+                binary_extensions: vec![],
+                stream: false,
+                token_mode: false,
+                output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+            };
+            serialize_repo(black_box(&config)).unwrap()
         })
     });
 }

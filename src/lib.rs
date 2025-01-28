@@ -8,11 +8,13 @@ use std::path::Path;
 pub mod config;
 mod defaults;
 mod parallel;
-mod priority;
+pub mod priority;
 
 use config::FullYekConfig;
 use defaults::{BINARY_FILE_EXTENSIONS, TEXT_FILE_EXTENSIONS};
 use parallel::{process_files_parallel, ProcessedFile};
+
+pub use parallel::normalize_path;
 
 /// The main function that the tests call.
 pub fn serialize_repo(config: &FullYekConfig) -> Result<()> {

@@ -1,8 +1,7 @@
 mod integration_common;
 use std::fs;
 use tempfile::TempDir;
-use yek::serialize_repo;
-use yek::YekConfig;
+use yek::{config::FullYekConfig, serialize_repo};
 
 #[test]
 fn skips_known_binary_files() {
@@ -19,9 +18,20 @@ fn skips_known_binary_files() {
     fs::write(&text_file, "text content").unwrap();
 
     // Run serialization
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
-    serialize_repo(temp.path(), Some(&config)).unwrap();
+    let config = FullYekConfig {
+        input_dirs: vec![temp.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+    };
+    serialize_repo(&config).unwrap();
 
     // Check that the first chunk exists and contains only the text file
     let chunk_0 = output_dir.join("chunk-0.txt");
@@ -52,10 +62,20 @@ fn respects_custom_binary_extensions() {
     fs::write(&text_file, "text content").unwrap();
 
     // Run serialization with custom config
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
-    config.binary_extensions = vec!["dat".to_string()];
-    serialize_repo(temp.path(), Some(&config)).unwrap();
+    let config = FullYekConfig {
+        input_dirs: vec![temp.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec!["dat".to_string()],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+    };
+    serialize_repo(&config).unwrap();
 
     // Check that the first chunk exists and contains only the text file
     let chunk_0 = output_dir.join("chunk-0.txt");

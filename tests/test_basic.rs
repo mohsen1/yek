@@ -1,8 +1,7 @@
 mod integration_common;
 use std::fs;
 use tempfile::TempDir;
-use yek::serialize_repo;
-use yek::YekConfig;
+use yek::{config::FullYekConfig, serialize_repo};
 
 #[test]
 fn basic_file_output_test() {
@@ -15,9 +14,20 @@ fn basic_file_output_test() {
     fs::write(&test_file, "test content").unwrap();
 
     // Run serialization
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
-    serialize_repo(temp.path(), Some(&config)).unwrap();
+    let config = FullYekConfig {
+        input_dirs: vec![temp.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+    };
+    serialize_repo(&config).unwrap();
 
     // Verify output
     println!("Output directory exists: {}", output_dir.exists());
@@ -48,9 +58,20 @@ fn basic_pipe_test() {
     fs::write(&test_file, "test content").unwrap();
 
     // Run serialization in stream mode
-    let mut config = YekConfig::default();
-    config.stream = true;
-    serialize_repo(temp.path(), Some(&config)).unwrap();
+    let config = FullYekConfig {
+        input_dirs: vec![temp.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: String::new(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: true,
+        token_mode: false,
+        output_file_full_path: String::new(),
+    };
+    serialize_repo(&config).unwrap();
 
     // The output should be written to stdout, which we can't easily capture in a test
     // So we just verify that the function runs without error

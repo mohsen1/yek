@@ -1,4 +1,4 @@
-use yek::parse_size_input;
+use yek::config::parse_size_input;
 
 #[test]
 fn test_parse_size_input_tokens() {

@@ -4,7 +4,7 @@ use integration_common::{create_file, setup_temp_repo};
 use std::fs;
 use tempfile::TempDir;
 use walkdir::WalkDir;
-use yek::{serialize_repo, PriorityRule, YekConfig};
+use yek::{config::FullYekConfig, priority::PriorityRule, serialize_repo};
 
 #[test]
 fn test_git_priority_basic() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,11 +16,21 @@ fn test_git_priority_basic() -> Result<(), Box<dyn std::error::Error>> {
     // Create test files and commit them
     create_file(repo_path, "src/main.rs", b"fn main() {}");
     create_file(repo_path, "docs/README.md", b"# Documentation");
-
     // Run serialization
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir.clone());
-    serialize_repo(repo_path, Some(&config))?;
+    let config = FullYekConfig {
+        input_dirs: vec![repo_path.to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+    };
+    serialize_repo(&config)?;
 
     // Verify output
     assert!(output_dir.exists(), "Output directory should exist");
@@ -57,9 +67,20 @@ fn test_git_priority_stream() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Run serialization in stream mode
-    let mut config = YekConfig::default();
-    config.stream = true;
-    serialize_repo(repo_path, Some(&config))?;
+    let config = FullYekConfig {
+        input_dirs: vec![repo_path.to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: String::new(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: true,
+        token_mode: false,
+        output_file_full_path: String::new(),
+    };
+    serialize_repo(&config)?;
 
     Ok(())
 }
@@ -84,7 +105,13 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Run serialization with custom config
-    let config = YekConfig {
+    let config = FullYekConfig {
+        input_dirs: vec![repo_path.to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
         priority_rules: vec![
             PriorityRule {
                 pattern: "^src/".to_string(),
@@ -95,10 +122,12 @@ fn test_git_priority_with_config() -> Result<(), Box<dyn std::error::Error>> {
                 score: 50,
             },
         ],
-        output_dir: Some(output_dir.clone()),
-        ..Default::default()
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
     };
-    serialize_repo(repo_path, Some(&config))?;
+    serialize_repo(&config)?;
 
     // Verify output
     assert!(output_dir.exists(), "Output directory should exist");
@@ -124,9 +153,20 @@ fn test_git_priority_empty_repo() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo_path.join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir);
-    serialize_repo(repo_path, Some(&config))?;
+    let config = FullYekConfig {
+        input_dirs: vec![repo_path.to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+    };
+    serialize_repo(&config)?;
     Ok(())
 }
 
@@ -142,9 +182,20 @@ fn test_git_priority_no_git() -> Result<(), Box<dyn std::error::Error>> {
         b"This is a test file without git.",
     );
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir);
-    serialize_repo(temp.path(), Some(&config))?;
+    let config = FullYekConfig {
+        input_dirs: vec![temp.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+    };
+    serialize_repo(&config)?;
     Ok(())
 }
 
@@ -158,8 +209,19 @@ fn test_git_priority_binary_files() -> Result<(), Box<dyn std::error::Error>> {
     create_file(repo_path, "binary.bin", b"\x00\x01\x02\x03");
     create_file(repo_path, "text.txt", b"This is a text file.");
 
-    let mut config = YekConfig::default();
-    config.output_dir = Some(output_dir);
-    serialize_repo(repo_path, Some(&config))?;
+    let config = FullYekConfig {
+        input_dirs: vec![repo_path.to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
+    };
+    serialize_repo(&config)?;
     Ok(())
 }

@@ -1,7 +1,7 @@
 mod integration_common;
 use std::fs;
 use tempfile::TempDir;
-use yek::{serialize_repo, PriorityRule, YekConfig};
+use yek::{config::FullYekConfig, priority::PriorityRule, serialize_repo};
 
 /// Tests that files are written in ascending priority order within a chunk.
 /// Lower priority files should appear first, and higher priority files should appear last.
@@ -18,7 +18,13 @@ fn chunk_order_reflects_priority() {
     fs::write(temp.path().join("README.md"), "high priority content").unwrap();
 
     // Configure priority rules
-    let config = YekConfig {
+    let config = FullYekConfig {
+        input_dirs: vec![temp.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
         priority_rules: vec![
             PriorityRule {
                 pattern: "^README.md$".to_string(),
@@ -29,10 +35,12 @@ fn chunk_order_reflects_priority() {
                 score: 50,
             },
         ],
-        output_dir: Some(output_dir.clone()),
-        ..Default::default()
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
     };
-    serialize_repo(temp.path(), Some(&config)).unwrap();
+    serialize_repo(&config).unwrap();
 
     // Debug output for file contents
     for entry in fs::read_dir(&output_dir).unwrap() {

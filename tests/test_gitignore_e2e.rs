@@ -1,7 +1,7 @@
 mod integration_common;
 use integration_common::{create_file, setup_temp_repo};
 use std::fs;
-use yek::{find_config_file, load_config_file, serialize_repo, YekConfig};
+use yek::{config::FullYekConfig, serialize_repo};
 
 #[test]
 fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,22 +16,21 @@ fn test_gitignore_basic() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let config = if let Some(toml_path) = find_config_file(repo.path()) {
-        if let Some(mut file_cfg) = load_config_file(&toml_path) {
-            file_cfg.output_dir = Some(output_dir.clone());
-            file_cfg
-        } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
-        }
-    } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+    let config = FullYekConfig {
+        input_dirs: vec![repo.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
     };
 
-    serialize_repo(repo.path(), Some(&config))?;
+    serialize_repo(&config)?;
 
     // Read all chunk contents
     let mut combined_content = String::new();
@@ -78,22 +77,21 @@ fn test_gitignore_subdirectory() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let config = if let Some(toml_path) = find_config_file(repo.path()) {
-        if let Some(mut file_cfg) = load_config_file(&toml_path) {
-            file_cfg.output_dir = Some(output_dir.clone());
-            file_cfg
-        } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
-        }
-    } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+    let config = FullYekConfig {
+        input_dirs: vec![repo.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
     };
 
-    serialize_repo(repo.path(), Some(&config))?;
+    serialize_repo(&config)?;
 
     // Read all chunk contents
     let mut combined_content = String::new();
@@ -147,22 +145,21 @@ temp/*
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let config = if let Some(toml_path) = find_config_file(repo.path()) {
-        if let Some(mut file_cfg) = load_config_file(&toml_path) {
-            file_cfg.output_dir = Some(output_dir.clone());
-            file_cfg
-        } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
-        }
-    } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+    let config = FullYekConfig {
+        input_dirs: vec![repo.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
     };
 
-    serialize_repo(repo.path(), Some(&config))?;
+    serialize_repo(&config)?;
 
     // Read all chunk contents
     let mut combined_content = String::new();
@@ -228,22 +225,21 @@ fn test_gitignore_and_yek_toml() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let config = if let Some(toml_path) = find_config_file(repo.path()) {
-        if let Some(mut file_cfg) = load_config_file(&toml_path) {
-            file_cfg.output_dir = Some(output_dir.clone());
-            file_cfg
-        } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
-        }
-    } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+    let config = FullYekConfig {
+        input_dirs: vec![repo.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec!["*.tmp".to_string()],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
     };
 
-    serialize_repo(repo.path(), Some(&config))?;
+    serialize_repo(&config)?;
 
     // Read all chunk contents
     let mut combined_content = String::new();
@@ -288,22 +284,21 @@ fn test_gitignore_binary_files() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = repo.path().join("test_output");
     fs::create_dir_all(&output_dir)?;
 
-    let config = if let Some(toml_path) = find_config_file(repo.path()) {
-        if let Some(mut file_cfg) = load_config_file(&toml_path) {
-            file_cfg.output_dir = Some(output_dir.clone());
-            file_cfg
-        } else {
-            let mut cfg = YekConfig::default();
-            cfg.output_dir = Some(output_dir.clone());
-            cfg
-        }
-    } else {
-        let mut cfg = YekConfig::default();
-        cfg.output_dir = Some(output_dir.clone());
-        cfg
+    let config = FullYekConfig {
+        input_dirs: vec![repo.path().to_string_lossy().to_string()],
+        max_size: "10MB".to_string(),
+        tokens: String::new(),
+        debug: false,
+        output_dir: output_dir.to_string_lossy().to_string(),
+        ignore_patterns: vec![],
+        priority_rules: vec![],
+        binary_extensions: vec![],
+        stream: false,
+        token_mode: false,
+        output_file_full_path: output_dir.join("chunk-0.txt").to_string_lossy().to_string(),
     };
 
-    serialize_repo(repo.path(), Some(&config))?;
+    serialize_repo(&config)?;
 
     // Read all chunk contents
     let mut combined_content = String::new();
