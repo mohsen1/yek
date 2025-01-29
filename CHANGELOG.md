@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2025-01-29
+[0.15.0]: https://github.com/bodo-run/yek/compare/v0.14.0...v0.15.0
+### Bug Fixes
+
+- Add musl toolchain support for Linux builds
+- Improve aarch64-musl cross-compilation setup
+- Use musl cross-compiler for aarch64-musl builds
+
+### Documentation
+
+- Update readme to reflect recent changes and more
+
+### Miscellaneous Tasks
+
+- Pr feedback
+- Make max_git_depth a configuration (read only)
+- Safer type casting
+- Cargo fmt
+
+### Performance
+
+- Do not go beyond 100 commits reading git history
+
+### Refactor
+
+- Do checksum and serializing in parallel
+- Simplify GitHub Actions workflow structure
+
+### Ci
+
+- If crates is already published, skip
+- Separate bench + stress testing
+- Install openssl for bench workflow too
+- Use checkout v4
+- Organize ci better to not DRY too much
+- Organize build into its own action
+
 ## [0.14.0] - 2025-01-29
 [0.14.0]: https://github.com/bodo-run/yek/compare/v0.13.8...v0.14.0
 ### Bug Fixes
@@ -35,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 
 - Update README to reflect YAML config usage
+- Fix yek.yaml example
 
 ### Features
 
@@ -97,10 +135,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bring new changes from tokenizer work to main (ai loop)
 - Improve AI loop
 - Install yek in ai loop
+- Fix release
+- Add unique names to artifacts
+- Add unique names to artifacts
 
 ### Release
 
 - V0.13.9
+- V0.14.0
 
 ## [0.13.8] - 2025-01-20
 [0.13.8]: https://github.com/bodo-run/yek/compare/v0.13.7...v0.13.8
