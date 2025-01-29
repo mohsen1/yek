@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
-use std::{fs, path::Path, str::FromStr, time::UNIX_EPOCH};
 use std::io::IsTerminal;
+use std::{fs, path::Path, str::FromStr, time::UNIX_EPOCH};
 
 use crate::{
     defaults::{BINARY_FILE_EXTENSIONS, DEFAULT_IGNORE_PATTERNS, DEFAULT_OUTPUT_TEMPLATE},
@@ -204,7 +204,7 @@ impl YekConfig {
         // Apply unignore patterns to ignore patterns
         config
             .ignore_patterns
-            .extend(config.unignore_patterns.iter().map(|s| 
+            .extend(config.unignore_patterns.iter().map(|s|
             // Change the glob to a negative glob by adding ! to the beginning
             format!("!{}", s)));
 

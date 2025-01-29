@@ -179,6 +179,18 @@ mod priority_tests {
             .output()
             .unwrap();
 
+        // Set up git config for the test repository
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
         // Create some files and commit them
         fs::write(repo_path.join("file1.txt"), "content1").unwrap();
         std::process::Command::new("git")
