@@ -5,8 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.13.9] - 2025-01-29
-[0.13.9]: https://github.com/bodo-run/yek/compare/v0.13.8...v0.13.9
+## [0.14.0] - 2025-01-29
+[0.14.0]: https://github.com/bodo-run/yek/compare/v0.13.8...v0.14.0
 ### Bug Fixes
 
 - Clean up imports and remove duplicates
@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Revamp Cargo deps (config-file support, JSON, YAML, etc.)
 - Add sample yek.yaml config
 - Fix clippy issues in parallel.rs
+- Add majo/minor to make release
 
 ### Performance
 
@@ -96,6 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bring new changes from tokenizer work to main (ai loop)
 - Improve AI loop
 - Install yek in ai loop
+
+### Release
+
+- V0.13.9
 
 ## [0.13.8] - 2025-01-20
 [0.13.8]: https://github.com/bodo-run/yek/compare/v0.13.7...v0.13.8
