@@ -76,22 +76,18 @@ jobs:
           # Linux builds using cross
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            use-cross: true
             artifact_name: yek
             asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            use-cross: true
             artifact_name: yek
             asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            use-cross: true
             artifact_name: yek
             asset_name: yek-x86_64-unknown-linux-musl.tar.gz
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            use-cross: true
             artifact_name: yek
             asset_name: yek-aarch64-unknown-linux-musl.tar.gz
 
@@ -118,122 +114,59 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install cross (Linux)
-        if: matrix.use-cross
-        run: cargo install cross
-
-      - name: Setup Rust (Native builds)
-        if: ${{ !matrix.use-cross }}
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: ./.github/actions/build
+        id: build
         with:
-          components: rustfmt,clippy
+          upload_artifacts: "false"
 
-      - name: Install Rust target
-        if: ${{ !matrix.use-cross }}
-        run: rustup target add ${{ matrix.target }}
-
-      - name: Build with cross (Linux)
-        if: matrix.use-cross
-        run: cross build --release --target ${{ matrix.target }}
-
-      - name: Native build (macOS/Windows)
-        if: ${{ !matrix.use-cross }}
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Package
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           mkdir -p release-artifacts
           staging="yek-${{ matrix.target }}"
           mkdir -p "$staging"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
-            7z a "release-artifacts/${{ matrix.asset_name }}" "$staging"
-          else
-            cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
-            tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
-          fi
+          cp "${{ steps.build.outputs.binary_path }}" "$staging/"
+          tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
           # Verify the artifact exists and has size > 0
-          if [[ ! -f "release-artifacts/${{ matrix.asset_name }}" ]]; then
+          if [ ! -f "release-artifacts/${{ matrix.asset_name }}" ]; then
             echo "::error::Packaged artifact not found: release-artifacts/${{ matrix.asset_name }}"
             exit 1
           fi
-          if [[ ! -s "release-artifacts/${{ matrix.asset_name }}" ]]; then
+          if [ ! -s "release-artifacts/${{ matrix.asset_name }}" ]; then
             echo "::error::Packaged artifact is empty: release-artifacts/${{ matrix.asset_name }}"
             exit 1
           fi
           echo "Successfully packaged ${{ matrix.asset_name }}"
           ls -lh "release-artifacts/${{ matrix.asset_name }}"
 
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-artifacts
+          $staging = "yek-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $staging
+          Copy-Item "${{ steps.build.outputs.binary_path }}" -Destination $staging
+          7z a "release-artifacts\${{ matrix.asset_name }}" "$staging"
+          # Verify the artifact exists and has size > 0
+          if (-not (Test-Path "release-artifacts\${{ matrix.asset_name }}")) {
+            Write-Error "Packaged artifact not found: release-artifacts\${{ matrix.asset_name }}"
+            exit 1
+          }
+          $fileInfo = Get-Item "release-artifacts\${{ matrix.asset_name }}"
+          if ($fileInfo.Length -eq 0) {
+            Write-Error "Packaged artifact is empty: release-artifacts\${{ matrix.asset_name }}"
+            exit 1
+          }
+          Write-Host "Successfully packaged ${{ matrix.asset_name }}"
+          Get-Item "release-artifacts\${{ matrix.asset_name }}" | Select-Object Length,LastWriteTime
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.target }}-${{ matrix.asset_name }}
           path: release-artifacts/${{ matrix.asset_name }}
-          if-no-files-found: error
-
-  benchmark:
-    name: Benchmark / ${{ matrix.benchmark_group.name }}
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        benchmark_group:
-          - group: "SingleFile_ByteMode"
-            name: "Single File Byte Mode"
-          - group: "SingleFile_ByteMode_Large"
-            name: "Single File Byte Mode Large"
-          - group: "SingleFile_TokenMode_Large"
-            name: "Single File Token Mode Large"
-          - group: "MultipleFiles_Small"
-            name: "Multiple Files Small"
-          - group: "MultipleFiles_Medium"
-            name: "Multiple Files Medium"
-          - group: "MultipleFiles_Large"
-            name: "Multiple Files Large"
-          - group: "MultipleFiles_TokenMode"
-            name: "Multiple Files Token Mode"
-          - group: "CustomConfig"
-            name: "Custom Config"
-      fail-fast: false
-
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Build benchmarks on target branch
-        run: |
-          git fetch origin ${{ github.base_ref }}
-          git checkout ${{ github.base_ref }}
-          cargo bench --bench serialization --no-run
-
-      - name: Run benchmark on target branch
-        run: cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }} '${{ matrix.benchmark_group.group }}/'
-
-      - name: Build benchmarks on PR branch
-        run: |
-          git checkout ${{ github.head_ref }}
-          cargo bench --bench serialization --no-run
-
-      - name: Compare benchmarks
-        run: |
-          cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 '${{ matrix.benchmark_group.group }}/' > benchmark_results.md
-          echo "## Benchmark Results for ${{ matrix.benchmark_group.name }}" >> $GITHUB_STEP_SUMMARY
-          cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
-        with:
-          name: criterion-${{ matrix.benchmark_group.group }}-results
-          path: benchmark_results.md
           if-no-files-found: error
 
   release:

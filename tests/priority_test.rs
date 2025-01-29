@@ -163,7 +163,7 @@ mod priority_tests {
     #[test]
     fn test_get_recent_commit_times_no_git() {
         let dir = tempdir().unwrap();
-        let times = get_recent_commit_times_git2(dir.path());
+        let times = get_recent_commit_times_git2(dir.path(), 100);
         assert!(times.is_none());
     }
 
@@ -216,7 +216,7 @@ mod priority_tests {
             .output()
             .unwrap();
 
-        let times = get_recent_commit_times_git2(repo_path).unwrap();
+        let times = get_recent_commit_times_git2(repo_path, 100).unwrap();
         assert_eq!(times.len(), 2);
         assert!(times.contains_key("file1.txt"));
         assert!(times.contains_key("file2.txt"));
@@ -234,7 +234,7 @@ mod priority_tests {
             .output()
             .unwrap();
 
-        let times = get_recent_commit_times_git2(repo_path);
+        let times = get_recent_commit_times_git2(repo_path, 100);
         assert!(times.is_none(), "Expected no times for empty repo");
     }
 
@@ -254,7 +254,7 @@ mod priority_tests {
         fs::remove_dir_all(repo_path.join(".git")).unwrap();
         fs::create_dir(repo_path.join(".git")).unwrap(); // Create an empty directory
 
-        let times = get_recent_commit_times_git2(repo_path);
+        let times = get_recent_commit_times_git2(repo_path, 100);
         assert!(times.is_none(), "Expected no times on Git failure");
     }
 }

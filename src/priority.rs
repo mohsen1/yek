@@ -1,4 +1,4 @@
-use git2::Repository;
+use git2;
 use regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
@@ -61,7 +61,11 @@ pub fn compute_recentness_boost(
 /// Get the commit time of the most recent change to each file using git2.
 /// Returns a map from file path (relative to the repo root) → last commit Unix time.
 /// If Git or .git folder is missing, returns None instead of erroring.
-pub fn get_recent_commit_times_git2(repo_path: &Path) -> Option<HashMap<String, u64>> {
+/// Only considers up to `max_commits` most recent commits.
+pub fn get_recent_commit_times_git2(
+    repo_path: &Path,
+    max_commits: usize,
+) -> Option<HashMap<String, u64>> {
     // Walk up until you find a .git folder but not higher than the base of the given repo_path
     let mut current_path = repo_path.to_path_buf();
     while current_path.components().count() > 1 {
@@ -71,7 +75,7 @@ pub fn get_recent_commit_times_git2(repo_path: &Path) -> Option<HashMap<String, 
         current_path = current_path.parent()?.to_path_buf();
     }
 
-    let repo = match Repository::open(&current_path) {
+    let repo = match git2::Repository::open(&current_path) {
         Ok(repo) => repo,
         Err(_) => {
             debug!("Not a Git repository or unable to open: {:?}", current_path);
@@ -97,14 +101,15 @@ pub fn get_recent_commit_times_git2(repo_path: &Path) -> Option<HashMap<String, 
     revwalk.set_sorting(git2::Sort::TIME).ok()?;
 
     let mut commit_times = HashMap::new();
-    for oid in revwalk {
-        let oid = match oid {
+    for oid_result in revwalk.take(max_commits) {
+        let oid = match oid_result {
             Ok(oid) => oid,
             Err(e) => {
                 debug!("Error during revwalk iteration: {:?}", e);
                 continue;
             }
         };
+
         let commit = match repo.find_commit(oid) {
             Ok(commit) => commit,
             Err(e) => {
@@ -119,8 +124,8 @@ pub fn get_recent_commit_times_git2(repo_path: &Path) -> Option<HashMap<String, 
                 continue;
             }
         };
-        let time = commit.time().seconds() as u64;
 
+        let time = commit.time().seconds() as u64;
         tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
             if let Some(name) = entry.name() {
                 if entry.kind() == Some(git2::ObjectType::Blob) {
