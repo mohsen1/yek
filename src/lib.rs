@@ -45,7 +45,10 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
         .par_iter()
         .filter_map(|dir| {
             let repo_path = Path::new(dir);
-            priority::get_recent_commit_times_git2(repo_path, config.max_git_depth.try_into().unwrap_or(0))
+            priority::get_recent_commit_times_git2(
+                repo_path,
+                config.max_git_depth.try_into().unwrap_or(0),
+            )
         })
         .flatten()
         .collect::<HashMap<String, u64>>();
