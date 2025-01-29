@@ -1,11 +1,12 @@
 # `yek`
 
-A [fast](#performance) Rust based tool to read text-based files in a repository or directory, chunk them, and serialize them for LLM consumption. By default, the tool:
+A [fast](#performance) Rust based tool to serialize text-based files in a repository or directory for LLM consumption.[^1]
+
+By default:
 
 - Uses `.gitignore` rules to skip unwanted files.
-- Uses the Git history to infer what files are important.
+- Uses the Git history to infer what files are more important.
 - Infers additional ignore patterns (binary, large, etc.).
-- Splits content into chunks based on either approximate "token" count or byte size.
 - Automatically detects if output is being piped and streams content instead of writing to files.
 - Supports processing multiple directories in a single command.
 - Configurable via a `yek.yaml` file.
@@ -63,22 +64,19 @@ irm https://bodo.run/yek.ps1 | iex
 <!-- WINDOWS_INSTALLATION_END -->
 
 <details>
-<summary style="cursor: pointer;">or build from source</summary>
-
-1. [Install Rust](https://www.rust-lang.org/tools/install).
-2. Clone this repository.
-3. Run `make macos` or `make linux` to build for your platform (both run `cargo build --release`).
-4. Add to your PATH:
+<summary style="cursor: pointer;">Build from source</summary>
 
 ```bash
-export PATH=$(pwd)/target/release:$PATH
+git clone https://github.com/bodo-run/yek
+cd yek
+cargo install --path .
 ```
 
 </details>
 
 ## Usage
 
-`yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. It will serialize all files in the repository into chunks of 10MB by default. The file will be written to the temp directory and file path will be printed to the console.
+`yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. It will serialize all files in the repository and write them into a temporary file. The path to the file will be printed to the console.
 
 ### Examples
 
@@ -101,9 +99,7 @@ yek --max-size 128K --tokens src/
 ```
 
 > [!NOTE]
-> When multiple chunks are written, the last chunk will contain the highest-priority files.
-
-Cap the max size to 100KB and only process the `src` directory, writing to a specific directory:
+> Token counting is slower than byte counting. If you want to cap the size in bytes, use `--max-size` without specifying `--tokens`.
 
 ```bash
 yek --max-size 100KB --output-dir /tmp/yek src/
@@ -146,6 +142,8 @@ You can place a file called `yek.yaml` at your project root or pass a custom pat
 2. Define file priority rules for processing order
 3. Add additional binary file extensions to ignore (extends the built-in list)
 4. Configure Git-based priority boost
+5. Define output directory
+6. Define output template
 
 ### Example `yek.yaml`
 
@@ -160,7 +158,7 @@ ignore_patterns:
   - "__generated__/**"
 
 # Configure Git-based priority boost (optional)
-git_boost_max: 50  # Maximum score boost based on Git history (default: 100)
+git_boost_max: 50 # Maximum score boost based on Git history (default: 100)
 
 # Define priority rules for processing order
 # Higher scores are processed first
@@ -175,15 +173,22 @@ priority_rules:
 # Add additional binary file extensions to ignore
 # These extend the built-in list (.jpg, .png, .exe, etc.)
 binary_extensions:
-  - ".blend"  # Blender files
-  - ".fbx"    # 3D model files
-  - ".max"    # 3ds Max files
-  - ".psd"    # Photoshop files
+  - ".blend" # Blender files
+  - ".fbx" # 3D model files
+  - ".max" # 3ds Max files
+  - ".psd" # Photoshop files
+
+# Define output directory
+output_dir: /tmp/yek
+
+# Define output template.
+# FILE_PATH and FILE_CONTENT are expected to be present in the template.
+output_template: "{{{FILE_PATH}}}\n\nFILE_CONTENT"
 ```
 
 All configuration keys are optional. By default:
 
-- No extra ignore patterns
+- No extra ignore patterns, only the ones from `.gitignore` are used.
 - All files have equal priority (score: 1)
 - Git-based priority boost maximum is 100
 - Common binary file extensions are ignored (.jpg, .png, .exe, etc. - see source for full list)
@@ -214,6 +219,13 @@ Executed in   22.24 mins    fish           external
 
 See [proposed features](https://github.com/bodo-run/yek/issues?q=type:%22Feature%22). I am open to accepting new feature requests. Please write a detailed proposal to discuss new features.
 
+## Alternatives
+
+- [Repomix](https://github.com/yamadashy/repomix): A tool to serialize a repository into a single file in a similar way to `yek`.
+- [Aider](https://aider.chat): A full IDE like experience for coding using AI
+
 ## License
 
-MIT
+[MIT](LICENSE)
+
+[^1]: `yek` is not "blazingly" fast. It's just fast, as fast as your computer can be.
