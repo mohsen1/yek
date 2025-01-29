@@ -228,7 +228,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
 
   publish:
-    name: Publish
+    name: Publish to crates.io
     needs: [test, lint, build]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')

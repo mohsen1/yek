@@ -15,6 +15,7 @@ env:
 jobs:
   stress:
     name: Stress ${{ matrix.target }}
+    if: github.event_name == 'pull_request'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
