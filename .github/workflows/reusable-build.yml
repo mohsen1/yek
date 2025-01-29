@@ -1,10 +1,27 @@
-name: Bench
+name: Reusable Build
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
+    inputs:
+      run_command:
+        required: true
+        type: string
+        description: "Command to run after build"
+      timeout_minutes:
+        required: false
+        type: number
+        default: 5
+        description: "Timeout in minutes for the run command"
+      checkout_vscode:
+        required: false
+        type: boolean
+        default: false
+        description: "Whether to checkout VSCode repository"
+      upload_artifacts:
+        required: false
+        type: boolean
+        default: false
+        description: "Whether to upload artifacts"
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,11 +30,12 @@ env:
   PKG_CONFIG_ALLOW_CROSS: true
 
 jobs:
-  # Ensure various stress tests pass on all platforms
-  stress:
-    name: Stress
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           # Linux builds using cross
@@ -107,80 +125,23 @@ jobs:
         if: ${{ !matrix.use-cross }}
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Install yek
-        run: cargo install --path . --all-features
-
       - name: Checkout VSCode repository
+        if: inputs.checkout_vscode
         uses: actions/checkout@v4
         with:
           repository: microsoft/vscode
           path: vscode
           fetch-depth: 1
 
-      - name: Run yek
-        timeout-minutes: 1
-        run: cd vscode && yek
+      - name: Run command
+        shell: bash
+        timeout-minutes: ${{ inputs.timeout_minutes }}
+        run: ${{ inputs.run_command }}
 
-  benchmark:
-    name: Benchmark / ${{ matrix.benchmark_group.name }}
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        benchmark_group:
-          - group: "SingleFile_ByteMode"
-            name: "Single File Byte Mode"
-          - group: "SingleFile_ByteMode_Large"
-            name: "Single File Byte Mode Large"
-          - group: "SingleFile_TokenMode_Large"
-            name: "Single File Token Mode Large"
-          - group: "MultipleFiles_Small"
-            name: "Multiple Files Small"
-          - group: "MultipleFiles_Medium"
-            name: "Multiple Files Medium"
-          - group: "MultipleFiles_Large"
-            name: "Multiple Files Large"
-          - group: "MultipleFiles_TokenMode"
-            name: "Multiple Files Token Mode"
-          - group: "CustomConfig"
-            name: "Custom Config"
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Build benchmarks on target branch
-        run: |
-          git fetch origin ${{ github.base_ref }}
-          git checkout ${{ github.base_ref }}
-          cargo bench --bench serialization --no-run
-
-      - name: Run benchmark on target branch
-        run: cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }} '${{ matrix.benchmark_group.group }}/'
-
-      - name: Build benchmarks on PR branch
-        run: |
-          git checkout ${{ github.head_ref }}
-          cargo bench --bench serialization --no-run
-
-      - name: Compare benchmarks
-        run: |
-          cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 '${{ matrix.benchmark_group.group }}/' > benchmark_results.md
-          echo "## Benchmark Results for ${{ matrix.benchmark_group.name }}" >> $GITHUB_STEP_SUMMARY
-          cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload benchmark results
+      - name: Upload artifact
+        if: inputs.upload_artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: criterion-${{ matrix.benchmark_group.group }}-results
-          path: benchmark_results.md
+          name: build-${{ matrix.target }}-${{ matrix.asset_name }}
+          path: release-artifacts/${{ matrix.asset_name }}
           if-no-files-found: error
