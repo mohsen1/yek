@@ -119,19 +119,15 @@ jobs:
         with:
           upload_artifacts: "false"
 
-      - name: Package binary
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           mkdir -p release-artifacts
           staging="yek-${{ matrix.target }}"
           mkdir -p "$staging"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp "${{ steps.build.outputs.binary_path }}" "$staging/"
-            7z a "release-artifacts/${{ matrix.asset_name }}" "$staging"
-          else
-            cp "${{ steps.build.outputs.binary_path }}" "$staging/"
-            tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
-          fi
+          cp "${{ steps.build.outputs.binary_path }}" "$staging/"
+          tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
           # Verify the artifact exists and has size > 0
           if [ ! -f "release-artifacts/${{ matrix.asset_name }}" ]; then
             echo "::error::Packaged artifact not found: release-artifacts/${{ matrix.asset_name }}"
@@ -143,6 +139,28 @@ jobs:
           fi
           echo "Successfully packaged ${{ matrix.asset_name }}"
           ls -lh "release-artifacts/${{ matrix.asset_name }}"
+
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-artifacts
+          $staging = "yek-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $staging
+          Copy-Item "${{ steps.build.outputs.binary_path }}" -Destination $staging
+          7z a "release-artifacts\${{ matrix.asset_name }}" "$staging"
+          # Verify the artifact exists and has size > 0
+          if (-not (Test-Path "release-artifacts\${{ matrix.asset_name }}")) {
+            Write-Error "Packaged artifact not found: release-artifacts\${{ matrix.asset_name }}"
+            exit 1
+          }
+          $fileInfo = Get-Item "release-artifacts\${{ matrix.asset_name }}"
+          if ($fileInfo.Length -eq 0) {
+            Write-Error "Packaged artifact is empty: release-artifacts\${{ matrix.asset_name }}"
+            exit 1
+          }
+          Write-Host "Successfully packaged ${{ matrix.asset_name }}"
+          Get-Item "release-artifacts\${{ matrix.asset_name }}" | Select-Object Length,LastWriteTime
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

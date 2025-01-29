@@ -66,8 +66,14 @@ jobs:
         with:
           upload_artifacts: "false"
 
-      - name: Install yek
+      - name: Install yek (Unix)
+        if: runner.os != 'Windows'
         shell: bash
+        run: cargo install --path .
+
+      - name: Install yek (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: cargo install --path .
 
       - name: Checkout VSCode repository
@@ -77,12 +83,19 @@ jobs:
           path: vscode
           fetch-depth: 1
 
-      - name: Run yek
+      - name: Run yek (Unix)
+        if: runner.os != 'Windows'
         shell: bash
-        # This should be fast!
         timeout-minutes: 1
-        working-directory: vscode
-        run: yek
+        run: cd vscode && yek
+
+      - name: Run yek (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 1
+        run: |
+          Set-Location vscode
+          yek
 
   benchmark:
     name: Benchmark / ${{ matrix.benchmark_group.name }}
