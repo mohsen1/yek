@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug yek",
+      "cargo": {
+        "args": ["build", "--bin=yek", "--package=yek"],
+        "filter": {
+          "name": "yek",
+          "kind": "bin"
+        }
+      },
+      "args": ["--debug"],
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "internalConsoleOptions": "openOnSessionStart",
+      "sourceLanguages": ["rust"],
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug tests",
+      "cargo": {
+        "args": ["test", "--no-run", "--bin=yek", "--package=yek"],
+        "filter": {
+          "name": "yek",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "internalConsoleOptions": "openOnSessionStart",
+      "sourceLanguages": ["rust"],
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
+    }
+  ]
+}
