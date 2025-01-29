@@ -1,16 +1,17 @@
-use crate::{get_file_priority, glob_to_regex, is_text_file, normalize_path, Result, YekConfig};
-use crossbeam::channel::bounded;
-use ignore::{WalkBuilder, WalkState};
-use regex::Regex;
+use crate::{config::FullYekConfig, priority::get_file_priority, Result};
+use content_inspector::{inspect, ContentType};
+use ignore::gitignore::GitignoreBuilder;
+use path_slash::PathBufExt;
+use rayon::prelude::*;
 use std::{
-    collections::HashSet,
+    collections::HashMap,
+    fs,
     path::Path,
-    sync::{Arc, Mutex},
-    thread,
+    sync::{mpsc, Arc},
 };
 use tracing::debug;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProcessedFile {
     pub priority: i32,
     pub file_index: usize,
@@ -18,142 +19,149 @@ pub struct ProcessedFile {
     pub content: String,
 }
 
-pub fn process_files_parallel(base_dir: &Path, config: &YekConfig) -> Result<Vec<ProcessedFile>> {
-    let (tx, rx) = bounded(1024);
-    let num_threads = num_cpus::get().min(16); // Cap at 16 threads
+/// Walk files in parallel, skipping ignored paths, then read each file's contents
+/// in a separate thread. Return the resulting `ProcessedFile` objects.
+pub fn process_files_parallel(
+    base_dir: &Path,
+    config: &FullYekConfig,
+    boost_map: &HashMap<String, i32>,
+) -> Result<Vec<ProcessedFile>> {
+    let mut walk_builder = ignore::WalkBuilder::new(base_dir);
 
-    let config = Arc::new(config.clone());
-    let base_dir = Arc::new(base_dir.to_path_buf());
-    let processed_files = Arc::new(Mutex::new(HashSet::new()));
+    // Standard filters + no follow symlinks
+    walk_builder
+        .follow_links(false)
+        .standard_filters(true)
+        .require_git(false);
 
-    // Spawn worker threads
-    let mut handles = Vec::new();
-    for _ in 0..num_threads {
-        let tx = tx.clone();
-        let config = Arc::clone(&config);
-        let base_dir = Arc::clone(&base_dir);
-        let processed_files = Arc::clone(&processed_files);
+    // Build the gitignore
+    let mut gitignore_builder = GitignoreBuilder::new(base_dir);
+    // Add our custom patterns first
+    for pattern in &config.ignore_patterns {
+        gitignore_builder.add_line(None, pattern)?;
+    }
 
-        let handle = thread::spawn(move || -> Result<()> {
-            let file_index = Arc::new(Mutex::new(0_usize));
+    // If there is a .gitignore in this folder, add it last so its "!" lines override prior patterns
+    let gitignore_file = base_dir.join(".gitignore");
+    if gitignore_file.exists() {
+        gitignore_builder.add(&gitignore_file);
+    }
 
-            // Configure walker for this thread
-            let mut builder = WalkBuilder::new(&*base_dir);
-            builder
-                .hidden(true)
-                .git_ignore(true)
-                .follow_links(false)
-                .standard_filters(true)
-                .require_git(false)
-                .threads(1); // Single thread per walker
+    let gitignore = Arc::new(gitignore_builder.build()?);
 
-            let walker = builder.build_parallel();
+    // This channel will carry (path, rel_path) to the processing thread
+    let (processed_files_tx, processed_files_rx) = mpsc::channel::<(std::path::PathBuf, String)>();
 
-            let file_index = Arc::clone(&file_index);
-            walker.run(|| {
-                let tx = tx.clone();
-                let config = Arc::clone(&config);
-                let base_dir = Arc::clone(&base_dir);
-                let file_index = Arc::clone(&file_index);
-                let processed_files = Arc::clone(&processed_files);
-
-                Box::new(move |entry| {
-                    let entry = match entry {
-                        Ok(e) => e,
-                        Err(_) => return WalkState::Continue,
-                    };
-
-                    if !entry.file_type().is_some_and(|ft| ft.is_file()) {
-                        return WalkState::Continue;
-                    }
-
-                    let path = entry.path().to_path_buf();
-                    let rel_path = normalize_path(&path, &base_dir);
-
-                    // Check if file has already been processed
-                    {
-                        let mut processed = processed_files.lock().unwrap();
-                        if !processed.insert(rel_path.clone()) {
-                            // File was already processed
-                            return WalkState::Continue;
+    // Processing happens on a dedicated thread, to keep from blocking the main walker
+    let process_thread = std::thread::spawn({
+        let priority_rules = config.priority_rules.clone();
+        let boost_map = boost_map.clone();
+        move || {
+            let mut processed = Vec::new();
+            for (path, rel_path) in processed_files_rx {
+                // Read entire file
+                match fs::read(&path) {
+                    Ok(content) => {
+                        // Check if it's binary quickly
+                        if inspect(&content) == ContentType::BINARY {
+                            debug!("Skipping binary file: {rel_path}");
+                            continue;
                         }
-                    }
-
-                    // Skip files matching ignore patterns from yek.toml
-                    if config.ignore_patterns.iter().any(|p| {
-                        let pattern = if p.starts_with('^') || p.ends_with('$') {
-                            p.to_string()
-                        } else {
-                            glob_to_regex(p)
-                        };
-                        if let Ok(re) = Regex::new(&pattern) {
-                            re.is_match(&rel_path)
-                        } else {
-                            false
-                        }
-                    }) {
-                        debug!("Skipping {} - matched ignore pattern", rel_path);
-                        return WalkState::Continue;
-                    }
-
-                    // Skip binary files unless explicitly allowed
-                    match is_text_file(&path, &config.binary_extensions) {
-                        Ok(is_text) if !is_text => {
-                            debug!("Skipping binary file: {}", rel_path);
-                            return WalkState::Continue;
-                        }
-                        Err(_) => return WalkState::Continue,
-                        _ => {}
-                    }
-
-                    // Read and process file
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        let priority = get_file_priority(&rel_path, &config.priority_rules);
-
-                        let mut index = file_index.lock().unwrap();
-                        let processed = ProcessedFile {
-                            priority,
-                            file_index: *index,
+                        // Compute priority
+                        let rule_priority = get_file_priority(&rel_path, &priority_rules);
+                        let boost = boost_map.get(&rel_path).copied().unwrap_or(0);
+                        let combined = rule_priority + boost;
+                        processed.push(ProcessedFile {
+                            priority: combined,
+                            file_index: 0, // assigned later
                             rel_path,
-                            content,
-                        };
-
-                        if tx.send(processed).is_ok() {
-                            *index += 1;
-                        }
+                            content: String::from_utf8_lossy(&content).to_string(),
+                        });
                     }
+                    Err(e) => {
+                        debug!("Failed to read {rel_path}: {e}");
+                        // Just skip
+                    }
+                }
+            }
+            processed
+        }
+    });
 
-                    WalkState::Continue
-                })
-            });
+    // Use ignore's parallel walker to skip ignored files
+    let base_cloned = base_dir.to_owned();
+    let walker_tx = processed_files_tx.clone();
 
-            Ok(())
-        });
-        handles.push(handle);
+    // Now build the walker (no .gitignore custom filename)
+    walk_builder.build_parallel().run(move || {
+        let base_dir = base_cloned.clone();
+        let processed_files_tx = walker_tx.clone();
+        let gitignore = Arc::clone(&gitignore);
+
+        Box::new(move |entry| {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => return ignore::WalkState::Continue,
+            };
+            // Only process files
+            if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+                return ignore::WalkState::Continue;
+            }
+
+            let path = entry.path().to_path_buf();
+            let rel_path = normalize_path(&path, &base_dir);
+
+            // If gitignore says skip, we do not even read
+            if gitignore.matched(&path, false).is_ignore() {
+                debug!("Skipping ignored file: {rel_path}");
+                return ignore::WalkState::Continue;
+            }
+
+            // Otherwise we send to processing thread
+            processed_files_tx.send((path, rel_path)).ok();
+            ignore::WalkState::Continue
+        })
+    });
+
+    // Drop the sender so the thread can end
+    drop(processed_files_tx);
+
+    // Join the processing thread
+    let mut processed_files = process_thread.join().unwrap();
+
+    // Now assign file_index within each priority group
+    let mut counters = HashMap::new();
+    for f in &mut processed_files {
+        let ctr = counters.entry(f.priority).or_insert(0);
+        f.file_index = *ctr;
+        *ctr += 1;
     }
 
-    // Drop original sender
-    drop(tx);
-
-    // Collect results
-    let mut results = Vec::new();
-    while let Ok(processed) = rx.recv() {
-        results.push(processed);
+    if config.debug {
+        debug!(
+            "Processed {} files in parallel for base_dir: {}",
+            processed_files.len(),
+            base_dir.display()
+        );
     }
 
-    // Wait for all threads
-    for handle in handles {
-        handle.join().unwrap()?;
-    }
-
-    debug!("Processed {} files in parallel", results.len());
-
-    // Sort by priority (ascending) and file index (ascending)
-    results.sort_by(|a, b| {
+    // Sort by priority desc, then file_index
+    processed_files.par_sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
+            .reverse()
             .then_with(|| a.file_index.cmp(&b.file_index))
     });
 
-    Ok(results)
+    Ok(processed_files)
+}
+
+/// Create a relative, slash-normalized path
+pub fn normalize_path(path: &Path, base: &Path) -> String {
+    path.strip_prefix(base)
+        .unwrap_or(path)
+        .to_path_buf()
+        .to_slash()
+        .unwrap_or_default()
+        .to_string()
 }
