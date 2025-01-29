@@ -30,8 +30,16 @@ runs:
         sudo apt-get install -y musl-tools musl-dev
         # For aarch64 target
         if [[ "${{ matrix.target }}" == "aarch64"* ]]; then
-          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
-          sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 /lib/ld-linux-aarch64.so.1 || true
+          # Install musl cross-compiler
+          sudo apt-get install -y musl-dev musl-tools
+          git clone https://github.com/richfelker/musl-cross-make.git
+          cd musl-cross-make
+          echo "TARGET = aarch64-linux-musl" > config.mak
+          echo "OUTPUT = /usr/local" >> config.mak
+          make -j$(nproc)
+          sudo make install
+          cd ..
+          rm -rf musl-cross-make
         fi
 
     - name: Install OpenSSL (macOS)
@@ -77,10 +85,22 @@ runs:
       run: |
         # Set CC and other flags for musl builds
         if [[ "${{ matrix.target }}" == "aarch64"* ]]; then
-          export CC=aarch64-linux-gnu-gcc
-          export RUSTFLAGS="-C linker=aarch64-linux-gnu-gcc"
+          export CC=aarch64-linux-musl-gcc
+          export AR=aarch64-linux-musl-ar
+          export RUSTFLAGS="-C linker=aarch64-linux-musl-gcc"
           export PKG_CONFIG_ALLOW_CROSS=1
           export OPENSSL_STATIC=1
+          # Configure pkg-config for cross-compilation
+          export PKG_CONFIG_SYSROOT_DIR=/usr/local/aarch64-linux-musl
+          export PKG_CONFIG_PATH=/usr/local/aarch64-linux-musl/lib/pkgconfig
+          # Build OpenSSL statically for aarch64-musl
+          git clone https://github.com/openssl/openssl.git
+          cd openssl
+          ./Configure linux-aarch64 --prefix=/usr/local/aarch64-linux-musl no-shared
+          make -j$(nproc)
+          sudo make install
+          cd ..
+          rm -rf openssl
         else
           export CC=musl-gcc
         fi
