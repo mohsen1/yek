@@ -128,7 +128,13 @@ mod e2e_tests {
 
         // Ensure at least one output file exists inside the directory
         let output_files = fs::read_dir(&output_dir)?
-            .filter_map(|e| e.ok())
+            .filter_map(|e| match e {
+                Ok(entry) => Some(entry),
+                Err(err) => {
+                    eprintln!("Warning: Failed to read directory entry: {}", err);
+                    None
+                }
+            })
             .collect::<Vec<_>>();
 
         assert!(

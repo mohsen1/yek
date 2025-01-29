@@ -45,20 +45,20 @@ fn main() -> Result<()> {
         }
     } else {
         // Not streaming => run repo serialization & checksum in parallel
-        let (serialization_res, checksum) = join(
+        let (serialization_res, checksum_res) = join(
             || serialize_repo(&full_config),
             || YekConfig::get_checksum(&full_config.input_dirs),
         );
 
-        // Unpack results:
-        let (output, files) = serialization_res?;
+        // Handle both results
+        let (output_string, files) = serialization_res?;
+        let checksum = checksum_res;
 
         // Now set the final output file with the computed checksum
         let extension = if full_config.json { "json" } else { "txt" };
-        let output_dir = full_config
-            .output_dir
-            .as_ref()
-            .expect("output_dir must exist if not streaming");
+        let output_dir = full_config.output_dir.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Output directory is required when not in streaming mode. This may indicate a configuration validation error.")
+        })?;
 
         let final_path = Path::new(output_dir)
             .join(format!("yek-output-{}.{}", checksum, extension))
@@ -68,15 +68,15 @@ fn main() -> Result<()> {
 
         // If debug, show stats
         if full_config.debug {
-            let size = ByteSize::b(output.len() as u64);
+            let size = ByteSize::b(output_string.len() as u64);
             debug!("{} files processed", files.len());
             debug!("{} generated", size);
-            debug!("{} lines generated", output.lines().count());
+            debug!("{} lines generated", output_string.lines().count());
         }
 
         // Actually write the final output file.
         // We'll do it right here (instead of inside `serialize_repo`) to ensure we use our new final_path:
-        std::fs::write(&final_path, output.as_bytes())?;
+        std::fs::write(&final_path, output_string.as_bytes())?;
 
         // Print path to stdout (like original code did)
         println!("{}", final_path);

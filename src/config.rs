@@ -168,7 +168,11 @@ impl YekConfig {
             .map(|s| s.to_string())
             .collect::<Vec<_>>();
         merged_bins.append(&mut cfg.binary_extensions);
-        cfg.binary_extensions = merged_bins;
+        cfg.binary_extensions = merged_bins
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
 
         // Always start with default ignore patterns, then add user's:
         let mut ignore = DEFAULT_IGNORE_PATTERNS
@@ -184,8 +188,12 @@ impl YekConfig {
 
         // Handle output directory setup
         if !cfg.stream {
-            if let Ok(dir) = cfg.ensure_output_dir() {
-                cfg.output_dir = Some(dir);
+            match cfg.ensure_output_dir() {
+                Ok(dir) => cfg.output_dir = Some(dir),
+                Err(e) => {
+                    eprintln!("Warning: Failed to create output directory: {}", e);
+                    cfg.stream = true; // Fall back to streaming mode
+                }
             }
         }
 

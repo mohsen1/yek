@@ -78,30 +78,29 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     });
 
     // Build the final output string
-    let output_string = concat_files(files.clone(), config);
+    let output_string = concat_files(&files, config)?;
 
     Ok((output_string, files))
 }
 
-fn concat_files(files: Vec<ProcessedFile>, config: &YekConfig) -> String {
+fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Result<String> {
     if config.json {
         // JSON array of objects
-        serde_json::to_string_pretty(
+        Ok(serde_json::to_string_pretty(
             &files
-                .into_iter()
+                .iter()
                 .map(|f| {
                     serde_json::json!({
-                        "filename": f.rel_path,
-                        "content": f.content,
+                        "filename": &f.rel_path,
+                        "content": &f.content,
                     })
                 })
                 .collect::<Vec<_>>(),
-        )
-        .unwrap()
+        )?)
     } else {
         // Use the user-defined template
-        files
-            .into_iter()
+        Ok(files
+            .iter()
             .map(|f| {
                 config
                     .output_template
@@ -111,6 +110,6 @@ fn concat_files(files: Vec<ProcessedFile>, config: &YekConfig) -> String {
                     .replace("\\\n", "\n")
             })
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n"))
     }
 }
