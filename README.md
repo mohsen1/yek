@@ -8,7 +8,7 @@ A [fast](#performance) Rust based tool to read text-based files in a repository 
 - Splits content into chunks based on either approximate "token" count or byte size.
 - Automatically detects if output is being piped and streams content instead of writing to files.
 - Supports processing multiple directories in a single command.
-- Configurable via a `yek.toml` file.
+- Configurable via a `yek.yaml` file.
 
 Yek <a href="https://fa.wikipedia.org/wiki/۱">يک</a> means "One" in Farsi/Persian.
 
@@ -119,69 +119,68 @@ yek src/ tests/
 
 ```bash
 yek --help
-
-Repository content chunker and serializer for LLM consumption
-
-Usage: yek [OPTIONS] [directories]...
+Usage: yek [OPTIONS] [input-dirs]...
 
 Arguments:
-  [directories]...  Directories to process [default: .]
+  [input-dirs]...
 
 Options:
-      --max-size <max-size>      Maximum size per chunk (e.g. '10MB', '128KB', '1GB') [default: 10MB]
-      --tokens                   Count size in tokens instead of bytes
-      --debug                    Enable debug output
-      --output-dir <output-dir>  Output directory for chunks
-  -h, --help                     Print help
-  -V, --version                  Print version
+      --no-config
+      --config-file <CONFIG_FILE>
+      --max-size <MAX_SIZE>                       [default: 10MB]
+      --tokens <TOKENS>
+      --json
+      --debug
+      --output-dir [<OUTPUT_DIR>]
+      --output-template <OUTPUT_TEMPLATE>         [default: ">>>> FILE_PATH\nFILE_CONTENT"]
+      --ignore-patterns <IGNORE_PATTERNS>...
+      --unignore-patterns <UNIGNORE_PATTERNS>...
+  -h, --help                                      Print help
 ```
 
 ## Configuration File
 
-You can place a file called `yek.toml` at your project root or pass a custom path via `--config`. The configuration file allows you to:
+You can place a file called `yek.yaml` at your project root or pass a custom path via `--config`. The configuration file allows you to:
 
 1. Add custom ignore patterns
 2. Define file priority rules for processing order
 3. Add additional binary file extensions to ignore (extends the built-in list)
 4. Configure Git-based priority boost
 
-### Example `yek.toml`
+### Example `yek.yaml`
 
-This is optional, you can configure the `yek.toml` file at the root of your project.
+You can also use `yek.toml` or `yek.json` instead of `yek.yaml`.
 
-```toml
+This is optional, you can configure the `yek.yaml` file at the root of your project.
+
+```yaml
 # Add patterns to ignore (in addition to .gitignore)
-ignore_patterns = [
-  "node_modules/",
-  "\\.next/",
-  "my_custom_folder/"
-]
+# Add patterns to ignore (in addition to .gitignore)
+ignore_patterns:
+  - "node_modules/"
+  - "\.next/"
+  - "my_custom_folder/"
 
 # Configure Git-based priority boost (optional)
-git_boost_max = 50  # Maximum score boost based on Git history (default: 100)
+git_boost_max: 50  # Maximum score boost based on Git history (default: 100)
 
 # Define priority rules for processing order
 # Higher scores are processed first
-[[priority_rules]]
-score = 100
-pattern = "^src/lib/"
-
-[[priority_rules]]
-score = 90
-pattern = "^src/"
-
-[[priority_rules]]
-score = 80
-pattern = "^docs/"
+priority_rules:
+  - score: 100
+    pattern: "^src/lib/"
+  - score: 90
+    pattern: "^src/"
+  - score: 80
+    pattern: "^docs/"
 
 # Add additional binary file extensions to ignore
 # These extend the built-in list (.jpg, .png, .exe, etc.)
-binary_extensions = [
-  ".blend",  # Blender files
-  ".fbx",    # 3D model files
-  ".max",    # 3ds Max files
-  ".psd",    # Photoshop files
-]
+binary_extensions:
+  - ".blend"  # Blender files
+  - ".fbx"    # 3D model files
+  - ".max"    # 3ds Max files
+  - ".psd"    # Photoshop files
 ```
 
 All configuration keys are optional. By default:
