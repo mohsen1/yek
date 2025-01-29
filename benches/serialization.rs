@@ -46,19 +46,29 @@ fn create_multiple_token_files(dir: &Path, tokens: &[usize], prefix: &str) {
 
 fn bench_single_small_file(c: &mut Criterion) {
     let mut group = c.benchmark_group("SingleFile_ByteMode");
+    group.measurement_time(Duration::from_secs(10));
+    group.sample_size(10);
     let temp_dir = TempDir::new().unwrap();
     create_test_data_bytes(temp_dir.path(), 10 * 1024, "small_file.txt"); // 10 KB
 
     group.throughput(Throughput::Bytes((10 * 1024) as u64));
     group.bench_function("single_small_file", |b| {
-        b.iter(|| {
-            let config = FullYekConfig::extend_config_with_defaults(
-                vec![temp_dir.path().to_string_lossy().to_string()],
-                temp_dir.path().to_string_lossy().to_string(),
-            );
-
-            serialize_repo(&config).unwrap();
-        });
+        b.iter_batched(
+            || {
+                let output_dir = temp_dir.path().join("output");
+                fs::create_dir_all(&output_dir).unwrap();
+                output_dir
+            },
+            |output_dir| {
+                let config = FullYekConfig::extend_config_with_defaults(
+                    vec![temp_dir.path().to_string_lossy().to_string()],
+                    output_dir.to_string_lossy().to_string(),
+                );
+                serialize_repo(&config).unwrap();
+                fs::remove_dir_all(&output_dir).ok();
+            },
+            BatchSize::SmallInput,
+        );
     });
     group.finish();
 }
