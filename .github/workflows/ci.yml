@@ -150,25 +150,38 @@ jobs:
       - name: Package
         shell: bash
         run: |
+          mkdir -p release-artifacts
           staging="yek-${{ matrix.target }}"
           mkdir -p "$staging"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
-            7z a "${{ matrix.asset_name }}" "$staging"
+            7z a "release-artifacts/${{ matrix.asset_name }}" "$staging"
           else
             cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
-            tar czf "${{ matrix.asset_name }}" "$staging"
+            tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
           fi
+          # Verify the artifact exists and has size > 0
+          if [[ ! -f "release-artifacts/${{ matrix.asset_name }}" ]]; then
+            echo "::error::Packaged artifact not found: release-artifacts/${{ matrix.asset_name }}"
+            exit 1
+          fi
+          if [[ ! -s "release-artifacts/${{ matrix.asset_name }}" ]]; then
+            echo "::error::Packaged artifact is empty: release-artifacts/${{ matrix.asset_name }}"
+            exit 1
+          fi
+          echo "Successfully packaged ${{ matrix.asset_name }}"
+          ls -lh "release-artifacts/${{ matrix.asset_name }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
-          path: ${{ matrix.asset_name }}
+          name: build-${{ matrix.target }}-${{ matrix.asset_name }}
+          path: release-artifacts/${{ matrix.asset_name }}
+          if-no-files-found: error
 
   benchmark:
     name: Benchmark / ${{ matrix.benchmark_group.name }}
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.release)
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -226,10 +239,8 @@ jobs:
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
-          name: criterion-${{ matrix.benchmark_group }}-results
-          path: |
-            target/criterion/${{ matrix.benchmark_group }}/
-            benchmark_results.md
+          name: criterion-${{ matrix.benchmark_group.group }}-results
+          path: benchmark_results.md
           if-no-files-found: error
 
   release:
@@ -239,14 +250,55 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || ${{ inputs.release }}
     steps:
       - uses: actions/checkout@v4
+
+      # Download all artifacts to a single directory
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
-          merge-multiple: true
+          path: dist
+
+      - name: Prepare release files
+        shell: bash
+        run: |
+          echo "Release artifacts:"
+          # Move all artifacts to a flat directory structure and rename them
+          mkdir -p dist/flat
+          for file in dist/build-*/yek-*; do
+            # Extract just the final part of the filename (yek-*.tar.gz or yek-*.zip)
+            filename=$(basename "$file")
+            cp "$file" "dist/flat/$filename"
+          done
+
+          # List what we found
+          echo "Found artifacts:"
+          ls -lh dist/flat/
+
+          # Verify we have all expected artifacts
+          expected_count=8  # Total number of builds in matrix
+          actual_count=$(find dist/flat -type f -name "yek-*" | wc -l)
+
+          if [[ "$actual_count" -ne "$expected_count" ]]; then
+            echo "::error::Expected $expected_count artifacts but found $actual_count"
+            echo "Contents of dist directory:"
+            find dist -type f
+            exit 1
+          fi
+
+          echo "Found all $expected_count expected artifacts"
+
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@v2
+        id: git-cliff
+        with:
+          config: cliff.toml
+          args: --current --strip header
+        env:
+          OUTPUT: CHANGES.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/yek-*
+          files: dist/flat/yek-*
+          body_path: CHANGES.md
 
   publish:
     name: Publish
