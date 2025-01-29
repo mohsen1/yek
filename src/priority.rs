@@ -1,8 +1,6 @@
 use git2::Repository;
-use std::{collections::HashMap, path::Path};
-
-use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, path::Path};
 use tracing::debug;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,11 +15,7 @@ pub fn get_file_priority(path: &str, rules: &[PriorityRule]) -> i32 {
     rules
         .iter()
         .filter_map(|rule| {
-            let re = match Regex::new(&rule.pattern) {
-                Ok(re) => re,
-                Err(_) => return None,
-            };
-            if re.is_match(path) {
+            if glob::Pattern::new(&rule.pattern).unwrap().matches(path) {
                 Some(rule.score)
             } else {
                 None

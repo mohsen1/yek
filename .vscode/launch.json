@@ -12,7 +12,7 @@
           "kind": "bin"
         }
       },
-      "args": ["--debug", "src"],
+      "args": ["--debug"],
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
       "internalConsoleOptions": "openOnSessionStart",

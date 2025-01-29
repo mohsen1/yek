@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bytesize::ByteSize;
 use tracing::{debug, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::fmt;
 use yek::{config::YekConfig, serialize_repo};
 
 fn main() -> Result<()> {
@@ -9,7 +9,7 @@ fn main() -> Result<()> {
     let full_config = YekConfig::init_config();
 
     // Initialize tracing based on debug flag
-    FmtSubscriber::builder()
+    fmt::Subscriber::builder()
         .with_max_level(if full_config.debug {
             Level::DEBUG
         } else {
@@ -21,6 +21,7 @@ fn main() -> Result<()> {
         .with_file(false)
         .with_line_number(false)
         .with_level(true)
+        .with_env_filter("yek=debug,ignore=off")
         .compact()
         .init();
 

@@ -1,9 +1,10 @@
 use crate::{config::FullYekConfig, priority::get_file_priority, Result};
 use content_inspector::{inspect, ContentType};
+use ignore::gitignore::GitignoreBuilder;
 use path_slash::PathBufExt;
 use rayon::prelude::*;
-use regex::Regex;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 use tracing::debug;
 
@@ -11,7 +12,6 @@ use tracing::debug;
 pub struct ProcessedFile {
     pub priority: i32,
     pub file_index: usize,
-    #[allow(unused)]
     pub rel_path: String,
     pub content: String,
 }
@@ -22,32 +22,30 @@ pub fn process_files_parallel(
     boost_map: &HashMap<String, i32>,
 ) -> Result<Vec<ProcessedFile>> {
     let mut walk_builder = ignore::WalkBuilder::new(base_dir);
+
     walk_builder
-        .hidden(true)
-        .git_ignore(true)
         .follow_links(false)
         .standard_filters(true)
         .require_git(false);
+
+    // First, build the gitignore rules
+    let mut gitignore_builder = GitignoreBuilder::new(base_dir);
+
+    for pattern in &config.ignore_patterns {
+        gitignore_builder.add(pattern);
+    }
+
+    walk_builder.add_custom_ignore_filename(".gitignore");
 
     let (processed_files_tx, processed_files_rx) = mpsc::channel::<(std::path::PathBuf, String)>();
 
     // Create a thread to process files as they are sent
     let process_thread = std::thread::spawn({
-        let ignore_patterns = config.ignore_patterns.clone();
         let priority_rules = config.priority_rules.clone();
-        let base_dir = base_dir.to_owned();
         let boost_map = boost_map.to_owned();
         move || {
             let mut processed_files = Vec::new();
             for (path, rel_path) in processed_files_rx {
-                let is_ignored = ignore_patterns
-                    .iter()
-                    .any(|p| Regex::new(p).map_or(false, |re| re.is_match(&rel_path)));
-                if is_ignored {
-                    debug!("Skipping {} - matched ignore pattern", rel_path);
-                    continue;
-                }
-
                 if let Ok(content) = fs::read(&path) {
                     if inspect(&content) == ContentType::BINARY {
                         debug!("Skipping binary file: {}", rel_path);
@@ -73,9 +71,11 @@ pub fn process_files_parallel(
     // Send files to the process thread as they are found
     let base_dir = base_dir.to_owned();
     let walker_tx = processed_files_tx.clone();
+    let gitignore = Arc::new(gitignore_builder.build()?);
     walk_builder.build_parallel().run(move || {
         let base_dir = base_dir.clone();
         let processed_files_tx = walker_tx.clone();
+        let gitignore = Arc::clone(&gitignore);
         Box::new(move |entry| {
             let entry = match entry {
                 Ok(entry) => entry,
@@ -87,6 +87,12 @@ pub fn process_files_parallel(
 
             let path = entry.path().to_path_buf();
             let rel_path = normalize_path(&path, &base_dir);
+
+            // Check gitignore patterns only
+            if gitignore.matched(&path, false).is_ignore() {
+                debug!("Skipping ignored file: {}", rel_path);
+                return ignore::WalkState::Continue;
+            }
 
             processed_files_tx.send((path, rel_path)).unwrap();
             ignore::WalkState::Continue
@@ -107,7 +113,9 @@ pub fn process_files_parallel(
         *counter += 1;
     }
 
-    debug!("Processed {} files in parallel", processed_files.len());
+    if config.debug {
+        debug!("Processed {} files in parallel", processed_files.len());
+    }
 
     processed_files.par_sort_by(|a, b| {
         a.priority

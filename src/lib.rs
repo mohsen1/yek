@@ -8,6 +8,7 @@ use std::iter::Iterator;
 use std::path::Path;
 
 pub mod config;
+pub mod defaults;
 mod parallel;
 pub mod priority;
 
@@ -45,7 +46,8 @@ pub fn serialize_repo(config: &FullYekConfig) -> Result<(String, Vec<ProcessedFi
         .collect::<HashMap<String, u64>>();
 
     // Compute a recentness boost for each file
-    let recentness_boost = compute_recentness_boost(&combined_commit_times, config.git_boost_max);
+    let recentness_boost =
+        compute_recentness_boost(&combined_commit_times, config.git_boost_max.unwrap_or(100));
 
     let output_string = config
         .input_dirs
@@ -67,16 +69,42 @@ pub fn serialize_repo(config: &FullYekConfig) -> Result<(String, Vec<ProcessedFi
             .then_with(|| a.file_index.cmp(&b.file_index))
     });
 
-    let output_string = files
-        .clone()
-        .into_iter()
-        .map(|f| f.content)
-        .collect::<Vec<_>>()
-        .join("\n");
+    let output_string = concat_files(files.clone(), config);
 
     write_output(&output_string, config)?;
 
     Ok((output_string, files))
+}
+
+fn concat_files(files: Vec<ProcessedFile>, config: &FullYekConfig) -> String {
+    if config.json {
+        // output in [{"filename": "...", "content": "..."}, ...]
+        serde_json::to_string_pretty(
+            &files
+                .into_iter()
+                .map(|f| {
+                    serde_json::json!({
+                        "filename": f.rel_path,
+                        "content": f.content,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        )
+        .unwrap()
+    } else {
+        // use config.output_template to format the output
+        files
+            .into_iter()
+            .map(|f| {
+                config
+                    .output_template
+                    .replace("FILE_PATH", &f.rel_path)
+                    .replace("FILE_CONTENT", &f.content)
+                    .replace("\\n", "\n")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
 
 /// Write a single chunk either to stdout or file

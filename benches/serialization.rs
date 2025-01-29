@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
-use yek::{config::FullYekConfig, priority::PriorityRule, serialize_repo};
+use yek::{config::FullYekConfig, serialize_repo};
 
 /// Creates a text file of a specified size in bytes.
 fn create_test_data_bytes(dir: &Path, size: usize, file_name: &str) {
@@ -52,24 +52,11 @@ fn bench_single_small_file(c: &mut Criterion) {
     group.throughput(Throughput::Bytes((10 * 1024) as u64));
     group.bench_function("single_small_file", |b| {
         b.iter(|| {
-            let config = FullYekConfig {
-                input_dirs: vec![temp_dir.path().to_string_lossy().to_string()],
-                max_size: "10MB".to_string(),
-                tokens: String::new(),
-                debug: false,
-                output_dir: temp_dir.path().to_string_lossy().to_string(),
-                ignore_patterns: Vec::new(),
-                priority_rules: Vec::new(),
-                binary_extensions: Vec::new(),
-                stream: false,
-                token_mode: false,
-                output_file_full_path: temp_dir
-                    .path()
-                    .join("output.txt")
-                    .to_string_lossy()
-                    .to_string(),
-                git_boost_max: 100,
-            };
+            let config = FullYekConfig::extend_config_with_defaults(
+                vec![temp_dir.path().to_string_lossy().to_string()],
+                temp_dir.path().to_string_lossy().to_string(),
+            );
+
             serialize_repo(&config).unwrap();
         });
     });
@@ -88,20 +75,10 @@ fn single_large_file_byte_mode(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_function("single_large_file", |b| {
         b.iter(|| {
-            let config = FullYekConfig {
-                input_dirs: vec![temp_dir.path().to_string_lossy().to_string()],
-                max_size: "10MB".to_string(),
-                tokens: String::new(),
-                debug: false,
-                output_dir: output_dir.to_string_lossy().to_string(),
-                ignore_patterns: Vec::new(),
-                priority_rules: Vec::new(),
-                binary_extensions: Vec::new(),
-                stream: false,
-                token_mode: false,
-                output_file_full_path: output_dir.join("output.txt").to_string_lossy().to_string(),
-                git_boost_max: 100,
-            };
+            let config = FullYekConfig::extend_config_with_defaults(
+                vec![temp_dir.path().to_string_lossy().to_string()],
+                output_dir.to_string_lossy().to_string(),
+            );
             serialize_repo(&config).unwrap();
             fs::remove_dir_all(&output_dir).ok();
         });
@@ -121,20 +98,10 @@ fn single_large_file_token_mode(c: &mut Criterion) {
     group.throughput(Throughput::Elements(token_count as u64));
     group.bench_function("single_large_token_file", |b| {
         b.iter(|| {
-            let config = FullYekConfig {
-                input_dirs: vec![temp_dir.path().to_string_lossy().to_string()],
-                max_size: "200000".to_string(),
-                tokens: "200000".to_string(),
-                debug: false,
-                output_dir: output_dir.to_string_lossy().to_string(),
-                ignore_patterns: Vec::new(),
-                priority_rules: Vec::new(),
-                binary_extensions: Vec::new(),
-                stream: false,
-                token_mode: true,
-                output_file_full_path: output_dir.join("output.txt").to_string_lossy().to_string(),
-                git_boost_max: 100,
-            };
+            let config = FullYekConfig::extend_config_with_defaults(
+                vec![temp_dir.path().to_string_lossy().to_string()],
+                output_dir.to_string_lossy().to_string(),
+            );
             serialize_repo(&config).unwrap();
             fs::remove_dir_all(&output_dir).ok();
         });
@@ -155,23 +122,10 @@ fn multiple_small_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                let config = FullYekConfig {
-                    input_dirs: vec![temp_dir.path().to_string_lossy().to_string()],
-                    max_size: "10MB".to_string(),
-                    tokens: String::new(),
-                    debug: false,
-                    output_dir: output_dir.to_string_lossy().to_string(),
-                    ignore_patterns: Vec::new(),
-                    priority_rules: Vec::new(),
-                    binary_extensions: Vec::new(),
-                    stream: false,
-                    token_mode: false,
-                    output_file_full_path: output_dir
-                        .join("output.txt")
-                        .to_string_lossy()
-                        .to_string(),
-                    git_boost_max: 100,
-                };
+                let config = FullYekConfig::extend_config_with_defaults(
+                    vec![temp_dir.path().to_string_lossy().to_string()],
+                    output_dir.to_string_lossy().to_string(),
+                );
                 serialize_repo(&config).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
@@ -197,23 +151,10 @@ fn multiple_medium_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                let config = FullYekConfig {
-                    input_dirs: vec![temp_dir.path().to_string_lossy().to_string()],
-                    max_size: "10MB".to_string(),
-                    tokens: String::new(),
-                    debug: false,
-                    output_dir: output_dir.to_string_lossy().to_string(),
-                    ignore_patterns: Vec::new(),
-                    priority_rules: Vec::new(),
-                    binary_extensions: Vec::new(),
-                    stream: false,
-                    token_mode: false,
-                    output_file_full_path: output_dir
-                        .join("output.txt")
-                        .to_string_lossy()
-                        .to_string(),
-                    git_boost_max: 100,
-                };
+                let config = FullYekConfig::extend_config_with_defaults(
+                    vec![temp_dir.path().to_string_lossy().to_string()],
+                    output_dir.to_string_lossy().to_string(),
+                );
                 serialize_repo(&config).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
@@ -236,23 +177,10 @@ fn multiple_large_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                let config = FullYekConfig {
-                    input_dirs: vec![temp_dir.path().to_string_lossy().to_string()],
-                    max_size: "10MB".to_string(),
-                    tokens: String::new(),
-                    debug: false,
-                    output_dir: output_dir.to_string_lossy().to_string(),
-                    ignore_patterns: Vec::new(),
-                    priority_rules: Vec::new(),
-                    binary_extensions: Vec::new(),
-                    stream: false,
-                    token_mode: false,
-                    output_file_full_path: output_dir
-                        .join("output.txt")
-                        .to_string_lossy()
-                        .to_string(),
-                    git_boost_max: 100,
-                };
+                let config = FullYekConfig::extend_config_with_defaults(
+                    vec![temp_dir.path().to_string_lossy().to_string()],
+                    output_dir.to_string_lossy().to_string(),
+                );
                 serialize_repo(&config).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
@@ -275,23 +203,10 @@ fn multiple_token_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                let config = FullYekConfig {
-                    input_dirs: vec![temp_dir.path().to_string_lossy().to_string()],
-                    max_size: "10000".to_string(),
-                    tokens: "10000".to_string(),
-                    debug: false,
-                    output_dir: output_dir.to_string_lossy().to_string(),
-                    ignore_patterns: Vec::new(),
-                    priority_rules: Vec::new(),
-                    binary_extensions: Vec::new(),
-                    stream: false,
-                    token_mode: true,
-                    output_file_full_path: output_dir
-                        .join("output.txt")
-                        .to_string_lossy()
-                        .to_string(),
-                    git_boost_max: 100,
-                };
+                let config = FullYekConfig::extend_config_with_defaults(
+                    vec![temp_dir.path().to_string_lossy().to_string()],
+                    output_dir.to_string_lossy().to_string(),
+                );
                 serialize_repo(&config).unwrap();
                 fs::remove_dir_all(&output_dir).ok();
             },
@@ -304,23 +219,12 @@ fn multiple_token_files(c: &mut Criterion) {
 /// Demonstrates using a custom config (e.g. extra ignores or priority rules).
 fn custom_config_test(c: &mut Criterion) {
     let mut group = c.benchmark_group("CustomConfig");
-    let config_template = FullYekConfig {
-        input_dirs: Vec::new(),
-        max_size: "10MB".to_string(),
-        tokens: String::new(),
-        debug: false,
-        output_dir: String::new(),
-        ignore_patterns: vec!["*.txt".to_string()],
-        priority_rules: vec![PriorityRule {
-            pattern: "*.rs".to_string(),
-            score: 500,
-        }],
-        binary_extensions: Vec::new(),
-        stream: false,
-        token_mode: false,
-        output_file_full_path: String::new(),
-        git_boost_max: 100,
-    };
+    let temp_dir = TempDir::new().unwrap();
+    let output_dir = temp_dir.path().join("output");
+    let config_template = FullYekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        output_dir.to_string_lossy().to_string(),
+    );
 
     group.bench_function("custom_config_test", |b| {
         b.iter_batched(
@@ -332,9 +236,7 @@ fn custom_config_test(c: &mut Criterion) {
                 let output_dir = temp_dir.path().join("output");
                 let mut config = config_template.clone();
                 config.input_dirs = vec![temp_dir.path().to_string_lossy().to_string()];
-                config.output_dir = output_dir.to_string_lossy().to_string();
-                config.output_file_full_path =
-                    output_dir.join("output.txt").to_string_lossy().to_string();
+                config.output_dir = Some(output_dir.to_string_lossy().to_string());
                 (temp_dir, output_dir, config)
             },
             |(_temp_dir, output_dir, config)| {

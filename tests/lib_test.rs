@@ -18,23 +18,18 @@ mod lib_tests {
     }
 
     fn create_test_config(input_dirs: Vec<String>) -> FullYekConfig {
-        FullYekConfig {
+        let mut config = FullYekConfig::extend_config_with_defaults(
             input_dirs,
-            max_size: "10MB".to_string(),
-            tokens: "".to_string(),
-            debug: false,
-            output_dir: std::env::temp_dir().to_string_lossy().to_string(),
-            ignore_patterns: vec!["*.log".to_string()],
-            priority_rules: vec![PriorityRule {
-                pattern: "src/.*\\.rs".to_string(),
-                score: 100,
-            }],
-            binary_extensions: vec!["bin".to_string()],
-            stream: false,
-            token_mode: false,
-            output_file_full_path: "output.txt".to_string(),
-            git_boost_max: 100,
-        }
+            std::env::temp_dir().to_string_lossy().to_string(),
+        );
+        config.ignore_patterns = vec!["*.log".to_string()];
+        config.priority_rules = vec![PriorityRule {
+            pattern: "src/.*\\.rs".to_string(),
+            score: 100,
+        }];
+        config.binary_extensions = vec!["bin".to_string()];
+        config.output_template = ">>>> FILE_PATH\nFILE_CONTENT".to_string();
+        config
     }
 
     #[test]

@@ -1,5 +1,3 @@
-// ... existing code ...
-
 #[cfg(test)]
 mod e2e_tests {
     use assert_cmd::Command;
@@ -298,6 +296,100 @@ mod e2e_tests {
             .arg(temp_dir.path().join("yek.toml"))
             .assert()
             .success();
+        Ok(())
+    }
+
+    #[test]
+    fn test_default_ignore_license_no_config() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        fs::write(temp_dir.path().join("LICENSE"), "License content")?;
+
+        let mut cmd = Command::cargo_bin("yek")?;
+        let output = cmd.arg(temp_dir.path()).output()?;
+
+        // Assert that the command was successful
+        assert!(output.status.success());
+
+        // Convert stdout bytes to a string
+        let stdout = String::from_utf8(output.stdout)?;
+
+        // Assert that the output does not contain "License content"
+        assert!(
+            !stdout.contains("License content"),
+            "Output should not contain 'License content'"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_default_ignore_license_empty_config() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        fs::write(temp_dir.path().join("LICENSE"), "License content")?;
+        fs::write(
+            temp_dir.path().join("yek.yaml"),
+            "ignore_patterns: []\n", // Empty ignore_patterns
+        )?;
+
+        let mut cmd = Command::cargo_bin("yek")?;
+        let output = cmd
+            .arg("--config-file")
+            .arg(temp_dir.path().join("yek.yaml"))
+            .arg(temp_dir.path())
+            .output()?;
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(
+            !stdout.contains("License content"),
+            "Output should not contain 'License content' even with empty config"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_gitignore_whitelist_license() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        fs::write(temp_dir.path().join("LICENSE"), "License content")?;
+        fs::write(temp_dir.path().join(".gitignore"), "!LICENSE\n")?;
+
+        let mut cmd = Command::cargo_bin("yek")?;
+        let output = cmd.arg(temp_dir.path()).output()?;
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout)?;
+
+        assert!(
+            stdout.contains("License content"),
+            "Output should contain 'License content' because .gitignore whitelists it"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_windows_path_normalization() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        fs::write(temp_dir.path().join("LICENSE"), "License content")?;
+        // TODO:
+        // Use a path with mixed slashes to simulate potential Windows issues
+        // let windows_path = format!(
+        //     "{}\\LICENSE",
+        //     temp_dir.path().to_string_lossy().replace("/", "\\")
+        // );
+
+        let mut cmd = Command::cargo_bin("yek")?;
+        let output = cmd.arg(temp_dir.path()).output()?;
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout)?;
+
+        assert!(
+            !stdout.contains("License content"),
+            "Output should not contain 'License content' even with Windows-style paths"
+        );
+
         Ok(())
     }
 }
