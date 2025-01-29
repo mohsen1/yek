@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
-use tracing::debug;
 use std::{io::IsTerminal, path::Path, str::FromStr};
+use tracing::debug;
 
 use crate::{
     defaults::{BINARY_FILE_EXTENSIONS, DEFAULT_IGNORE_PATTERNS, DEFAULT_OUTPUT_TEMPLATE},
@@ -163,7 +163,7 @@ impl YekConfig {
         let (mut config, config_file_path, _) = YekConfig::parse_info();
 
         // if config.debug {
-            debug!("Config file path: {:?}", config_file_path);
+        debug!("Config file path: {:?}", config_file_path);
         // }
 
         // Compute values that are computed
@@ -186,7 +186,9 @@ impl YekConfig {
             .extend(DEFAULT_IGNORE_PATTERNS.iter().map(|s| s.to_string()));
 
         // Apply unignore patterns to ignore patterns
-        config.ignore_patterns.extend(config.unignore_patterns.iter().map(|s| 
+        config
+            .ignore_patterns
+            .extend(config.unignore_patterns.iter().map(|s| 
             // Change the glob to a negative glob by adding ! to the beginning
             format!("!{}", s)));
 
@@ -281,15 +283,36 @@ pub fn validate_config(config: &FullYekConfig) -> Result<()> {
     }
 
     // Validate output directory if specified
-    let output_dir = config.base.output_dir.as_ref()
+    let output_dir = config
+        .base
+        .output_dir
+        .as_ref()
         .ok_or_else(|| anyhow!("output_dir: Output directory must be specified"))?;
-    
+
     let path = Path::new(output_dir);
     if path.exists() && !path.is_dir() {
         return Err(anyhow!(
             "output_dir: Output path '{}' exists but is not a directory",
             output_dir
         ));
+    }
+
+    // Validate ignore patterns
+    for pattern in &config.base.ignore_patterns {
+        glob::Pattern::new(pattern)
+            .map_err(|e| anyhow!("ignore_patterns: Invalid pattern '{}': {}", pattern, e))?;
+    }
+
+    // Validate priority rules
+    for rule in &config.base.priority_rules {
+        if rule.score < 0 || rule.score > 1000 {
+            return Err(anyhow!(
+                "priority_rules: Priority score {} must be between 0 and 1000",
+                rule.score
+            ));
+        }
+        glob::Pattern::new(&rule.pattern)
+            .map_err(|e| anyhow!("priority_rules: Invalid pattern '{}': {}", rule.pattern, e))?;
     }
 
     if let Err(e) = std::fs::create_dir_all(path) {
