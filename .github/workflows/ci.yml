@@ -6,6 +6,13 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Release"
+        required: true
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -217,7 +224,7 @@ jobs:
           cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
 
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: criterion-${{ matrix.benchmark_group }}-results
           path: |
@@ -229,14 +236,17 @@ jobs:
     name: Release
     needs: [test, lint, build]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || ${{ inputs.release }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: "yek-*"
+          files: artifacts/yek-*
 
   publish:
     name: Publish
