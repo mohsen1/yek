@@ -5,30 +5,144 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.9] - 2025-01-29
+[0.13.9]: https://github.com/bodo-run/yek/compare/v0.13.8...v0.13.9
+### Bug Fixes
+
+- Clean up imports and remove duplicates
+- Add #[allow(dead_code)] to is_effectively_absolute
+- Add musl-tools installation for MUSL targets
+- Remove leading slash from Windows drive path in test
+- Add OpenSSL setup for macOS builds
+- Add OpenSSL setup for MUSL builds
+- Use muslrust container for MUSL builds
+- Add OpenSSL static build for MUSL targets
+- Add output directory for benchmarks
+- Improve OpenSSL configuration for macOS builds
+- Remove unsupported --output-dir flag from benchmark commands
+- Add OpenSSL setup for all Linux targets
+- Add YEK_OUTPUT_DIR env var for benchmarks
+- Add output directory config to benchmarks
+- Update OpenSSL setup for MUSL builds
+- Resolve dead code warnings and MUSL cross-compilation issues
+- Update benchmark groups in CI to match actual benchmark definitions
+- Correct TOML format in yek.toml
+- Add required pattern field to yek.toml
+- Correct priority_rules format in yek.toml
+- Ensure output_dir takes precedence and properly sets stream flag
+- Add git config in tests
+
+### Documentation
+
+- Update README to reflect YAML config usage
+
+### Features
+
+- Add multi-arch support and fix OpenSSL issues
+- Print output directory path when not streaming
+- Improve output messages and logging
+- Introduce config.rs with ClapConfigFile integration
+- Add priority.rs for advanced file scoring
+
+### Miscellaneous Tasks
+
+- Delete dead code
+- Bump git-cliff from 1.4.0 to 2.3.0
+- Bump clap from 4.5.26 to 4.5.27
+- Bump byte-unit from 4.0.19 to 5.1.6
+- Clean up git leftovers from the tokenizer branch
+- PR review
+- Update .gitignore and add VSCode launch config
+- Revamp Cargo deps (config-file support, JSON, YAML, etc.)
+- Add sample yek.yaml config
+- Fix clippy issues in parallel.rs
+
+### Performance
+
+- Add new serialization bench with FullYekConfig
+
+### Refactor
+
+- Remove unnecessary info log
+- Streamline defaults.rs, remove old binary checks
+- Update lib and parallel code to rely on FullYekConfig
+- Update main.rs to use new config system
+- Replace map_or with is_some_and
+
+### Testing
+
+- Remove legacy integration tests, add new e2e config tests
+
+### Bench
+
+- Add bench.toml
+- Fix single small file benchmark
+
+### Ci
+
+- Force release for now
+- Improve release action
+- Reuse build from ci.yaml in release
+- Attempt #2, fix release action
+- Add fail-fast: false to build job
+- Allow manual invocation of release
+- Merge build and release actions
+- Add rustup target add before building for each target
+- Add bench back
+- Use cross to build in CI
+- Fix build
+- Introduce the AI loop
+- Fix AI Loop
+- Bring new changes from tokenizer work to main (ai loop)
+- Improve AI loop
+- Install yek in ai loop
+
 ## [0.13.8] - 2025-01-20
 [0.13.8]: https://github.com/bodo-run/yek/compare/v0.13.7...v0.13.8
 ### Bug Fixes
 
+- Ensure files are processed only once and fix priority test
 - Use WalkBuilder in streaming mode to respect gitignore
 - Include hidden files in WalkBuilder configuration
 
 ### Miscellaneous Tasks
 
+- Move big lists to defaults.rs
+- Organization
 - Fix the release script
 
 ### Refactor
 
+- Move size parsing tests to dedicated test file
+- Move normalize_path tests to dedicated file
 - Improve gitignore handling and fix clippy warnings
 - Improve binary file handling and remove duplicate gitignore checks
 
 ### Testing
 
+- Add lots of e2e and integration tests
 - Add comprehensive gitignore end-to-end tests
 - Fix binary file test assertion
+
+### Cargo
+
+- Add git 2
 
 ### Ci
 
 - Simpler release script
+
+### E2e
+
+- Fix e2e tests to pass
+
+### Git
+
+- Ignore temp txt files
+
+### Release
+
+- V0.13.8
 
 ## [0.13.7] - 2025-01-19
 [0.13.7]: https://github.com/bodo-run/yek/compare/v0.13.5...v0.13.7
