@@ -67,32 +67,89 @@ jobs:
         run: cargo fmt --check
 
   build:
-    name: Build
-    uses: ./.github/workflows/reusable-build.yml
-    with:
-      run_command: |
-        mkdir -p release-artifacts
-        staging="yek-${{ matrix.target }}"
-        mkdir -p "$staging"
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
-          7z a "release-artifacts/${{ matrix.asset_name }}" "$staging"
-        else
-          cp "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" "$staging/"
-          tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
-        fi
-        # Verify the artifact exists and has size > 0
-        if [ ! -f "release-artifacts/${{ matrix.asset_name }}" ]; then
-          echo "::error::Packaged artifact not found: release-artifacts/${{ matrix.asset_name }}"
-          exit 1
-        fi
-        if [ ! -s "release-artifacts/${{ matrix.asset_name }}" ]; then
-          echo "::error::Packaged artifact is empty: release-artifacts/${{ matrix.asset_name }}"
-          exit 1
-        fi
-        echo "Successfully packaged ${{ matrix.asset_name }}"
-        ls -lh "release-artifacts/${{ matrix.asset_name }}"
-      upload_artifacts: true
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds using cross
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: yek
+            asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: yek
+            asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact_name: yek
+            asset_name: yek-x86_64-unknown-linux-musl.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact_name: yek
+            asset_name: yek-aarch64-unknown-linux-musl.tar.gz
+
+          # Native macOS builds
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: yek
+            asset_name: yek-x86_64-apple-darwin.tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: yek
+            asset_name: yek-aarch64-apple-darwin.tar.gz
+
+          # Native Windows builds
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: yek.exe
+            asset_name: yek-x86_64-pc-windows-msvc.zip
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact_name: yek.exe
+            asset_name: yek-aarch64-pc-windows-msvc.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/build
+        id: build
+        with:
+          upload_artifacts: "false"
+
+      - name: Package binary
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          staging="yek-${{ matrix.target }}"
+          mkdir -p "$staging"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "${{ steps.build.outputs.binary_path }}" "$staging/"
+            7z a "release-artifacts/${{ matrix.asset_name }}" "$staging"
+          else
+            cp "${{ steps.build.outputs.binary_path }}" "$staging/"
+            tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
+          fi
+          # Verify the artifact exists and has size > 0
+          if [ ! -f "release-artifacts/${{ matrix.asset_name }}" ]; then
+            echo "::error::Packaged artifact not found: release-artifacts/${{ matrix.asset_name }}"
+            exit 1
+          fi
+          if [ ! -s "release-artifacts/${{ matrix.asset_name }}" ]; then
+            echo "::error::Packaged artifact is empty: release-artifacts/${{ matrix.asset_name }}"
+            exit 1
+          fi
+          echo "Successfully packaged ${{ matrix.asset_name }}"
+          ls -lh "release-artifacts/${{ matrix.asset_name }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.target }}-${{ matrix.asset_name }}
+          path: release-artifacts/${{ matrix.asset_name }}
+          if-no-files-found: error
 
   release:
     name: Release

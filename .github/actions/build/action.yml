@@ -1,0 +1,78 @@
+name: Build
+description: Build yek across different platforms
+
+inputs:
+  upload_artifacts:
+    required: false
+    default: "false"
+    description: "Whether to upload artifacts"
+
+outputs:
+  binary_path:
+    description: "Path to the built binary"
+    value: ${{ steps.get_binary_path.outputs.path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install OpenSSL (Ubuntu)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libssl-dev
+
+    - name: Install OpenSSL (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew install openssl@3
+        echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
+
+    - name: Install OpenSSL (Windows)
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        choco install openssl --params='/InstallationPath:C:\OpenSSL\'
+        echo "OPENSSL_DIR=C:\OpenSSL" >> $env:GITHUB_ENV
+        echo "PKG_CONFIG_PATH=C:\OpenSSL\lib\pkgconfig" >> $env:GITHUB_ENV
+
+    - name: Install cross (Linux)
+      if: ${{ contains(matrix.target, 'linux') && contains(matrix.target, 'gnu') }}
+      shell: bash
+      run: cargo install cross
+
+    - name: Setup Rust (Native builds)
+      if: ${{ !contains(matrix.target, 'linux') || !contains(matrix.target, 'gnu') }}
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        components: rustfmt,clippy
+
+    - name: Install Rust target
+      if: ${{ !contains(matrix.target, 'linux') || !contains(matrix.target, 'gnu') }}
+      shell: bash
+      run: rustup target add ${{ matrix.target }}
+
+    - name: Build with cross (Linux)
+      if: ${{ contains(matrix.target, 'linux') && contains(matrix.target, 'gnu') }}
+      shell: bash
+      run: cross build --release --target ${{ matrix.target }}
+
+    - name: Native build (macOS/Windows)
+      if: ${{ !contains(matrix.target, 'linux') || !contains(matrix.target, 'gnu') }}
+      shell: bash
+      run: cargo build --release --target ${{ matrix.target }}
+
+    - name: Get binary path
+      id: get_binary_path
+      shell: bash
+      run: echo "path=target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" >> $GITHUB_OUTPUT
+
+    - name: Upload artifact
+      if: ${{ inputs.upload_artifacts == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-${{ matrix.target }}-${{ matrix.asset_name }}
+        path: ${{ steps.get_binary_path.outputs.path }}
+        if-no-files-found: error
