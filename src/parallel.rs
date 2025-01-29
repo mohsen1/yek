@@ -29,10 +29,54 @@ pub fn process_files_parallel(
         .standard_filters(true)
         .require_git(false);
 
-    let (processed_files_tx, processed_files_rx) = mpsc::channel();
+    let (processed_files_tx, processed_files_rx) = mpsc::channel::<(std::path::PathBuf, String)>();
 
-    walk_builder.build_parallel().run(|| {
-        Box::new(|entry| {
+    // Create a thread to process files as they are sent
+    let process_thread = std::thread::spawn({
+        let ignore_patterns = config.ignore_patterns.clone();
+        let priority_rules = config.priority_rules.clone();
+        let base_dir = base_dir.to_owned();
+        let boost_map = boost_map.to_owned();
+        move || {
+            let mut processed_files = Vec::new();
+            for (path, rel_path) in processed_files_rx {
+                let is_ignored = ignore_patterns
+                    .iter()
+                    .any(|p| Regex::new(p).map_or(false, |re| re.is_match(&rel_path)));
+                if is_ignored {
+                    debug!("Skipping {} - matched ignore pattern", rel_path);
+                    continue;
+                }
+
+                if let Ok(content) = fs::read(&path) {
+                    if inspect(&content) == ContentType::BINARY {
+                        debug!("Skipping binary file: {}", rel_path);
+                        continue;
+                    }
+
+                    let rule_priority = get_file_priority(&rel_path, &priority_rules);
+                    let boost = boost_map.get(&rel_path).copied().unwrap_or(0);
+                    let combined_priority = rule_priority + boost;
+
+                    processed_files.push(ProcessedFile {
+                        priority: combined_priority,
+                        file_index: 0, // Placeholder, will be updated later
+                        rel_path,
+                        content: String::from_utf8_lossy(&content).to_string(),
+                    });
+                }
+            }
+            processed_files
+        }
+    });
+
+    // Send files to the process thread as they are found
+    let base_dir = base_dir.to_owned();
+    let walker_tx = processed_files_tx.clone();
+    walk_builder.build_parallel().run(move || {
+        let base_dir = base_dir.clone();
+        let processed_files_tx = walker_tx.clone();
+        Box::new(move |entry| {
             let entry = match entry {
                 Ok(entry) => entry,
                 Err(_) => return ignore::WalkState::Continue,
@@ -42,69 +86,37 @@ pub fn process_files_parallel(
             }
 
             let path = entry.path().to_path_buf();
-            let rel_path = normalize_path(&path, base_dir);
+            let rel_path = normalize_path(&path, &base_dir);
 
             processed_files_tx.send((path, rel_path)).unwrap();
             ignore::WalkState::Continue
         })
     });
 
-    let processed_files = processed_files_rx
-        .iter()
-        .filter_map(|(path, rel_path)| {
-            let ignore_patterns = config.ignore_patterns.clone();
-            let is_ignored = ignore_patterns
-                .iter()
-                .any(|p| Regex::new(p).map_or(false, |re| re.is_match(&rel_path)));
-            if is_ignored {
-                debug!("Skipping {} - matched ignore pattern", rel_path);
-                return None;
-            }
+    // Drop the sender to signal no more files will be sent
+    drop(processed_files_tx);
 
-            if let Ok(content) = fs::read(&path) {
-                if inspect(&content) == ContentType::BINARY {
-                    debug!("Skipping binary file: {}", rel_path);
-                    return None;
-                }
-
-                let rule_priority = get_file_priority(&rel_path, &config.priority_rules);
-                let boost = boost_map.get(&rel_path).copied().unwrap_or(0);
-                let combined_priority = rule_priority + boost;
-
-                Some(ProcessedFile {
-                    priority: combined_priority,
-                    file_index: 0, // Placeholder, will be updated later
-                    rel_path,
-                    content: String::from_utf8_lossy(&content).to_string(),
-                })
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
+    // Wait for the process thread to finish and get the results
+    let mut processed_files = process_thread.join().unwrap();
 
     // Assign unique file_index within each priority group
     let mut file_index_counters = HashMap::new();
-    let mut results = processed_files
-        .into_iter()
-        .map(|mut file| {
-            let counter = file_index_counters.entry(file.priority).or_insert(0);
-            file.file_index = *counter;
-            *counter += 1;
-            file
-        })
-        .collect::<Vec<_>>();
+    for file in &mut processed_files {
+        let counter = file_index_counters.entry(file.priority).or_insert(0);
+        file.file_index = *counter;
+        *counter += 1;
+    }
 
-    debug!("Processed {} files in parallel", results.len());
+    debug!("Processed {} files in parallel", processed_files.len());
 
-    results.par_sort_by(|a, b| {
+    processed_files.par_sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
             .reverse()
             .then_with(|| a.file_index.cmp(&b.file_index))
     });
 
-    Ok(results)
+    Ok(processed_files)
 }
 
 /// Returns a relative, normalized path string (forward slashes on all platforms).

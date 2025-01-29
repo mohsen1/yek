@@ -33,8 +33,8 @@ pub struct YekConfig {
     pub tokens: String,
 
     /// Enable debug output
-    #[config_arg(default_value = "false")]
-    pub debug: Option<bool>,
+    #[config_arg()]
+    pub debug: bool,
 
     /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
     #[config_arg()]
@@ -89,10 +89,15 @@ pub struct FullYekConfig {
 impl YekConfig {
     /// Initialize the config from CLI arguments + optional `yek.toml`.
     pub fn init_config() -> FullYekConfig {
-        let (config, _, _) = YekConfig::parse_info();
+        let (mut config, _, _) = YekConfig::parse_info();
 
         let token_mode = config.token_mode;
         let stream = !std::io::stdout().is_terminal() || config.stream;
+
+        // Default input dirs to current dir if not provided
+        if config.input_dirs.is_empty() {
+            config.input_dirs.push(".".to_string());
+        }
 
         // Default the output dir to a temp dir if not provided
         let output_dir = if let Some(dir) = config.output_dir {
@@ -137,7 +142,7 @@ impl YekConfig {
             input_dirs: config.input_dirs,
             max_size: config.max_size,
             tokens: config.tokens,
-            debug: config.debug.unwrap_or(false),
+            debug: config.debug,
             output_dir,
             ignore_patterns: config.ignore_patterns,
             // TODO: clap-config-file should support this
