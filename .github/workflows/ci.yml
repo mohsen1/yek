@@ -8,11 +8,9 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      release:
-        description: "Release"
+      release_tag:
+        description: "Release tag"
         required: true
-        type: boolean
-        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -247,7 +245,7 @@ jobs:
     name: Release
     needs: [test, lint, build]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || ${{ inputs.release }}
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag
     steps:
       - uses: actions/checkout@v4
 
@@ -299,6 +297,7 @@ jobs:
         with:
           files: dist/flat/yek-*
           body_path: CHANGES.md
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
 
   publish:
     name: Publish
