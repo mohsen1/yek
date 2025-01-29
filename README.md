@@ -155,11 +155,9 @@ This is optional, you can configure the `yek.yaml` file at the root of your proj
 
 ```yaml
 # Add patterns to ignore (in addition to .gitignore)
-# Add patterns to ignore (in addition to .gitignore)
 ignore_patterns:
-  - "node_modules/"
-  - "\.next/"
-  - "my_custom_folder/"
+  - "ai-promots/**"
+  - "__generated__/**"
 
 # Configure Git-based priority boost (optional)
 git_boost_max: 50  # Maximum score boost based on Git history (default: 100)
