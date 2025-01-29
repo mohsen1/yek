@@ -146,7 +146,7 @@ fn get_checksum(input_dirs: &Vec<String>) -> String {
 
         // Sort deterministically by path name
         let mut sorted = entries;
-        sorted.sort_by(|a, b| a.path().cmp(&b.path()));
+        sorted.sort_by_key(|a| a.path());
 
         for entry in sorted {
             let p = entry.path();
