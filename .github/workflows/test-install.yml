@@ -1,4 +1,4 @@
----
+# after publishing a release, run this to test the installation scripts from bodo.run are working
 name: Installation Test
 
 on:
