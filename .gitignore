@@ -8,3 +8,4 @@ yek.toml
 repo-serialized/
 dist/
 /*.txt
+*.backup

@@ -34,10 +34,11 @@ build-artifacts:
 	rm -rf "yek-$(CURRENT_PLATFORM)"
 
 release: test lint
-	@scripts/make-release.sh $(if $(filter major,$(MAKECMDGOALS)),major,patch)
+	@scripts/make-release.sh $(if $(filter major,$(MAKECMDGOALS)),major,$(if $(filter minor,$(MAKECMDGOALS)),minor,patch))
 
-.PHONY: major
+.PHONY: major minor
 major: ;
+minor: ;
 
 
  

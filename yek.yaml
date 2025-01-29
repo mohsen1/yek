@@ -1,0 +1,23 @@
+output_dir: "./repo-serialized"
+
+ignore_patterns:
+    - "repo-serialized/**"
+    - "*.txt"
+    - "benchmarks/**"
+    - ".github/**"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "LICENSE"
+    - "README"
+
+priority_rules:
+    - score: 100
+      pattern: "src/**"
+    - score: 70
+      pattern: "src/lib/**"
+    - score: 70
+      pattern: "test/**"
+    - score: 30
+      pattern: "scripts/**"
+    - score: 10
+      pattern: "src/defaults.rs"
