@@ -5,7 +5,7 @@ mod lib_tests {
     use tempfile::tempdir;
 
     use tracing_subscriber::{EnvFilter, FmtSubscriber};
-    use yek::config::FullYekConfig;
+    use yek::config::YekConfig;
     use yek::is_text_file;
     use yek::priority::PriorityRule;
     use yek::serialize_repo;
@@ -17,8 +17,8 @@ mod lib_tests {
             .try_init();
     }
 
-    fn create_test_config(input_dirs: Vec<String>) -> FullYekConfig {
-        let mut config = FullYekConfig::extend_config_with_defaults(
+    fn create_test_config(input_dirs: Vec<String>) -> YekConfig {
+        let mut config = YekConfig::extend_config_with_defaults(
             input_dirs,
             std::env::temp_dir().to_string_lossy().to_string(),
         );

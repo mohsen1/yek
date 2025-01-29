@@ -69,275 +69,244 @@ pub struct YekConfig {
     /// Maximum additional boost from Git commit times (0..1000)
     #[config_arg(accept_from = "config_only")]
     pub git_boost_max: Option<i32>,
-}
 
-#[derive(Clone, serde::Serialize)]
-pub struct FullYekConfig {
-    #[serde(flatten)]
-    pub base: YekConfig,
-    /// Stream output to stdout
+    /// True if we should stream output to stdout (computed)
     pub stream: bool,
-    /// Use token mode instead of byte mode
+
+    /// True if we should count tokens, not bytes (computed)
     pub token_mode: bool,
-    /// The full path to the output file
-    pub output_file_full_path: String,
+
+    /// Final resolved output file path (only used if not streaming)
+    pub output_file_full_path: Option<String>,
 }
 
-impl std::ops::Deref for FullYekConfig {
-    type Target = YekConfig;
+/// Provide defaults so tests or other callers can create a baseline YekConfig easily.
+impl Default for YekConfig {
+    fn default() -> Self {
+        Self {
+            input_dirs: Vec::new(),
+            max_size: "10MB".to_string(),
+            tokens: String::new(),
+            json: false,
+            debug: false,
+            output_dir: None,
+            output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
+            ignore_patterns: Vec::new(),
+            unignore_patterns: Vec::new(),
+            priority_rules: Vec::new(),
+            binary_extensions: BINARY_FILE_EXTENSIONS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            git_boost_max: Some(100),
 
-    fn deref(&self) -> &Self::Target {
-        &self.base
-    }
-}
-
-impl std::ops::DerefMut for FullYekConfig {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
-    }
-}
-
-impl FullYekConfig {
-    pub fn extend_config_with_defaults(
-        input_dirs: Vec<String>,
-        output_dir: String,
-    ) -> FullYekConfig {
-        let token_mode = false;
-        let checksum = get_checksum(&input_dirs);
-        let extension = if token_mode { "tok" } else { "txt" };
-        let output_file_full_path = Path::new(&output_dir)
-            .join(format!("yek-output-{}.{}", checksum, extension))
-            .to_string_lossy()
-            .to_string();
-
-        FullYekConfig {
-            base: YekConfig {
-                input_dirs,
-                output_dir: Some(output_dir),
-                max_size: "10MB".to_string(),
-                tokens: String::new(),
-                json: false,
-                debug: false,
-                output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
-                ignore_patterns: Vec::new(),
-                unignore_patterns: Vec::new(),
-                priority_rules: Vec::new(),
-                binary_extensions: Vec::new(),
-                git_boost_max: Some(100),
-            },
+            // computed fields
             stream: false,
             token_mode: false,
-            output_file_full_path,
+            output_file_full_path: None,
         }
     }
-}
-
-fn get_checksum(input_dirs: &Vec<String>) -> String {
-    let mut hasher = Sha256::new();
-    for dir in input_dirs {
-        let base_path = Path::new(dir);
-        if !base_path.exists() {
-            continue;
-        }
-        let entries = match fs::read_dir(base_path) {
-            Ok(iter) => iter.filter_map(|e| e.ok()).collect::<Vec<_>>(),
-            Err(_) => continue,
-        };
-
-        // Sort deterministically by path name
-        let mut sorted = entries;
-        sorted.sort_by_key(|a| a.path());
-
-        for entry in sorted {
-            let p = entry.path();
-            // We only do metadata-based hashing for the immediate listing
-            if let Ok(meta) = fs::metadata(&p) {
-                // Include path in hash
-                let path_str = p.to_string_lossy();
-                hasher.update(path_str.as_bytes());
-
-                // Include file size
-                hasher.update(meta.len().to_le_bytes());
-
-                // Include modified time
-                if let Ok(mod_time) = meta.modified() {
-                    if let Ok(dur) = mod_time.duration_since(UNIX_EPOCH) {
-                        hasher.update(dur.as_secs().to_le_bytes());
-                    }
-                }
-            }
-        }
-    }
-    let result = hasher.finalize();
-    format!("{:x}", result)
 }
 
 impl YekConfig {
-    /// Initialize the config from CLI arguments + optional `yek.toml`.
-    pub fn init_config() -> FullYekConfig {
-        let mut config = YekConfig::parse();
+    pub fn extend_config_with_defaults(input_dirs: Vec<String>, output_dir: String) -> Self {
+        YekConfig {
+            input_dirs,
+            output_dir: Some(output_dir),
+            ..Default::default()
+        }
+    }
+}
 
-        // Compute values that are computed
-        let token_mode = !config.tokens.is_empty();
-        let stream = !std::io::stdout().is_terminal();
-
-        // Default input dirs to current dir if not provided
-        if config.input_dirs.is_empty() {
-            config.input_dirs.push(".".to_string());
+impl YekConfig {
+    /// Ensure output directory exists and is valid. Returns the resolved output directory path.
+    fn ensure_output_dir(&self) -> Result<String> {
+        if self.stream {
+            return Ok(String::new());
         }
 
-        // Extend binary extensions with defaults
-        config
-            .binary_extensions
-            .extend(BINARY_FILE_EXTENSIONS.iter().map(|s| s.to_string()));
+        let output_dir = if let Some(dir) = &self.output_dir {
+            dir.clone()
+        } else {
+            let temp_dir = std::env::temp_dir().join("yek-output");
+            temp_dir.to_string_lossy().to_string()
+        };
 
-        // Always start with default ignore patterns
-        let mut ignore_patterns = DEFAULT_IGNORE_PATTERNS
+        let path = Path::new(&output_dir);
+        if path.exists() && !path.is_dir() {
+            return Err(anyhow!(
+                "output_dir: '{}' exists but is not a directory",
+                output_dir
+            ));
+        }
+
+        std::fs::create_dir_all(path)
+            .map_err(|e| anyhow!("output_dir: cannot create '{}': {}", output_dir, e))?;
+
+        Ok(output_dir)
+    }
+
+    /// Parse from CLI + config file, fill in computed fields, and validate.
+    pub fn init_config() -> Self {
+        // 1) parse from CLI and optional config file:
+        let mut cfg = YekConfig::parse();
+
+        // 2) compute derived fields:
+        cfg.token_mode = !cfg.tokens.is_empty();
+        let force_tty = std::env::var("FORCE_TTY").is_ok();
+
+        cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
+
+        // default input dirs to current dir if none:
+        if cfg.input_dirs.is_empty() {
+            cfg.input_dirs.push(".".to_string());
+        }
+
+        // Extend binary extensions with the built-in list:
+        let mut merged_bins = BINARY_FILE_EXTENSIONS
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<_>>();
+        merged_bins.append(&mut cfg.binary_extensions);
+        cfg.binary_extensions = merged_bins
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
 
-        // Add user-specified ignore patterns
-        ignore_patterns.extend(config.ignore_patterns);
-        config.ignore_patterns = ignore_patterns;
+        // Always start with default ignore patterns, then add user's:
+        let mut ignore = DEFAULT_IGNORE_PATTERNS
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        ignore.extend(cfg.ignore_patterns);
+        cfg.ignore_patterns = ignore;
 
-        // Apply unignore patterns to ignore patterns
-        config
-            .ignore_patterns
-            .extend(config.unignore_patterns.iter().map(|s|
-            // Change the glob to a negative glob by adding ! to the beginning
-            format!("!{}", s)));
+        // Apply unignore patterns (turn them into negative globs "!…")
+        cfg.ignore_patterns
+            .extend(cfg.unignore_patterns.iter().map(|pat| format!("!{}", pat)));
 
-        // Default the output dir to a temp dir if not provided
-        let output_dir = if let Some(dir) = config.output_dir {
-            dir
-        } else {
-            let temp_dir = std::env::temp_dir();
-            let output_dir = temp_dir.join("yek-output");
-            std::fs::create_dir_all(&output_dir).unwrap();
-            output_dir.to_string_lossy().to_string()
-        };
+        // Handle output directory setup
+        if !cfg.stream {
+            match cfg.ensure_output_dir() {
+                Ok(dir) => cfg.output_dir = Some(dir),
+                Err(e) => {
+                    eprintln!("Warning: Failed to create output directory: {}", e);
+                    cfg.stream = true; // Fall back to streaming mode
+                }
+            }
+        }
 
-        let checksum = get_checksum(&config.input_dirs);
-        let extension = if config.json { "json" } else { "txt" };
-        // Make the output file name based on checksum of input dirs contents
-        let output_file_full_path = Path::new(&output_dir)
-            .join(format!("yek-output-{}.{}", checksum, extension))
-            .to_string_lossy()
-            .to_string();
+        // By default, we start with no final output_file_full_path:
+        cfg.output_file_full_path = None;
 
-        let final_config = FullYekConfig {
-            base: YekConfig {
-                input_dirs: config.input_dirs.clone(),
-                output_dir: Some(output_dir),
-                max_size: config.max_size.clone(),
-                tokens: config.tokens.clone(),
-                json: config.json,
-                debug: config.debug,
-                output_template: config.output_template.clone(),
-                ignore_patterns: config.ignore_patterns.clone(),
-                unignore_patterns: config.unignore_patterns.clone(),
-                priority_rules: config.priority_rules.clone(),
-                binary_extensions: config.binary_extensions.clone(),
-                git_boost_max: config.git_boost_max,
-            },
-            stream,
-            token_mode,
-            output_file_full_path,
-        };
-
-        // Validate the config
-        if let Err(e) = validate_config(&final_config) {
+        // 3) Validate
+        if let Err(e) = cfg.validate() {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
 
-        final_config
-    }
-}
-
-pub struct ConfigError {
-    pub field: String,
-    pub message: String,
-}
-
-pub fn validate_config(config: &FullYekConfig) -> Result<()> {
-    // Validate output template
-    if !config.base.output_template.contains("FILE_PATH")
-        || !config.base.output_template.contains("FILE_CONTENT")
-    {
-        return Err(anyhow!(
-            "output_template: Output template must contain FILE_PATH and FILE_CONTENT"
-        ));
+        cfg
     }
 
-    // Validate max_size
-    if config.base.max_size == "0" {
-        return Err(anyhow!("max_size: Max size cannot be 0"));
-    }
+    /// Compute a quick checksum for the *top-level listing* of each input dir.
+    pub fn get_checksum(input_dirs: &[String]) -> String {
+        let mut hasher = Sha256::new();
+        for dir in input_dirs {
+            let base_path = Path::new(dir);
+            if !base_path.exists() {
+                continue;
+            }
+            let entries = match fs::read_dir(base_path) {
+                Ok(iter) => iter.filter_map(|e| e.ok()).collect::<Vec<_>>(),
+                Err(_) => continue,
+            };
 
-    if !config.token_mode {
-        ByteSize::from_str(&config.base.max_size)
-            .map_err(|e| anyhow!("max_size: Invalid size format: {}", e))?;
-    } else if config.base.tokens.to_lowercase().ends_with('k') {
-        let val = config.base.tokens[..config.base.tokens.len() - 1]
-            .trim()
-            .parse::<usize>()
-            .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))?;
-        if val == 0 {
-            return Err(anyhow!("tokens: Token size cannot be 0"));
+            // Sort deterministically by path name
+            let mut sorted = entries;
+            sorted.sort_by_key(|a| a.path());
+
+            for entry in sorted {
+                let p = entry.path();
+                if let Ok(meta) = fs::metadata(&p) {
+                    let path_str = p.to_string_lossy();
+                    hasher.update(path_str.as_bytes());
+                    hasher.update(meta.len().to_le_bytes());
+
+                    if let Ok(mod_time) = meta.modified() {
+                        if let Ok(dur) = mod_time.duration_since(UNIX_EPOCH) {
+                            hasher.update(dur.as_secs().to_le_bytes());
+                        }
+                    }
+                }
+            }
         }
-    } else {
-        let val = config
-            .base
-            .tokens
-            .parse::<usize>()
-            .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))?;
-        if val == 0 {
-            return Err(anyhow!("tokens: Token size cannot be 0"));
-        }
+        let result = hasher.finalize();
+        // Convert the 32-byte result to hex, but only keep the first 8 characters
+        let hex = format!("{:x}", result);
+        hex[..8].to_owned()
     }
 
-    // Validate output directory if specified
-    let output_dir = config
-        .base
-        .output_dir
-        .as_ref()
-        .ok_or_else(|| anyhow!("output_dir: Output directory must be specified"))?;
-
-    let path = Path::new(output_dir);
-    if path.exists() && !path.is_dir() {
-        return Err(anyhow!(
-            "output_dir: Output path '{}' exists but is not a directory",
-            output_dir
-        ));
-    }
-
-    // Validate ignore patterns
-    for pattern in &config.base.ignore_patterns {
-        glob::Pattern::new(pattern)
-            .map_err(|e| anyhow!("ignore_patterns: Invalid pattern '{}': {}", pattern, e))?;
-    }
-
-    // Validate priority rules
-    for rule in &config.base.priority_rules {
-        if rule.score < 0 || rule.score > 1000 {
+    /// Validate the final config.
+    pub fn validate(&self) -> Result<()> {
+        if !self.output_template.contains("FILE_PATH")
+            || !self.output_template.contains("FILE_CONTENT")
+        {
             return Err(anyhow!(
-                "priority_rules: Priority score {} must be between 0 and 1000",
-                rule.score
+                "output_template: must contain FILE_PATH and FILE_CONTENT"
             ));
         }
-        glob::Pattern::new(&rule.pattern)
-            .map_err(|e| anyhow!("priority_rules: Invalid pattern '{}': {}", rule.pattern, e))?;
-    }
 
-    if let Err(e) = std::fs::create_dir_all(path) {
-        return Err(anyhow!(
-            "output_dir: Cannot create output directory '{}': {}",
-            output_dir,
-            e
-        ));
-    }
+        if self.max_size == "0" {
+            return Err(anyhow!("max_size: cannot be 0"));
+        }
 
-    Ok(())
+        if !self.token_mode {
+            ByteSize::from_str(&self.max_size)
+                .map_err(|e| anyhow!("max_size: Invalid size format: {}", e))?;
+        } else if self.tokens.to_lowercase().ends_with('k') {
+            let val = self.tokens[..self.tokens.len() - 1]
+                .trim()
+                .parse::<usize>()
+                .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))?;
+            if val == 0 {
+                return Err(anyhow!("tokens: cannot be 0"));
+            }
+        } else if !self.tokens.is_empty() {
+            // parse as integer
+            let val = self
+                .tokens
+                .parse::<usize>()
+                .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))?;
+            if val == 0 {
+                return Err(anyhow!("tokens: cannot be 0"));
+            }
+        }
+
+        // If not streaming, validate output directory
+        if !self.stream {
+            self.ensure_output_dir()?;
+        }
+
+        // Validate ignore patterns
+        for pattern in &self.ignore_patterns {
+            glob::Pattern::new(pattern)
+                .map_err(|e| anyhow!("ignore_patterns: Invalid pattern '{}': {}", pattern, e))?;
+        }
+
+        // Validate priority rules
+        for rule in &self.priority_rules {
+            if rule.score < 0 || rule.score > 1000 {
+                return Err(anyhow!(
+                    "priority_rules: Priority score {} must be between 0 and 1000",
+                    rule.score
+                ));
+            }
+            glob::Pattern::new(&rule.pattern).map_err(|e| {
+                anyhow!("priority_rules: Invalid pattern '{}': {}", rule.pattern, e)
+            })?;
+        }
+
+        Ok(())
+    }
 }

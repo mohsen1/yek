@@ -3,8 +3,8 @@ use content_inspector::{inspect, ContentType};
 use rayon::prelude::*;
 use std::{
     collections::HashMap,
-    fs::{self, File},
-    io::{self, Read, Write},
+    fs::File,
+    io::{self, Read},
     path::Path,
 };
 
@@ -13,7 +13,7 @@ pub mod defaults;
 mod parallel;
 pub mod priority;
 
-use config::FullYekConfig;
+use config::YekConfig;
 use parallel::{process_files_parallel, ProcessedFile};
 use priority::compute_recentness_boost;
 
@@ -38,7 +38,7 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 }
 
 /// Main entrypoint for serialization, used by CLI and tests
-pub fn serialize_repo(config: &FullYekConfig) -> Result<(String, Vec<ProcessedFile>)> {
+pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)> {
     // Gather commit times from each input dir
     let combined_commit_times = config
         .input_dirs
@@ -78,33 +78,29 @@ pub fn serialize_repo(config: &FullYekConfig) -> Result<(String, Vec<ProcessedFi
     });
 
     // Build the final output string
-    let output_string = concat_files(files.clone(), config);
-
-    // Write to either stdout or to a file
-    write_output(&output_string, config)?;
+    let output_string = concat_files(&files, config)?;
 
     Ok((output_string, files))
 }
 
-fn concat_files(files: Vec<ProcessedFile>, config: &FullYekConfig) -> String {
+fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Result<String> {
     if config.json {
         // JSON array of objects
-        serde_json::to_string_pretty(
+        Ok(serde_json::to_string_pretty(
             &files
-                .into_iter()
+                .iter()
                 .map(|f| {
                     serde_json::json!({
-                        "filename": f.rel_path,
-                        "content": f.content,
+                        "filename": &f.rel_path,
+                        "content": &f.content,
                     })
                 })
                 .collect::<Vec<_>>(),
-        )
-        .unwrap()
+        )?)
     } else {
         // Use the user-defined template
-        files
-            .into_iter()
+        Ok(files
+            .iter()
             .map(|f| {
                 config
                     .output_template
@@ -114,22 +110,6 @@ fn concat_files(files: Vec<ProcessedFile>, config: &FullYekConfig) -> String {
                     .replace("\\\n", "\n")
             })
             .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-fn write_output(content: &str, config: &FullYekConfig) -> io::Result<()> {
-    if config.stream {
-        // If piped, just print directly
-        let mut stdout = io::stdout();
-        stdout.write_all(content.as_bytes())?;
-        stdout.flush()
-    } else {
-        // Otherwise, write to the output file
-        let path = Path::new(&config.output_file_full_path);
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        fs::write(path, content.as_bytes())
+            .join("\n"))
     }
 }
