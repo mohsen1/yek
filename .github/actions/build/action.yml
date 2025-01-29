@@ -30,7 +30,8 @@ runs:
         sudo apt-get install -y musl-tools musl-dev
         # For aarch64 target
         if [[ "${{ matrix.target }}" == "aarch64"* ]]; then
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo ln -s /usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1 /lib/ld-linux-aarch64.so.1 || true
         fi
 
     - name: Install OpenSSL (macOS)
@@ -74,9 +75,12 @@ runs:
       if: ${{ contains(matrix.target, 'linux') && contains(matrix.target, 'musl') }}
       shell: bash
       run: |
-        # Set CC for musl builds
+        # Set CC and other flags for musl builds
         if [[ "${{ matrix.target }}" == "aarch64"* ]]; then
           export CC=aarch64-linux-gnu-gcc
+          export RUSTFLAGS="-C linker=aarch64-linux-gnu-gcc"
+          export PKG_CONFIG_ALLOW_CROSS=1
+          export OPENSSL_STATIC=1
         else
           export CC=musl-gcc
         fi
