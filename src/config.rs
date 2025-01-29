@@ -78,6 +78,10 @@ pub struct YekConfig {
 
     /// Final resolved output file path (only used if not streaming)
     pub output_file_full_path: Option<String>,
+
+    /// Maximum depth to search for Git commit times
+    #[config_arg(accept_from = "config_only", default_value = "100")]
+    pub max_git_depth: i32,
 }
 
 /// Provide defaults so tests or other callers can create a baseline YekConfig easily.
@@ -104,6 +108,7 @@ impl Default for YekConfig {
             stream: false,
             token_mode: false,
             output_file_full_path: None,
+            max_git_depth: 100,
         }
     }
 }
