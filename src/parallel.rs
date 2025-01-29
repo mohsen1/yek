@@ -1,4 +1,4 @@
-use crate::{config::FullYekConfig, priority::get_file_priority, Result};
+use crate::{config::YekConfig, priority::get_file_priority, Result};
 use content_inspector::{inspect, ContentType};
 use ignore::gitignore::GitignoreBuilder;
 use path_slash::PathBufExt;
@@ -23,7 +23,7 @@ pub struct ProcessedFile {
 /// in a separate thread. Return the resulting `ProcessedFile` objects.
 pub fn process_files_parallel(
     base_dir: &Path,
-    config: &FullYekConfig,
+    config: &YekConfig,
     boost_map: &HashMap<String, i32>,
 ) -> Result<Vec<ProcessedFile>> {
     let mut walk_builder = ignore::WalkBuilder::new(base_dir);

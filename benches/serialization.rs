@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
-use yek::{config::FullYekConfig, serialize_repo};
+use yek::{config::YekConfig, serialize_repo};
 
 /// Creates a text file of a specified size in bytes.
 fn create_test_data_bytes(dir: &Path, size: usize, file_name: &str) {
@@ -60,7 +60,7 @@ fn bench_single_small_file(c: &mut Criterion) {
                 output_dir
             },
             |output_dir| {
-                let config = FullYekConfig::extend_config_with_defaults(
+                let config = YekConfig::extend_config_with_defaults(
                     vec![temp_dir.path().to_string_lossy().to_string()],
                     output_dir.to_string_lossy().to_string(),
                 );
@@ -85,7 +85,7 @@ fn single_large_file_byte_mode(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_function("single_large_file", |b| {
         b.iter(|| {
-            let config = FullYekConfig::extend_config_with_defaults(
+            let config = YekConfig::extend_config_with_defaults(
                 vec![temp_dir.path().to_string_lossy().to_string()],
                 output_dir.to_string_lossy().to_string(),
             );
@@ -108,7 +108,7 @@ fn single_large_file_token_mode(c: &mut Criterion) {
     group.throughput(Throughput::Elements(token_count as u64));
     group.bench_function("single_large_token_file", |b| {
         b.iter(|| {
-            let config = FullYekConfig::extend_config_with_defaults(
+            let config = YekConfig::extend_config_with_defaults(
                 vec![temp_dir.path().to_string_lossy().to_string()],
                 output_dir.to_string_lossy().to_string(),
             );
@@ -132,7 +132,7 @@ fn multiple_small_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                let config = FullYekConfig::extend_config_with_defaults(
+                let config = YekConfig::extend_config_with_defaults(
                     vec![temp_dir.path().to_string_lossy().to_string()],
                     output_dir.to_string_lossy().to_string(),
                 );
@@ -161,7 +161,7 @@ fn multiple_medium_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                let config = FullYekConfig::extend_config_with_defaults(
+                let config = YekConfig::extend_config_with_defaults(
                     vec![temp_dir.path().to_string_lossy().to_string()],
                     output_dir.to_string_lossy().to_string(),
                 );
@@ -187,7 +187,7 @@ fn multiple_large_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                let config = FullYekConfig::extend_config_with_defaults(
+                let config = YekConfig::extend_config_with_defaults(
                     vec![temp_dir.path().to_string_lossy().to_string()],
                     output_dir.to_string_lossy().to_string(),
                 );
@@ -213,7 +213,7 @@ fn multiple_token_files(c: &mut Criterion) {
                 (temp_dir, output_dir)
             },
             |(temp_dir, output_dir)| {
-                let config = FullYekConfig::extend_config_with_defaults(
+                let config = YekConfig::extend_config_with_defaults(
                     vec![temp_dir.path().to_string_lossy().to_string()],
                     output_dir.to_string_lossy().to_string(),
                 );
@@ -231,7 +231,7 @@ fn custom_config_test(c: &mut Criterion) {
     let mut group = c.benchmark_group("CustomConfig");
     let temp_dir = TempDir::new().unwrap();
     let output_dir = temp_dir.path().join("output");
-    let config_template = FullYekConfig::extend_config_with_defaults(
+    let config_template = YekConfig::extend_config_with_defaults(
         vec![temp_dir.path().to_string_lossy().to_string()],
         output_dir.to_string_lossy().to_string(),
     );

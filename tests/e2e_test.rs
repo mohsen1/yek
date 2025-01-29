@@ -93,14 +93,50 @@ mod e2e_tests {
         let temp_dir = tempdir()?;
         let output_dir = temp_dir.path().join("output");
 
-        Command::cargo_bin("yek")?
+        // Create a simple Rust file
+        fs::write(temp_dir.path().join("main.rs"), "fn main() {}")?;
+
+        // Run Yek with output_dir
+        let mut cmd = Command::cargo_bin("yek")?;
+        let output = cmd
+            .current_dir(temp_dir.path())
+            .env("TERM", "xterm") // Ensure terminal mode
+            .env("FORCE_TTY", "1")
             .arg(temp_dir.path())
             .arg("--output-dir")
             .arg(&output_dir)
-            .assert()
-            .success();
+            .arg("--debug")
+            .output()?;
 
-        assert!(output_dir.exists());
+        assert!(output.status.success());
+
+        // Ensure output dir is printed in stdout
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains(&output_dir.display().to_string()),
+            "Expected output directory `{}` to be printed in stdout, but it was {}",
+            output_dir.display(),
+            stdout
+        );
+
+        // Ensure the directory exists
+        assert!(
+            output_dir.exists(),
+            "Expected output directory `{}` to exist, but it does not",
+            output_dir.display()
+        );
+
+        // Ensure at least one output file exists inside the directory
+        let output_files = fs::read_dir(&output_dir)?
+            .filter_map(|e| e.ok())
+            .collect::<Vec<_>>();
+
+        assert!(
+            !output_files.is_empty(),
+            "Expected output directory `{}` to contain files, but it is empty",
+            output_dir.display()
+        );
+
         Ok(())
     }
 
