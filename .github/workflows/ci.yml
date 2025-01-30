@@ -165,6 +165,9 @@ jobs:
     needs: build
     if: github.event_name == 'pull_request'
     runs-on: ${{ matrix.os }}
+    concurrency:
+      group: ${{ github.workflow }}-stress-${{ matrix.target }}-${{ github.ref }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -229,6 +232,9 @@ jobs:
     needs: build
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-benchmark-${{ matrix.benchmark_group.group }}-${{ github.ref }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
