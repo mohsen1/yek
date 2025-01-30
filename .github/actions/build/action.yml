@@ -2,10 +2,6 @@ name: Build
 description: Build yek across different platforms
 
 inputs:
-  upload_artifacts:
-    required: false
-    default: "false"
-    description: "Whether to upload artifacts"
   target:
     required: true
     description: "The target triple to build for"
@@ -141,11 +137,3 @@ runs:
         else
           echo "path=${{ steps.unix_path.outputs.path }}" >> $GITHUB_OUTPUT
         fi
-
-    - name: Upload artifact
-      if: ${{ inputs.upload_artifacts == 'true' }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-${{ inputs.target }}-${{ inputs.asset_name }}
-        path: ${{ steps.get_binary_path.outputs.path }}
-        if-no-files-found: error
