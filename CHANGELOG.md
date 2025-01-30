@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use QEMU for ARM binary stress tests
 - Do not wait for test to finish in build
 - Remove musl arm
-- Fix logic on which job to run baased on changes
+- Fix logic on which job to run based on changes
 
 ## [0.15.0] - 2025-01-29
 [0.15.0]: https://github.com/bodo-run/yek/compare/v0.14.0...v0.15.0
