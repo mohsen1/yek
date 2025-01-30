@@ -5,12 +5,6 @@ inputs:
   target:
     required: true
     description: "The target triple to build for"
-  artifact_name:
-    required: true
-    description: "The name of the built artifact"
-  asset_name:
-    required: true
-    description: "The name of the asset for upload"
 
 outputs:
   binary_path:
@@ -120,13 +114,13 @@ runs:
       if: runner.os != 'Windows'
       id: unix_path
       shell: bash
-      run: echo "path=target/${{ inputs.target }}/release/${{ inputs.artifact_name }}" >> $GITHUB_OUTPUT
+      run: echo "path=target/${{ inputs.target }}/release/yek" >> $GITHUB_OUTPUT
 
     - name: Get binary path (Windows)
       if: runner.os == 'Windows'
       id: windows_path
       shell: pwsh
-      run: echo "path=target\${{ inputs.target }}\release\${{ inputs.artifact_name }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      run: echo "path=target\${{ inputs.target }}\release\yek.exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
     - name: Set final path
       id: get_binary_path
