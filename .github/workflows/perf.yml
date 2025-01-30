@@ -13,8 +13,22 @@ env:
   PKG_CONFIG_ALLOW_CROSS: true
 
 jobs:
+  wait-for-ci:
+    name: Wait for CI
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Wait for CI build
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          check-name: "Build *"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
   stress:
     name: Stress ${{ matrix.target }}
+    needs: wait-for-ci
     if: github.event_name == 'pull_request'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -24,58 +38,48 @@ jobs:
           # Linux builds using cross
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: yek
-            asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact_name: yek
-            asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            artifact_name: yek
-            asset_name: yek-x86_64-unknown-linux-musl.tar.gz
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            artifact_name: yek
-            asset_name: yek-aarch64-unknown-linux-musl.tar.gz
-
           # Native macOS builds
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: yek
-            asset_name: yek-x86_64-apple-darwin.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: yek
-            asset_name: yek-aarch64-apple-darwin.tar.gz
-
           # Native Windows builds
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: yek.exe
-            asset_name: yek-x86_64-pc-windows-msvc.zip
           - os: windows-latest
             target: aarch64-pc-windows-msvc
-            artifact_name: yek.exe
-            asset_name: yek-aarch64-pc-windows-msvc.zip
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/build
-        id: build
+      # Download the binary from CI build
+      - uses: actions/download-artifact@v4
         with:
-          target: ${{ matrix.target }}
+          name: build-${{ matrix.target }}
+          path: dist
 
-      - name: Install yek (Unix)
+      - name: Extract binary (Unix)
         if: runner.os != 'Windows'
         shell: bash
-        run: cargo install --path .
+        run: |
+          mkdir -p bin
+          tar xzf dist/yek-${{ matrix.target }}.tar.gz -C bin
+          chmod +x bin/yek-${{ matrix.target }}/yek
+          sudo cp bin/yek-${{ matrix.target }}/yek /usr/local/bin/
 
-      - name: Install yek (Windows)
+      - name: Extract binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cargo install --path .
+        run: |
+          New-Item -ItemType Directory -Force -Path bin
+          7z x "dist\yek-${{ matrix.target }}.zip" -obin
+          Copy-Item "bin\yek-${{ matrix.target }}\yek.exe" -Destination "C:\Windows\System32\"
 
       - name: Checkout VSCode repository
         uses: actions/checkout@v4
@@ -84,19 +88,11 @@ jobs:
           path: vscode
           fetch-depth: 1
 
-      - name: Run yek (Unix)
-        if: runner.os != 'Windows'
+      - name: Run yek against vscode
         shell: bash
         timeout-minutes: 1
-        run: cd vscode && yek
-
-      - name: Run yek (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        timeout-minutes: 1
-        run: |
-          Set-Location vscode
-          yek
+        working-directory: vscode
+        run: yek
 
   benchmark:
     name: Benchmark / ${{ matrix.benchmark_group.name }}

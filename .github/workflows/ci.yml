@@ -17,8 +17,21 @@ permissions:
   contents: write
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt,clippy
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+      - name: Format check
+        run: cargo fmt --check
+
   test:
-    name: Test
+    name: Test ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -53,19 +66,6 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt,clippy
-      - name: Clippy
-        run: cargo clippy -- -D warnings
-      - name: Format check
-        run: cargo fmt --check
-
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
@@ -76,39 +76,29 @@ jobs:
           # Linux builds using cross
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: yek
             asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact_name: yek
             asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            artifact_name: yek
             asset_name: yek-x86_64-unknown-linux-musl.tar.gz
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            artifact_name: yek
             asset_name: yek-aarch64-unknown-linux-musl.tar.gz
-
           # Native macOS builds
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: yek
             asset_name: yek-x86_64-apple-darwin.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: yek
             asset_name: yek-aarch64-apple-darwin.tar.gz
-
           # Native Windows builds
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: yek.exe
             asset_name: yek-x86_64-pc-windows-msvc.zip
           - os: windows-latest
             target: aarch64-pc-windows-msvc
-            artifact_name: yek.exe
             asset_name: yek-aarch64-pc-windows-msvc.zip
 
     steps:
@@ -165,7 +155,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.target }}-${{ matrix.asset_name }}
+          name: build-${{ matrix.target }}
           path: release-artifacts/${{ matrix.asset_name }}
           if-no-files-found: error
 
@@ -181,35 +171,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
-
-      - name: Prepare release files
-        shell: bash
-        run: |
-          echo "Release artifacts:"
-          # Move all artifacts to a flat directory structure and rename them
-          mkdir -p dist/flat
-          for file in dist/build-*/yek-*; do
-            # Extract just the final part of the filename (yek-*.tar.gz or yek-*.zip)
-            filename=$(basename "$file")
-            cp "$file" "dist/flat/$filename"
-          done
-
-          # List what we found
-          echo "Found artifacts:"
-          ls -lh dist/flat/
-
-          # Verify we have all expected artifacts
-          expected_count=8  # Total number of builds in matrix
-          actual_count=$(find dist/flat -type f -name "yek-*" | wc -l)
-
-          if [[ "$actual_count" -ne "$expected_count" ]]; then
-            echo "::error::Expected $expected_count artifacts but found $actual_count"
-            echo "Contents of dist directory:"
-            find dist -type f
-            exit 1
-          fi
-
-          echo "Found all $expected_count expected artifacts"
+          pattern: build-*
 
       - name: Generate release notes
         uses: orhun/git-cliff-action@v2
@@ -223,7 +185,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/flat/yek-*
+          files: dist/build-*/yek-*
           body_path: CHANGES.md
           tag_name: ${{ github.ref_name }}
 
