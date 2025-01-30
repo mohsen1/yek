@@ -420,7 +420,7 @@ jobs:
           grcov . \
             --binary-path ./target/coverage/deps/ \
             -s . \
-            -t coveralls \
+            -t covdir \
             --branch \
             --ignore-not-existing \
             --ignore "/*" \
