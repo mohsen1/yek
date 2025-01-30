@@ -420,7 +420,7 @@ jobs:
           grcov . \
             --binary-path ./target/coverage/deps/ \
             -s . \
-            -t json \
+            -t covdir \
             --branch \
             --ignore-not-existing \
             --ignore "/*" \
@@ -449,7 +449,7 @@ jobs:
           grcov . \
             --binary-path ./target/coverage/deps/ \
             -s . \
-            -t json \
+            -t covdir \
             --branch \
             --ignore-not-existing \
             --ignore "/*" \
