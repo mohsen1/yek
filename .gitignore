@@ -9,3 +9,4 @@ repo-serialized/
 dist/
 /*.txt
 *.backup
+coverage/

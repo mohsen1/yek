@@ -27,14 +27,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Keeping full fetch; change if needed
           fetch-depth: 0
 
       - id: check
-        name: Check Changed Files
         run: |
-          # Compare to previous commit (or merge base in PR)
-          # For 'push' with new commits, HEAD^ is typically enough.
           changed_files="$(git diff --name-only HEAD^ HEAD || true)"
 
           doc_pattern='^(docs/|README\.md|\.txt$|\.md$)'
@@ -45,20 +41,14 @@ jobs:
           only_tests=true
           only_src=true
 
-          # If no files changed (unlikely but possible), all remain false
           if [ -z "$changed_files" ]; then
             only_docs=false
             only_tests=false
             only_src=false
           else
             while IFS= read -r file; do
-              # If file does NOT match doc pattern, we can't be "only docs"
               [[ "$file" =~ $doc_pattern ]] || only_docs=false
-
-              # If file does NOT match test pattern, we can't be "only tests"
               [[ "$file" =~ $test_pattern ]] || only_tests=false
-
-              # If file does NOT match src pattern, we can't be "only src"
               [[ "$file" =~ $src_pattern ]] || only_src=false
             done < <(echo "$changed_files")
           fi
@@ -171,7 +161,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev
+          sudo apt-get install -y pkg-config libssl-dev lcov
 
       - name: Build
         uses: ./.github/actions/build
@@ -230,13 +220,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          # macOS
           - os: macos-latest
             target: x86_64-apple-darwin
-          # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
 
@@ -380,3 +367,100 @@ jobs:
           cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  coverage:
+    name: Code Coverage
+    needs: determine-changes
+    runs-on: ubuntu-latest
+    if: needs.determine-changes.outputs.only_docs != 'true'
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: "-Cinstrument-coverage"
+      LLVM_PROFILE_FILE: "yek-%p-%m.profraw"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed so we can check out base_ref below
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev lcov
+
+      - name: Install grcov
+        run: cargo install grcov
+
+      # --- Base Branch Coverage ---
+      - name: Fetch and check out base branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git checkout ${{ github.base_ref }}
+
+      - name: Build + Test coverage on base
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p coverage-base
+          LLVM_PROFILE_FILE="coverage-base/yek-%p-%m.profraw" cargo test --profile coverage
+          grcov . \
+            --binary-path ./target/coverage/deps/ \
+            -s . \
+            -t lcov \
+            --branch \
+            --ignore-not-existing \
+            --ignore "/*" \
+            --ignore "tests/*" \
+            -o coverage-base/lcov.info
+
+      # --- PR Branch Coverage ---
+      - name: Check out head branch (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          git checkout ${{ github.head_ref }}
+
+      - name: Build + Test coverage on PR
+        run: |
+          mkdir -p coverage
+          LLVM_PROFILE_FILE="coverage/yek-%p-%m.profraw" cargo test --profile coverage
+          grcov . \
+            --binary-path ./target/coverage/deps/ \
+            -s . \
+            -t lcov \
+            --branch \
+            --ignore-not-existing \
+            --ignore "/*" \
+            --ignore "tests/*" \
+            -o coverage/lcov.info
+
+      - name: Compare coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          # Extract numeric line coverage (float)
+          BASE_COV=$(lcov --summary coverage-base/lcov.info 2>&1 | grep "lines......" | awk '{print $4}' | tr -d '%')
+          PR_COV=$(lcov --summary coverage/lcov.info 2>&1 | grep "lines......" | awk '{print $4}' | tr -d '%')
+
+          echo "Base branch coverage: ${BASE_COV}%"
+          echo "PR branch coverage:   ${PR_COV}%"
+
+          # Compare and fail if coverage decreased
+          check=$(awk -v base="$BASE_COV" -v pr="$PR_COV" 'BEGIN { if (pr < base) print 1; else print 0; }')
+          if [ "$check" -eq 1 ]; then
+            echo "Error: Coverage decreased from ${BASE_COV}% to ${PR_COV}%"
+            exit 1
+          else
+            echo "Coverage has not decreased."
+          fi
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage/lcov.info
+            coverage-base/lcov.info
