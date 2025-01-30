@@ -14,22 +14,33 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Install OpenSSL (Ubuntu)
+    - name: Install OpenSSL (Linux)
       if: runner.os == 'Linux'
       shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config libssl-dev
 
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cross (for Linux GNU)
+      if: >
+        runner.os == 'Linux' &&
+        contains(inputs.target, 'linux') &&
+        contains(inputs.target, 'gnu')
+      shell: bash
+      run: cargo install cross
+
     - name: Install musl tools (Linux musl)
-      if: runner.os == 'Linux' && contains(inputs.target, 'musl')
+      if: >
+        runner.os == 'Linux' &&
+        contains(inputs.target, 'musl')
       shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y musl-tools musl-dev
-        # For aarch64 target
         if [[ "${{ inputs.target }}" == "aarch64"* ]]; then
-          # Install musl cross-compiler
           sudo apt-get install -y musl-dev musl-tools
           git clone https://github.com/richfelker/musl-cross-make.git
           cd musl-cross-make
@@ -41,58 +52,29 @@ runs:
           rm -rf musl-cross-make
         fi
 
-    - name: Install OpenSSL (macOS)
-      if: runner.os == 'macOS'
-      shell: bash
-      run: |
-        brew install openssl@3
-        echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
-
-    - name: Install OpenSSL (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        choco install openssl --params='/InstallationPath:C:\OpenSSL\'
-        echo "OPENSSL_DIR=C:\OpenSSL" | Out-File -FilePath $env:GITHUB_ENV -Append
-        echo "PKG_CONFIG_PATH=C:\OpenSSL\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-    - name: Install cross (Linux)
-      if: ${{ contains(inputs.target, 'linux') && contains(inputs.target, 'gnu') }}
-      shell: bash
-      run: cargo install cross
-
-    - name: Setup Rust (Native builds)
-      if: ${{ !contains(inputs.target, 'linux') || !contains(inputs.target, 'gnu') }}
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        components: rustfmt,clippy
-
-    - name: Install Rust target
-      if: ${{ !contains(inputs.target, 'linux') || !contains(inputs.target, 'gnu') }}
-      shell: bash
-      run: rustup target add ${{ inputs.target }}
-
     - name: Build with cross (Linux GNU)
-      if: ${{ contains(inputs.target, 'linux') && contains(inputs.target, 'gnu') }}
+      if: >
+        runner.os == 'Linux' &&
+        contains(inputs.target, 'linux') &&
+        contains(inputs.target, 'gnu')
       shell: bash
       run: cross build --release --target ${{ inputs.target }}
 
     - name: Build with cross (Linux MUSL)
-      if: ${{ contains(inputs.target, 'linux') && contains(inputs.target, 'musl') }}
+      if: >
+        runner.os == 'Linux' &&
+        contains(inputs.target, 'linux') &&
+        contains(inputs.target, 'musl')
       shell: bash
       run: |
-        # Set CC and other flags for musl builds
         if [[ "${{ inputs.target }}" == "aarch64"* ]]; then
           export CC=aarch64-linux-musl-gcc
           export AR=aarch64-linux-musl-ar
           export RUSTFLAGS="-C linker=aarch64-linux-musl-gcc"
           export PKG_CONFIG_ALLOW_CROSS=1
           export OPENSSL_STATIC=1
-          # Configure pkg-config for cross-compilation
           export PKG_CONFIG_SYSROOT_DIR=/usr/local/aarch64-linux-musl
           export PKG_CONFIG_PATH=/usr/local/aarch64-linux-musl/lib/pkgconfig
-          # Build OpenSSL statically for aarch64-musl
           git clone https://github.com/openssl/openssl.git
           cd openssl
           ./Configure linux-aarch64 --prefix=/usr/local/aarch64-linux-musl no-shared
@@ -105,8 +87,8 @@ runs:
         fi
         cargo build --release --target ${{ inputs.target }}
 
-    - name: Native build (macOS/Windows)
-      if: ${{ !contains(inputs.target, 'linux') }}
+    - name: Build natively (macOS/Windows)
+      if: runner.os != 'Linux'
       shell: bash
       run: cargo build --release --target ${{ inputs.target }}
 
@@ -120,9 +102,9 @@ runs:
       if: runner.os == 'Windows'
       id: windows_path
       shell: pwsh
-      run: echo "path=target\${{ inputs.target }}\release\yek.exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      run: echo "path=target\\${{ inputs.target }}\\release\\yek.exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-    - name: Set final path
+    - name: Final path
       id: get_binary_path
       shell: bash
       run: |

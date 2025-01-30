@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Branch to run the workflow on"
+        description: "Branch to run"
         required: true
         default: "main"
-        type: string
       attempts:
-        description: Maximum number of attempts
+        description: "Max attempts"
         default: "40"
+        type: number
       pr-on-fail:
         description: "Create a PR on failure"
         default: false
@@ -33,16 +33,16 @@ jobs:
     steps:
       - name: Print inputs
         run: |
-          echo "MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}"
-          echo "BRANCH: ${{ env.BRANCH }}"
+          echo "MAX_ATTEMPTS=${{ env.MAX_ATTEMPTS }}"
+          echo "BRANCH=${{ env.BRANCH }}"
 
-      - name: Install yek
+      - name: Install Yek
         run: curl -fsSL https://bodo.run/yek.sh | bash
 
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.branch }}
+          ref: ${{ env.BRANCH }}
           fetch-depth: 0
 
       - name: Cache Rust dependencies
@@ -61,23 +61,16 @@ jobs:
       - name: Install askds
         run: npm install -g askds@latest
 
-      - name: Install Yek
-        run: curl -fsSL https://bodo.run/yek.sh | bash
-
-      - name: Rust Toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build
         run: cargo build --locked
 
       - name: Run AI Fix
+        id: ai_fix
         timeout-minutes: 360
         continue-on-error: true
-        id: ai_fix
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           FIREWORKS_AI_API_KEY: ${{ secrets.FIREWORKS_AI_API_KEY }}
@@ -105,13 +98,9 @@ jobs:
           body: |
             ## AI Fix Results
             - Successfully fixed: ${{ steps.ai_fix.outputs.success == '0' && 'Yes' || 'No' }}
-            - Total attempts made: ${{ env.MAX_ATTEMPTS }}
+            - Total attempts: ${{ env.MAX_ATTEMPTS }}
             - Source branch: `${{ env.BRANCH }}`
-            - Fix branch: `${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}`
 
-            **Important Notes:**
-            - Review all changes carefully
-            - Verify test results
-            - Check the workflow artifacts for detailed attempt logs
-          branch: ${{ env.BRANCH }}-ai-fix-${{ env.SHORT_DATE }}
+            Check the attempts.txt artifact for details.
+          branch: ${{ env.BRANCH }}-ai-fix
           base: ${{ env.BRANCH }}

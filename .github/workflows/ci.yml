@@ -17,14 +17,68 @@ permissions:
   contents: write
 
 jobs:
-  lint:
-    name: Lint
+  determine-changes:
+    name: Determine Changes
     runs-on: ubuntu-latest
+    outputs:
+      only_docs: ${{ steps.check.outputs.only_docs }}
+      only_tests: ${{ steps.check.outputs.only_tests }}
+      only_src: ${{ steps.check.outputs.only_src }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt,clippy
+          # Keeping full fetch; change if needed
+          fetch-depth: 0
+
+      - id: check
+        name: Check Changed Files
+        run: |
+          # Compare to previous commit (or merge base in PR)
+          # For 'push' with new commits, HEAD^ is typically enough.
+          changed_files="$(git diff --name-only HEAD^ HEAD || true)"
+
+          doc_pattern='^(docs/|README\.md|\.txt$|\.md$)'
+          test_pattern='^(tests/|test/)'
+          src_pattern='^(src/|Cargo\.toml|Cargo\.lock)'
+
+          only_docs=true
+          only_tests=true
+          only_src=true
+
+          # If no files changed (unlikely but possible), all remain false
+          if [ -z "$changed_files" ]; then
+            only_docs=false
+            only_tests=false
+            only_src=false
+          else
+            while IFS= read -r file; do
+              # If file does NOT match doc pattern, we can't be "only docs"
+              [[ "$file" =~ $doc_pattern ]] || only_docs=false
+
+              # If file does NOT match test pattern, we can't be "only tests"
+              [[ "$file" =~ $test_pattern ]] || only_tests=false
+
+              # If file does NOT match src pattern, we can't be "only src"
+              [[ "$file" =~ $src_pattern ]] || only_src=false
+            done < <(echo "$changed_files")
+          fi
+
+          echo "only_docs=$only_docs" >> $GITHUB_OUTPUT
+          echo "only_tests=$only_tests" >> $GITHUB_OUTPUT
+          echo "only_src=$only_src" >> $GITHUB_OUTPUT
+
+  lint:
+    name: Lint
+    needs: determine-changes
+    runs-on: ubuntu-latest
+    if: >
+      needs.determine-changes.outputs.only_docs != 'true' &&
+      needs.determine-changes.outputs.only_tests != 'true' &&
+      needs.determine-changes.outputs.only_src != 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
       - name: Clippy
         run: cargo clippy -- -D warnings
       - name: Format check
@@ -32,16 +86,20 @@ jobs:
 
   test:
     name: Test ${{ matrix.os }}
+    needs: determine-changes
     runs-on: ${{ matrix.os }}
+    if: >
+      needs.determine-changes.outputs.only_docs != 'true' &&
+      needs.determine-changes.outputs.only_tests != 'true' &&
+      needs.determine-changes.outputs.only_src != 'true'
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt,clippy
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install OpenSSL (Ubuntu)
         if: runner.os == 'Linux'
@@ -68,13 +126,17 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
-    needs: [lint, test]
+    needs: [lint, test] # keep them separate but we wait for both
     runs-on: ${{ matrix.os }}
+    if: >
+      needs.determine-changes.outputs.only_docs != 'true' &&
+      needs.determine-changes.outputs.only_tests != 'true' &&
+      needs.determine-changes.outputs.only_src != 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux builds using cross
+          # Linux builds
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
@@ -87,14 +149,14 @@ jobs:
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             asset_name: yek-aarch64-unknown-linux-musl.tar.gz
-          # Native macOS builds
+          # macOS
           - os: macos-latest
             target: x86_64-apple-darwin
             asset_name: yek-x86_64-apple-darwin.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: yek-aarch64-apple-darwin.tar.gz
-          # Native Windows builds
+          # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             asset_name: yek-x86_64-pc-windows-msvc.zip
@@ -105,29 +167,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate source hash
-        id: hash
-        shell: bash
-        run: |
-          find src Cargo.toml Cargo.lock -type f -print0 | sort -z | xargs -0 sha1sum | sha1sum | cut -d " " -f1 > source.hash
-          echo "hash=$(cat source.hash)" >> $GITHUB_OUTPUT
-
-      - name: Restore cached build
-        id: cache
-        uses: actions/cache@v4
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
         with:
-          path: release-artifacts
-          key: build-${{ matrix.target }}-${{ steps.hash.outputs.hash }}
+          path: |
+            ~/.cargo
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build if cache miss
-        if: steps.cache.outputs.cache-hit != 'true'
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Build
         uses: ./.github/actions/build
         id: build
         with:
           target: ${{ matrix.target }}
 
-      - name: Package binary (Unix) if cache miss
-        if: steps.cache.outputs.cache-hit != 'true' && runner.os != 'Windows'
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           mkdir -p release-artifacts
@@ -135,51 +199,41 @@ jobs:
           mkdir -p "$staging"
           cp "${{ steps.build.outputs.binary_path }}" "$staging/"
           tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
-          # Verify the artifact exists and has size > 0
-          if [ ! -f "release-artifacts/${{ matrix.asset_name }}" ]; then
-            echo "::error::Packaged artifact not found: release-artifacts/${{ matrix.asset_name }}"
-            exit 1
-          fi
-          if [ ! -s "release-artifacts/${{ matrix.asset_name }}" ]; then
-            echo "::error::Packaged artifact is empty: release-artifacts/${{ matrix.asset_name }}"
-            exit 1
-          fi
-          echo "Successfully packaged ${{ matrix.asset_name }}"
-          ls -lh "release-artifacts/${{ matrix.asset_name }}"
+          [ -f "release-artifacts/${{ matrix.asset_name }}" ] || { echo "::error::No artifact"; exit 1; }
+          [ -s "release-artifacts/${{ matrix.asset_name }}" ] || { echo "::error::Artifact is empty"; exit 1; }
 
-      - name: Package binary (Windows) if cache miss
-        if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-artifacts
           $staging = "yek-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path $staging
-          Copy-Item "${{ steps.build.outputs.binary_path }}" -Destination $staging
+          Copy-Item "${{ steps.build.outputs.binary_path }}" $staging
           7z a "release-artifacts\${{ matrix.asset_name }}" "$staging"
-          # Verify the artifact exists and has size > 0
           if (-not (Test-Path "release-artifacts\${{ matrix.asset_name }}")) {
-            Write-Error "Packaged artifact not found: release-artifacts\${{ matrix.asset_name }}"
+            Write-Error "No artifact"
             exit 1
           }
-          $fileInfo = Get-Item "release-artifacts\${{ matrix.asset_name }}"
-          if ($fileInfo.Length -eq 0) {
-            Write-Error "Packaged artifact is empty: release-artifacts\${{ matrix.asset_name }}"
+          if ((Get-Item "release-artifacts\${{ matrix.asset_name }}").Length -eq 0) {
+            Write-Error "Artifact is empty"
             exit 1
           }
-          Write-Host "Successfully packaged ${{ matrix.asset_name }}"
-          Get-Item "release-artifacts\${{ matrix.asset_name }}" | Select-Object Length,LastWriteTime
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.target }}
           path: release-artifacts/${{ matrix.asset_name }}
-          if-no-files-found: error
 
   stress:
     name: Stress ${{ matrix.target }}
     needs: build
-    if: github.event_name == 'pull_request'
+    if: >
+      github.event_name == 'pull_request' &&
+      needs.determine-changes.outputs.only_docs != 'true' &&
+      needs.determine-changes.outputs.only_tests != 'true' &&
+      needs.determine-changes.outputs.only_src != 'true'
     runs-on: ${{ matrix.os }}
     concurrency:
       group: ${{ github.workflow }}-stress-${{ matrix.target }}-${{ github.ref }}
@@ -188,7 +242,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux builds using cross
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
@@ -197,12 +250,10 @@ jobs:
             target: x86_64-unknown-linux-musl
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-          # Native macOS builds
           - os: macos-latest
             target: x86_64-apple-darwin
           - os: macos-latest
             target: aarch64-apple-darwin
-          # Native Windows builds
           - os: windows-latest
             target: x86_64-pc-windows-msvc
           - os: windows-latest
@@ -211,7 +262,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Download the binary from CI build
       - uses: actions/download-artifact@v4
         with:
           name: build-${{ matrix.target }}
@@ -230,23 +280,27 @@ jobs:
             sudo cp bin/yek-${{ matrix.target }}/yek /usr/local/bin/
           fi
 
-      - name: Checkout VSCode repository
+      - name: Checkout VSCode for stress example
         uses: actions/checkout@v4
         with:
           repository: microsoft/vscode
           path: vscode
-          fetch-depth: 1
+          fetch-depth: 1 # needed to make sure story is deep enough
 
       - name: Run stress test
         shell: bash
-        timeout-minutes: 1
+        timeout-minutes: 1 # only 1 minute to serialize VSCode
         working-directory: vscode
         run: yek
 
   benchmark:
     name: Benchmark / ${{ matrix.benchmark_group.name }}
     needs: build
-    if: github.event_name == 'pull_request'
+    if: >
+      github.event_name == 'pull_request' &&
+      needs.determine-changes.outputs.only_docs != 'true' &&
+      needs.determine-changes.outputs.only_tests != 'true' &&
+      needs.determine-changes.outputs.only_src != 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: ${{ github.workflow }}-benchmark-${{ matrix.benchmark_group.group }}-${{ github.ref }}
@@ -279,19 +333,13 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
       - name: Run benchmarks
         run: |
-          # Build and run on target branch
           git fetch origin ${{ github.base_ref }}
           git checkout ${{ github.base_ref }}
           cargo bench --bench serialization --no-run
           cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }} '${{ matrix.benchmark_group.group }}/'
 
-          # Build and compare on PR branch
           git checkout ${{ github.head_ref }}
           cargo bench --bench serialization --no-run
           cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 '${{ matrix.benchmark_group.group }}/' > benchmark_results.md
@@ -303,7 +351,6 @@ jobs:
         with:
           name: criterion-${{ matrix.benchmark_group.group }}-results
           path: benchmark_results.md
-          if-no-files-found: error
 
   release:
     name: Release
@@ -312,8 +359,6 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
-
-      # Download all artifacts to a single directory
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -345,8 +390,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.84.0"
-      - run: |
-          # ensure version does not already exist
+
+      - name: Publish
+        run: |
           if cargo search --color=never yek | grep -q ${{ github.ref_name }}; then
             echo "yek@${{ github.ref_name }} already published"
             exit 0
