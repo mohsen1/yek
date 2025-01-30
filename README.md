@@ -100,7 +100,8 @@ Cap the max output size to 128K tokens:
 yek --tokens 128k
 ```
 
-> [!NOTE] > `yek` will remove any files that won't fit in the capped context size. It will try to fit in more important files
+> [!NOTE]
+> `yek` will remove any files that won't fit in the capped context size. It will try to fit in more important files
 
 ```bash
 yek --max-size 100KB --output-dir /tmp/yek src/
