@@ -26,6 +26,10 @@ pub struct YekConfig {
     #[config_arg(positional)]
     pub input_dirs: Vec<String>,
 
+    /// Print version of yek
+    #[config_arg(long = "version", short = 'V')]
+    pub version: bool,
+
     /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
     #[config_arg(default_value = "10MB")]
     pub max_size: String,
@@ -89,6 +93,7 @@ impl Default for YekConfig {
     fn default() -> Self {
         Self {
             input_dirs: Vec::new(),
+            version: false,
             max_size: "10MB".to_string(),
             tokens: String::new(),
             json: false,
@@ -155,6 +160,12 @@ impl YekConfig {
     pub fn init_config() -> Self {
         // 1) parse from CLI and optional config file:
         let mut cfg = YekConfig::parse();
+
+        // Handle version flag
+        if cfg.version {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            std::process::exit(0);
+        }
 
         // 2) compute derived fields:
         cfg.token_mode = !cfg.tokens.is_empty();
