@@ -23,6 +23,8 @@ runs:
 
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
+      with:
+        target: ${{ inputs.target }}
 
     - name: Install cross (for Linux GNU)
       if: >
