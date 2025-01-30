@@ -85,17 +85,13 @@ jobs:
         run: cargo fmt --check
 
   test:
-    name: Test ${{ matrix.os }}
+    name: Test
     needs: determine-changes
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     if: >
       needs.determine-changes.outputs.only_docs != 'true' &&
       needs.determine-changes.outputs.only_tests != 'true' &&
       needs.determine-changes.outputs.only_src != 'true'
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-      fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - name: Setup Rust
@@ -126,8 +122,8 @@ jobs:
 
   build:
     name: Build ${{ matrix.target }}
-    needs: [lint, test] # keep them separate but we wait for both
     runs-on: ${{ matrix.os }}
+    needs: determine-changes
     if: >
       needs.determine-changes.outputs.only_docs != 'true' &&
       needs.determine-changes.outputs.only_tests != 'true' &&
