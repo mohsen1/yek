@@ -94,14 +94,13 @@ Pipe output to clipboard (macOS):
 yek src/ | pbcopy
 ```
 
-Cap the max size to 128K tokens and only process the `src` directory:
+Cap the max output size to 128K tokens:
 
 ```bash
-yek --max-size 128K --tokens src/
+yek --tokens 128k
 ```
 
-> [!NOTE]
-> Token counting is slower than byte counting. If you want to cap the size in bytes, use `--max-size` without specifying `--tokens`.
+> [!NOTE] > `yek` will remove any files that won't fit in the capped context size. It will try to fit in more important files
 
 ```bash
 yek --max-size 100KB --output-dir /tmp/yek src/
