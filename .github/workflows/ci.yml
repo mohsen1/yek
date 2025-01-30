@@ -88,10 +88,7 @@ jobs:
     name: Test
     needs: determine-changes
     runs-on: ubuntu-latest
-    if: >
-      needs.determine-changes.outputs.only_docs != 'true' &&
-      needs.determine-changes.outputs.only_tests != 'true' &&
-      needs.determine-changes.outputs.only_src != 'true'
+    if: needs.determine-changes.outputs.only_docs != 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Setup Rust
@@ -126,8 +123,7 @@ jobs:
     needs: determine-changes
     if: >
       needs.determine-changes.outputs.only_docs != 'true' &&
-      needs.determine-changes.outputs.only_tests != 'true' &&
-      needs.determine-changes.outputs.only_src != 'true'
+      needs.determine-changes.outputs.only_tests != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -225,8 +221,7 @@ jobs:
     if: >
       github.event_name == 'pull_request' &&
       needs.determine-changes.outputs.only_docs != 'true' &&
-      needs.determine-changes.outputs.only_tests != 'true' &&
-      needs.determine-changes.outputs.only_src != 'true'
+      needs.determine-changes.outputs.only_tests != 'true'
     runs-on: ${{ matrix.os }}
     concurrency:
       group: ${{ github.workflow }}-stress-${{ matrix.target }}-${{ github.ref }}
@@ -285,8 +280,7 @@ jobs:
     if: >
       github.event_name == 'pull_request' &&
       needs.determine-changes.outputs.only_docs != 'true' &&
-      needs.determine-changes.outputs.only_tests != 'true' &&
-      needs.determine-changes.outputs.only_src != 'true'
+      needs.determine-changes.outputs.only_tests != 'true'
     runs-on: ubuntu-latest
     concurrency:
       group: ${{ github.workflow }}-benchmark-${{ matrix.benchmark_group.group }}-${{ github.ref }}
