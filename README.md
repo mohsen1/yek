@@ -43,15 +43,17 @@ Running `yek` in this directory will produce a single file and write it to the t
 
 ## Installation
 
-For Unix-like systems (macOS, Linux):
+Choose the installation method for your platform:
 
-<!-- LINUX_INSTALLATION_BEGIN -->
+### Unix-like Systems (macOS, Linux)
+
+<!-- UNIX_INSTALLATION_BEGIN -->
 
 ```bash
 curl -fsSL https://bodo.run/yek.sh | bash
 ```
 
-<!-- LINUX_INSTALLATION_END -->
+<!-- UNIX_INSTALLATION_END -->
 
 For Windows (PowerShell):
 
@@ -64,7 +66,7 @@ irm https://bodo.run/yek.ps1 | iex
 <!-- WINDOWS_INSTALLATION_END -->
 
 <details>
-<summary style="cursor: pointer;">Build from source</summary>
+<summary style="cursor: pointer;">Build from Source</summary>
 
 ```bash
 git clone https://github.com/bodo-run/yek
@@ -92,14 +94,14 @@ Pipe output to clipboard (macOS):
 yek src/ | pbcopy
 ```
 
-Cap the max size to 128K tokens and only process the `src` directory:
+Cap the max output size to 128K tokens:
 
 ```bash
-yek --max-size 128K --tokens src/
+yek --tokens 128k
 ```
 
 > [!NOTE]
-> Token counting is slower than byte counting. If you want to cap the size in bytes, use `--max-size` without specifying `--tokens`.
+> `yek` will remove any files that won't fit in the capped context size. It will try to fit in more important files
 
 ```bash
 yek --max-size 100KB --output-dir /tmp/yek src/
