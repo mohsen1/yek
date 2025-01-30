@@ -417,6 +417,15 @@ jobs:
             --ignore "/*" \
             --ignore "tests/*" \
             -o coverage-base/lcov.info
+          grcov . \
+            --binary-path ./target/coverage/deps/ \
+            -s . \
+            -t json \
+            --branch \
+            --ignore-not-existing \
+            --ignore "/*" \
+            --ignore "tests/*" \
+            -o coverage-base/coverage.json
 
       # --- PR Branch Coverage ---
       - name: Check out head branch (PR)
@@ -437,13 +446,29 @@ jobs:
             --ignore "/*" \
             --ignore "tests/*" \
             -o coverage/lcov.info
+          grcov . \
+            --binary-path ./target/coverage/deps/ \
+            -s . \
+            -t json \
+            --branch \
+            --ignore-not-existing \
+            --ignore "/*" \
+            --ignore "tests/*" \
+            -o coverage/coverage.json
 
       - name: Compare coverage
         if: github.event_name == 'pull_request'
         run: |
-          # Extract numeric line coverage (float)
-          BASE_COV=$(lcov --summary coverage-base/lcov.info 2>&1 | grep "lines......" | awk '{print $4}' | tr -d '%')
-          PR_COV=$(lcov --summary coverage/lcov.info 2>&1 | grep "lines......" | awk '{print $4}' | tr -d '%')
+          # Check if base coverage file exists
+          if [ ! -f coverage-base/coverage.json ]; then
+            echo "No base branch coverage data found - this might be the first coverage run"
+            echo "PR branch coverage: $(jq -r '.coveragePercent' coverage/coverage.json)%"
+            exit 0
+          fi
+
+          # Extract line coverage from JSON files using jq
+          BASE_COV=$(jq -r '.coveragePercent' coverage-base/coverage.json)
+          PR_COV=$(jq -r '.coveragePercent' coverage/coverage.json)
 
           echo "Base branch coverage: ${BASE_COV}%"
           echo "PR branch coverage:   ${PR_COV}%"
