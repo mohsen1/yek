@@ -118,6 +118,9 @@ jobs:
         id: build
         with:
           upload_artifacts: "false"
+          target: ${{ matrix.target }}
+          artifact_name: ${{ matrix.artifact_name }}
+          asset_name: ${{ matrix.asset_name }}
 
       - name: Package binary (Unix)
         if: runner.os != 'Windows'

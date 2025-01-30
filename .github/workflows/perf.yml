@@ -66,6 +66,9 @@ jobs:
         id: build
         with:
           upload_artifacts: "false"
+          target: ${{ matrix.target }}
+          artifact_name: ${{ matrix.artifact_name }}
+          asset_name: ${{ matrix.asset_name }}
 
       - name: Install yek (Unix)
         if: runner.os != 'Windows'
@@ -106,23 +109,22 @@ jobs:
       fail-fast: false
       matrix:
         benchmark_group:
-          - { group: "SingleFile_ByteMode", name: "Single File Byte Mode" }
-          - {
-              group: "SingleFile_ByteMode_Large",
-              name: "Single File Byte Mode Large",
-            }
-          - {
-              group: "SingleFile_TokenMode_Large",
-              name: "Single File Token Mode Large",
-            }
-          - { group: "MultipleFiles_Small", name: "Multiple Files Small" }
-          - { group: "MultipleFiles_Medium", name: "Multiple Files Medium" }
-          - { group: "MultipleFiles_Large", name: "Multiple Files Large" }
-          - {
-              group: "MultipleFiles_TokenMode",
-              name: "Multiple Files Token Mode",
-            }
-          - { group: "CustomConfig", name: "Custom Config" }
+          - group: SingleFile_ByteMode
+            name: Single File Byte Mode
+          - group: SingleFile_ByteMode_Large
+            name: Single File Byte Mode Large
+          - group: SingleFile_TokenMode_Large
+            name: Single File Token Mode Large
+          - group: MultipleFiles_Small
+            name: Multiple Files Small
+          - group: MultipleFiles_Medium
+            name: Multiple Files Medium
+          - group: MultipleFiles_Large
+            name: Multiple Files Large
+          - group: MultipleFiles_TokenMode
+            name: Multiple Files Token Mode
+          - group: CustomConfig
+            name: Custom Config
 
     steps:
       - uses: actions/checkout@v3
