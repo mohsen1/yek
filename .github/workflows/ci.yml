@@ -142,9 +142,6 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             asset_name: yek-x86_64-unknown-linux-musl.tar.gz
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            asset_name: yek-aarch64-unknown-linux-musl.tar.gz
           # macOS
           - os: macos-latest
             target: x86_64-apple-darwin
@@ -241,35 +238,15 @@ jobs:
           # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            needs_qemu: true
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            needs_qemu: true
           # macOS
           - os: macos-latest
             target: x86_64-apple-darwin
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            needs_qemu: true
           # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            needs_qemu: true
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        if: matrix.needs_qemu
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - uses: actions/download-artifact@v4
         with:
@@ -286,15 +263,7 @@ jobs:
           else
             tar xzf dist/yek-${{ matrix.target }}.tar.gz -C bin
             chmod +x bin/yek-${{ matrix.target }}/yek
-            if [[ "${{ matrix.needs_qemu }}" == "true" ]]; then
-              # For ARM binaries, we'll use qemu-aarch64 to run them
-              sudo mv bin/yek-${{ matrix.target }}/yek /usr/local/bin/yek-arm
-              echo '#!/bin/bash' | sudo tee /usr/local/bin/yek
-              echo 'qemu-aarch64 /usr/local/bin/yek-arm "$@"' | sudo tee -a /usr/local/bin/yek
-              sudo chmod +x /usr/local/bin/yek
-            else
-              sudo cp bin/yek-${{ matrix.target }}/yek /usr/local/bin/
-            fi
+            sudo cp bin/yek-${{ matrix.target }}/yek /usr/local/bin/
           fi
 
       - name: Checkout VSCode for stress example
