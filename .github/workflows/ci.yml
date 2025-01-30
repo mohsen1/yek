@@ -105,13 +105,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/build
+      - name: Generate source hash
+        id: hash
+        shell: bash
+        run: |
+          find src Cargo.toml Cargo.lock -type f -print0 | sort -z | xargs -0 sha1sum | sha1sum | cut -d " " -f1 > source.hash
+          echo "hash=$(cat source.hash)" >> $GITHUB_OUTPUT
+
+      - name: Restore cached build
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: release-artifacts
+          key: build-${{ matrix.target }}-${{ steps.hash.outputs.hash }}
+
+      - name: Build if cache miss
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/build
         id: build
         with:
           target: ${{ matrix.target }}
 
-      - name: Package binary (Unix)
-        if: runner.os != 'Windows'
+      - name: Package binary (Unix) if cache miss
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os != 'Windows'
         shell: bash
         run: |
           mkdir -p release-artifacts
@@ -131,8 +147,8 @@ jobs:
           echo "Successfully packaged ${{ matrix.asset_name }}"
           ls -lh "release-artifacts/${{ matrix.asset_name }}"
 
-      - name: Package binary (Windows)
-        if: runner.os == 'Windows'
+      - name: Package binary (Windows) if cache miss
+        if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-artifacts
