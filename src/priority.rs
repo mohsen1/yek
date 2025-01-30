@@ -50,11 +50,27 @@ pub fn compute_recentness_boost(
     }
 
     let mut result = HashMap::new();
-    for (i, (path, _time)) in sorted.iter().enumerate() {
-        let rank = i as f64 / last_index; // 0.0..1.0 (older files get lower rank)
-        let boost = (rank * max_boost as f64).round() as i32; // Newer files get higher boost
-        result.insert((*path).clone(), boost);
+    let mut i = 0;
+    while i < sorted.len() {
+        let current_time = *sorted[i].1;
+        // Find all files with the same timestamp
+        let mut same_time_count = 1;
+        while i + same_time_count < sorted.len() && *sorted[i + same_time_count].1 == current_time {
+            same_time_count += 1;
+        }
+
+        // Calculate rank based on position, all files with same timestamp get same rank
+        let rank = i as f64 / last_index;
+        let boost = (rank * max_boost as f64).round() as i32;
+
+        // Assign same boost to all files with the same timestamp
+        for j in 0..same_time_count {
+            result.insert(sorted[i + j].0.clone(), boost);
+        }
+
+        i += same_time_count;
     }
+
     result
 }
 

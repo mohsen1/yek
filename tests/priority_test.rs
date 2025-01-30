@@ -257,4 +257,93 @@ mod priority_tests {
         let times = get_recent_commit_times_git2(repo_path, 100);
         assert!(times.is_none(), "Expected no times on Git failure");
     }
+
+    #[test]
+    fn test_empty_priority_rules() {
+        let rules = vec![];
+        assert_eq!(get_file_priority("src/main.rs", &rules), 0);
+    }
+
+    #[test]
+    fn test_single_priority_rule() {
+        let rules = vec![PriorityRule {
+            pattern: String::from(".*\\.rs$"),
+            score: 100,
+        }];
+        assert_eq!(get_file_priority("src/main.rs", &rules), 100);
+        assert_eq!(get_file_priority("README.md", &rules), 0);
+    }
+
+    #[test]
+    fn test_multiple_priority_rules() {
+        let rules = vec![
+            PriorityRule {
+                pattern: String::from(".*\\.rs$"),
+                score: 100,
+            },
+            PriorityRule {
+                pattern: String::from("^src/.*"),
+                score: 50,
+            },
+        ];
+        // File matches both patterns, should get sum of scores
+        assert_eq!(get_file_priority("src/main.rs", &rules), 150);
+        // File matches only .rs pattern
+        assert_eq!(get_file_priority("tests/main.rs", &rules), 100);
+        // File matches no patterns
+        assert_eq!(get_file_priority("README.md", &rules), 0);
+    }
+
+    #[test]
+    fn test_invalid_regex_pattern() {
+        let rules = vec![PriorityRule {
+            pattern: String::from("[invalid regex"),
+            score: 100,
+        }];
+        // Invalid regex should be skipped without affecting score
+        assert_eq!(get_file_priority("any_file.txt", &rules), 0);
+    }
+
+    #[test]
+    fn test_recentness_boost_empty() {
+        let commit_times = HashMap::new();
+        let boosts = compute_recentness_boost(&commit_times, 100);
+        assert!(boosts.is_empty());
+    }
+
+    #[test]
+    fn test_recentness_boost_single_file() {
+        let mut commit_times = HashMap::new();
+        commit_times.insert("file.rs".to_string(), 1000);
+
+        let boosts = compute_recentness_boost(&commit_times, 100);
+        assert_eq!(boosts["file.rs"], 0);
+    }
+
+    #[test]
+    fn test_recentness_boost_evenly_spaced() {
+        let mut commit_times = HashMap::new();
+        commit_times.insert("oldest.rs".to_string(), 1000);
+        commit_times.insert("middle.rs".to_string(), 2000);
+        commit_times.insert("newest.rs".to_string(), 3000);
+
+        let max_boost = 100;
+        let boosts = compute_recentness_boost(&commit_times, max_boost);
+
+        assert_eq!(boosts["oldest.rs"], 0);
+        assert_eq!(boosts["newest.rs"], max_boost);
+        assert!(boosts["middle.rs"] >= 45 && boosts["middle.rs"] <= 55);
+    }
+
+    #[test]
+    fn test_recentness_boost_same_time() {
+        let mut commit_times = HashMap::new();
+        commit_times.insert("file1.rs".to_string(), 1000);
+        commit_times.insert("file2.rs".to_string(), 1000);
+
+        let boosts = compute_recentness_boost(&commit_times, 100);
+
+        // Files with same timestamp should get same boost
+        assert_eq!(boosts["file1.rs"], boosts["file2.rs"]);
+    }
 }
