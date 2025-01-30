@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2025-01-30
+[0.16.0]: https://github.com/bodo-run/yek/compare/v0.15.0...v0.16.0
+### Bug Fixes
+
+- Add explicit target installation to build action
+
+### Documentation
+
+- Fix arguments help in README
+- Update README.md
+
+### Features
+
+- Print version with --version
+
+### Miscellaneous Tasks
+
+- Ci
+
+### Ci
+
+- Also skip strss in main
+- Refactor build action to use explicit inputs
+- Remove unused upload_artifacts from build action
+- Simplify build action inputs
+- Optimize build pipeline
+- Consolidate workflows into ci.yml
+- Add concurrency control to perf jobs
+- Add source-based caching for builds
+- Rewrite most of the CI automation
+- Use QEMU for ARM binary stress tests
+- Do not wait for test to finish in build
+- Remove musl arm
+- Fix logic on which job to run baased on changes
+
 ## [0.15.0] - 2025-01-29
 [0.15.0]: https://github.com/bodo-run/yek/compare/v0.14.0...v0.15.0
 ### Bug Fixes
@@ -41,6 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use checkout v4
 - Organize ci better to not DRY too much
 - Organize build into its own action
+
+### Release
+
+- V0.15.0
 
 ## [0.14.0] - 2025-01-29
 [0.14.0]: https://github.com/bodo-run/yek/compare/v0.13.8...v0.14.0
