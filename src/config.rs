@@ -130,7 +130,7 @@ impl YekConfig {
 
 impl YekConfig {
     /// Ensure output directory exists and is valid. Returns the resolved output directory path.
-    fn ensure_output_dir(&self) -> Result<String> {
+    pub fn ensure_output_dir(&self) -> Result<String> {
         if self.stream {
             return Ok(String::new());
         }
@@ -252,6 +252,7 @@ impl YekConfig {
                     if let Ok(mod_time) = meta.modified() {
                         if let Ok(dur) = mod_time.duration_since(UNIX_EPOCH) {
                             hasher.update(dur.as_secs().to_le_bytes());
+                            hasher.update(dur.subsec_nanos().to_le_bytes());
                         }
                     }
                 }

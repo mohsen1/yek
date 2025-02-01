@@ -10,7 +10,7 @@ use std::{
 
 pub mod config;
 pub mod defaults;
-mod parallel;
+pub mod parallel;
 pub mod priority;
 
 use config::YekConfig;
