@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
 use tracing::debug;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PriorityRule {
     pub pattern: String,
     pub score: i32,
@@ -38,10 +38,8 @@ pub fn compute_recentness_boost(
     let mut sorted: Vec<(&String, &u64)> = commit_times.iter().collect();
     sorted.sort_by_key(|(_, t)| **t);
 
-    // oldest file => rank=0, newest => rank=1
-    let last_index = sorted.len().saturating_sub(1) as f64;
-    if last_index < 1.0 {
-        // If there's only one file, or zero, no boosts make sense
+    // If there's only one file, or zero, no boosts make sense
+    if sorted.len() <= 1 {
         let mut single = HashMap::new();
         for file in commit_times.keys() {
             single.insert(file.clone(), 0);
@@ -50,27 +48,25 @@ pub fn compute_recentness_boost(
     }
 
     let mut result = HashMap::new();
-    let mut i = 0;
-    while i < sorted.len() {
-        let current_time = *sorted[i].1;
-        // Find all files with the same timestamp
-        let mut same_time_count = 1;
-        while i + same_time_count < sorted.len() && *sorted[i + same_time_count].1 == current_time {
-            same_time_count += 1;
+    let oldest_time = *sorted.first().unwrap().1;
+    let newest_time = *sorted.last().unwrap().1;
+    let time_range = newest_time.saturating_sub(oldest_time) as f64;
+
+    // If all files have the same timestamp, they should all get the same boost
+    if time_range == 0.0 {
+        for (path, _) in sorted {
+            result.insert(path.clone(), 0);
         }
-
-        // Calculate rank based on position, all files with same timestamp get same rank
-        let rank = i as f64 / last_index;
-        let boost = (rank * max_boost as f64).round() as i32;
-
-        // Assign same boost to all files with the same timestamp
-        for j in 0..same_time_count {
-            result.insert(sorted[i + j].0.clone(), boost);
-        }
-
-        i += same_time_count;
+        return result;
     }
 
+    // Calculate boost based on time difference from oldest file
+    for (path, time) in sorted {
+        let time_diff = (*time - oldest_time) as f64;
+        let rank = time_diff / time_range; // 0.0..1.0 (older files get lower rank)
+        let boost = (rank * max_boost as f64).round() as i32; // Newer files get higher boost
+        result.insert(path.clone(), boost);
+    }
     result
 }
 
