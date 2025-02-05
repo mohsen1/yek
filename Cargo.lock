@@ -489,9 +489,9 @@ dependencies = [
 
 [[package]]
 name = "config"
-version = "0.15.6"
+version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e329294a796e9b22329669c1f433a746983f9e324e07f4ef135be81bb2262de4"
+checksum = "e26695492a475c4a091cfda61446d5ba01aac2e1dfbcd27a12fdd11aa2e32596"
 dependencies = [
  "async-trait",
  "convert_case",
@@ -502,7 +502,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 0.8.19",
- "winnow",
+ "winnow 0.7.1",
  "yaml-rust2",
 ]
 
@@ -1078,7 +1078,7 @@ checksum = "61a5eb2104bf174e3368d9d7b13845e5adbb4bcc6fe74173241c66cfb2716a7e"
 dependencies = [
  "serde",
  "unicase",
- "winnow",
+ "winnow 0.6.25",
 ]
 
 [[package]]
@@ -3204,7 +3204,7 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "winnow",
+ "winnow 0.6.25",
 ]
 
 [[package]]
@@ -3870,6 +3870,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "winnow"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86e376c75f4f43f44db463cf729e0d3acbf954d13e22c51e26e4c264b4ab545f"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "wit-bindgen-rt"
 version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3921,7 +3930,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap-config-file",
- "config 0.15.6",
+ "config 0.15.7",
  "content_inspector",
  "criterion",
  "crossbeam",
