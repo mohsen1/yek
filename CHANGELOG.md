@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2025-02-06
+[0.17.0]: https://github.com/bodo-run/yek/compare/v0.16.0...v0.17.0
+### Bug Fixes
+
+- Ensure files with same timestamp get same boost
+- S/json/*coveralls*
+- It is *covdir*
+- Print debug statements only when --debug is set
+
+### Features
+
+- Code coverage
+
+### Miscellaneous Tasks
+
+- Typo
+- Fix repo path and author in Cargo.toml
+- Remove unused byte-unit dependency
+- Upgrade dependencies
+- Bump config from 0.15.6 to 0.15.7
+
+### Testing
+
+- Add more unit tests
+
+### Ci
+
+- Handle missing base branch coverage gracefully
+- *covdir*
+
 ## [0.16.0] - 2025-01-30
 [0.16.0]: https://github.com/bodo-run/yek/compare/v0.15.0...v0.16.0
 ### Bug Fixes
@@ -38,7 +68,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use QEMU for ARM binary stress tests
 - Do not wait for test to finish in build
 - Remove musl arm
-- Fix logic on which job to run based on changes
+- Fix logic on which job to run baased on changes
+
+### Release
+
+- V0.16.0
 
 ## [0.15.0] - 2025-01-29
 [0.15.0]: https://github.com/bodo-run/yek/compare/v0.14.0...v0.15.0
