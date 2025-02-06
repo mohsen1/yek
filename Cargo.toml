@@ -36,7 +36,7 @@ serde_yaml = "0.9.34"
 sha2 = "0.10"
 time = "0.3"
 toml = "0.8"
-tracing = "0.1"
+tracing = { version = "0.1", features = ["release_max_level_info"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2.4"
 
