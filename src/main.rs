@@ -10,9 +10,15 @@ fn main() -> Result<()> {
     // 1) Parse CLI + config files:
     let mut full_config = YekConfig::init_config();
 
+    let env_filter = if cfg!(debug_assertions) && full_config.debug {
+        "yek=debug,ignore=off"
+    } else {
+        "yek=info,ignore=off"
+    };
+
     // 2) Initialize tracing:
     fmt::Subscriber::builder()
-        .with_max_level(if full_config.debug {
+        .with_max_level(if cfg!(debug_assertions) && full_config.debug {
             Level::DEBUG
         } else {
             Level::INFO
@@ -23,7 +29,7 @@ fn main() -> Result<()> {
         .with_file(false)
         .with_line_number(false)
         .with_level(true)
-        .with_env_filter("yek=debug,ignore=off")
+        .with_env_filter(env_filter)
         .compact()
         .init();
 
