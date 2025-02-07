@@ -1,20 +1,44 @@
-name: AI Fix Loop
+name: AI Loop
 
 on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Branch to run"
+        description: "Base branch to run against"
         required: true
         default: "main"
+      prompt:
+        description: "Prompt (optional)"
+        required: false
+        type: string
       attempts:
         description: "Max attempts"
         default: "40"
         type: number
       pr-on-fail:
         description: "Create a PR on failure"
-        default: false
+        default: true
         type: boolean
+      provider:
+        description: "AI provider"
+        default: "openai"
+        required: true
+        type: choice
+        options:
+          - openai
+          - deepseek
+          - gemini
+      model:
+        description: "AI model"
+        default: "o3-mini"
+        required: true
+        type: choice
+        options:
+          - o3-mini # OpenAI
+          - o1 # OpenAI
+          - deepseek-reasoner # DeepSeek AI
+          - deepseek-coder # DeepSeek AI
+          - gemini-2.0-flash-thinking-exp # Google AI
 
 permissions:
   contents: write
@@ -23,26 +47,34 @@ permissions:
 
 jobs:
   loop:
-    name: AI Fix Loop
+    name: AI Loop
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
       MAX_ATTEMPTS: ${{ github.event.inputs.attempts }}
-      BRANCH: ${{ github.event.inputs.branch }}
+      BASE_BRANCH: ${{ github.event.inputs.branch }}
+      NEW_BRANCH: ${{ github.event.inputs.branch }}-ai-loop-${{ github.run_id }}
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: "-Cinstrument-coverage"
+      LLVM_PROFILE_FILE: "coverage/bodo-%p-%m.profraw"
+      AI_PROVIDER: ${{ github.event.inputs.provider }}
+      AI_MODEL: ${{ github.event.inputs.model }}
+      AI_PROMPT: ${{ github.event.inputs.prompt }}
 
     steps:
       - name: Print inputs
         run: |
           echo "MAX_ATTEMPTS=${{ env.MAX_ATTEMPTS }}"
-          echo "BRANCH=${{ env.BRANCH }}"
+          echo "BASE_BRANCH=${{ env.BASE_BRANCH }}"
+          echo "NEW_BRANCH=${{ env.NEW_BRANCH }}"
+          echo "AI_PROVIDER=${{ env.AI_PROVIDER }}"
+          echo "AI_MODEL=${{ env.AI_MODEL }}"
+          echo "AI_PROMPT=${{ env.AI_PROMPT }}"
 
-      - name: Install Yek
-        run: curl -fsSL https://bodo.run/yek.sh | bash
-
-      - name: Checkout
+      - name: Checkout base branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.BRANCH }}
+          ref: ${{ env.BASE_BRANCH }}
           fetch-depth: 0
 
       - name: Cache Rust dependencies
@@ -53,54 +85,77 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
         with:
-          node-version: "20"
-
-      - name: Install askds
-        run: npm install -g askds@latest
+          deno-version: v2.x
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build
-        run: cargo build --locked
+      - name: Install llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Run AI Fix
-        id: ai_fix
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Install Yek
+        run: |
+          curl -fsSL https://bodo.run/yek.sh | bash
+
+      - name: Configure git with Github Bot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and setup new branch
+        run: |
+          # Create new branch from base branch
+          git checkout -b ${{ env.NEW_BRANCH }} ${{ env.BASE_BRANCH }}
+          # Push the new branch to establish tracking
+          git push -u origin ${{ env.NEW_BRANCH }}
+
+      - name: Run AI Loop
+        id: ai_loop
         timeout-minutes: 360
         continue-on-error: true
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          FIREWORKS_AI_API_KEY: ${{ secrets.FIREWORKS_AI_API_KEY }}
-          RUST_TEST_TIMEOUT: 300
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
+          AI_PROVIDER: ${{ env.AI_PROVIDER }}
+          AI_MODEL: ${{ env.AI_MODEL }}
+          AI_PROMPT: ${{ env.AI_PROMPT }}
+          BASE_BRANCH: ${{ env.BASE_BRANCH }}
+          NEW_BRANCH: ${{ env.NEW_BRANCH }}
         run: |
-          bash ./scripts/ai-loop.sh
-          echo "success=$?" >> "$GITHUB_OUTPUT"
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "===== Attempt $i ====="
+            deno run --allow-all scripts/ailoop.ts 2>&1 || true
+            if [ -n "$(git status --porcelain)" ]; then
+              git add -A
+              git commit -m "AI Loop attempt $i"
+              git push -u origin $NEW_BRANCH
+            fi
+            echo "last_attempt=${i}" >> "$GITHUB_OUTPUT"
+          done
+          echo "success=${SUCCESS}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload attempts log
-        uses: actions/upload-artifact@v3
-        with:
-          name: attempts-log
-          path: attempts.txt
-
-      - name: Create PR or Issue
+      - name: Create PR
         if: always() && ${{ github.event.inputs.pr-on-fail }}
-        uses: peter-evans/create-pull-request@v5
         env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
-        with:
-          token: ${{ env.GH_TOKEN }}
-          commit-message: "AI Fix"
-          title: "AI Fix for ${{ env.BRANCH }} (Attempts: ${{ env.MAX_ATTEMPTS }})"
-          body: |
-            ## AI Fix Results
-            - Successfully fixed: ${{ steps.ai_fix.outputs.success == '0' && 'Yes' || 'No' }}
-            - Total attempts: ${{ env.MAX_ATTEMPTS }}
-            - Source branch: `${{ env.BRANCH }}`
-
-            Check the attempts.txt artifact for details.
-          branch: ${{ env.BRANCH }}-ai-fix
-          base: ${{ env.BRANCH }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
+          AI_PROVIDER: ${{ env.AI_PROVIDER }}
+          AI_MODEL: ${{ env.AI_MODEL }}
+        run: |
+          gh pr create \
+            --title "AI tests for \`${{ env.BASE_BRANCH }}\` branch" \
+            --body "- Successful: ${{ steps.ai_loop.outputs.success != 0 }}
+            - Attempts: \`${{ steps.ai_loop.outputs.last_attempt }} / ${{ env.MAX_ATTEMPTS }}\`
+            - AI Provider: \`${{ env.AI_PROVIDER }}\`
+            - AI Model: \`${{ env.AI_MODEL }}\`
+            - [View run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+            --base "${{ env.BASE_BRANCH }}" \
+            --head "${{ env.NEW_BRANCH }}"
