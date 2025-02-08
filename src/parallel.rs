@@ -17,7 +17,7 @@ pub struct ProcessedFile {
     pub rel_path: String,
     pub content: String,
 }
-use normalize_path::normalize;
+use normalize_path::*;
 
 /// Walk files in parallel, skipping ignored paths, then read each file's contents
 /// in a separate thread. Return the resulting `ProcessedFile` objects.
