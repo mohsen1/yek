@@ -54,7 +54,6 @@ fn test_validate_config_invalid_priority_rule_pattern() {
         pattern: "[".to_string(), // Invalid regex
         score: 100,
     }];
-
     let result = config.validate();
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
@@ -305,10 +304,8 @@ fn test_get_checksum_consistency() {
 
     // Clean up
     drop(file); // Ensure file is closed before removal
-    fs::remove_dir_all(&temp_dir).unwrap_or_else(|e| eprintln!("Failed to remove temp dir: {}", e));
+    fs::remove_dir_all(&temp_dir).unwrap();
 }
-
-// New tests added
 
 #[test]
 fn test_extend_config_with_defaults() {
@@ -320,7 +317,7 @@ fn test_extend_config_with_defaults() {
     assert_eq!(cfg.output_dir.unwrap(), output_dir);
 
     // Check other fields are default
-    assert!(!cfg.version);
+    assert!(!cfg.version_flag);
     assert_eq!(cfg.max_size, "10MB");
     assert_eq!(cfg.tokens, String::new());
     assert!(!cfg.json);
