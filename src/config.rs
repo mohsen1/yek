@@ -160,11 +160,7 @@ impl YekConfig {
     /// Parse from CLI + config file, fill in computed fields, and validate.
     pub fn init_config() -> Self {
         // 1) parse from CLI and optional config file:
-        let mut cfg = if cfg!(test) {
-            YekConfig::parse_from(&["yek"])
-        } else {
-            YekConfig::parse()
-        };
+        let mut cfg = YekConfig::parse();
 
         // Handle version flag
         if cfg.version {
