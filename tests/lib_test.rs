@@ -214,7 +214,7 @@ mod lib_tests {
         let result = serialize_repo(&config).unwrap();
         let output_string = result.0;
         assert!(output_string.contains(r#""filename": "test.txt""#));
-        assert!(output_string.contains(r#""content": "test content""#));
+        assert!(output_string.contains(r##""content": "test content"##));
     }
 
     #[test]
@@ -245,9 +245,9 @@ mod lib_tests {
         let result = serialize_repo(&config).unwrap();
         let output_string = result.0;
         assert!(output_string.contains(r#""filename": "file1.txt""#));
-        assert!(output_string.contains(r#""content": "content1""#));
+        assert!(output_string.contains(r##""content": "content1"##));
         assert!(output_string.contains(r#""filename": "file2.txt""#));
-        assert!(output_string.contains(r#""content": "content2""#));
+        assert!(output_string.contains(r##""content": "content2"##));
     }
 
     #[test]
@@ -303,7 +303,7 @@ mod lib_tests {
 
         assert!(output_string.contains(r#""filename": "file with spaces and ünicöde.txt""#));
         assert!(output_string
-            .contains(r#""content": "content with <special> & \"chars\"\nand newlines""#));
+            .contains(r##""content": "content with <special> & \"chars\"\nand newlines"##));
     }
 
     #[test]
@@ -517,7 +517,7 @@ mod lib_tests {
         assert!(output_json.contains(r#""filename": "src/main.rs""#));
         assert!(output_json.contains(r#""content": "fn main() {}""#));
         assert!(output_json.contains(r#""filename": "README.md""#));
-        assert!(output_json.contains(r#""content": "# Yek""#));
+        assert!(output_json.contains(r##""content": "# Yek"##));
 
         // Test custom template
         config.json = false;
