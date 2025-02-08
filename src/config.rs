@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
-use clap::Parser; // <-- Added to bring in the parse_from function
+use clap::Parser;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path, str::FromStr, time::UNIX_EPOCH};
@@ -10,15 +10,7 @@ use crate::{
     priority::PriorityRule,
 };
 
-#[derive(Clone, Debug, Default, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
-pub enum ConfigFormat {
-    #[default]
-    Toml,
-    Yaml,
-    Json,
-}
-
-#[derive(ClapConfigFile, Clone)]
+#[derive(Parser, ClapConfigFile, Clone)]
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
