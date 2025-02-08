@@ -9,6 +9,7 @@ mod lib_tests {
     use yek::is_text_file;
 
     use std::os::unix::fs::PermissionsExt;
+    use yek::parallel::ProcessedFile;
     use yek::priority::PriorityRule;
     use yek::serialize_repo; // Import PermissionsExt for set_mode
 
@@ -482,5 +483,47 @@ mod lib_tests {
         let files = vec![];
         let output = yek::concat_files(&files, &config).unwrap();
         assert_eq!(output, "[]");
+    }
+
+    #[test]
+    fn test_concat_files_various_inputs() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+
+        let files = vec![
+            ProcessedFile {
+                priority: 100,
+                file_index: 0,
+                rel_path: "src/main.rs".to_string(),
+                content: "fn main() {}".to_string(),
+            },
+            ProcessedFile {
+                priority: 50,
+                file_index: 1,
+                rel_path: "README.md".to_string(),
+                content: "# Yek".to_string(),
+            },
+        ];
+
+        // Test default template
+        let output_default = yek::concat_files(&files, &config).unwrap();
+        assert!(output_default.contains(">>>> src/main.rs\nfn main() {}"));
+        assert!(output_default.contains(">>>> README.md\n# Yek"));
+
+        // Test JSON output
+        config.json = true;
+        let output_json = yek::concat_files(&files, &config).unwrap();
+        assert!(output_json.contains(r#""filename": "src/main.rs""#));
+        assert!(output_json.contains(r#""content": "fn main() {}""#));
+        assert!(output_json.contains(r#""filename": "README.md""#));
+        assert!(output_json.contains(r#""content": "# Yek""#));
+
+        // Test custom template
+        config.json = false;
+        config.output_template = "==FILE_PATH==\n---\nFILE_CONTENT\n====".to_string();
+        let output_custom = yek::concat_files(&files, &config).unwrap();
+        assert!(output_custom.contains("==src/main.rs==\n---\nfn main() {}\n===="));
+        assert!(output_custom.contains("==README.md==\n---\n# Yek\n===="));
     }
 }
