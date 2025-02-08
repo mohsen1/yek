@@ -13,7 +13,8 @@ use crate::{
 #[derive(Parser, ClapConfigFile, Clone)]
 #[command(
     allow_external_subcommands = true,
-    version,
+    disable_version_flag = true,
+    version = "0.17.0",
     about = "Yek repository serialization tool"
 )]
 #[config_file_name = "yek"]
