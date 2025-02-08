@@ -7,6 +7,7 @@ mod lib_tests {
     use tracing_subscriber::{EnvFilter, FmtSubscriber};
     use yek::config::YekConfig;
     use yek::is_text_file;
+    
     use yek::priority::PriorityRule;
     use yek::serialize_repo;
 
@@ -228,5 +229,119 @@ mod lib_tests {
         assert!(output_string.contains("Custom template:"));
         assert!(output_string.contains("Path: test.txt"));
         assert!(output_string.contains("Content: test content"));
+    }
+
+    #[test]
+    fn test_serialize_repo_json_output_multiple_files() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("file1.txt"), "content1").unwrap();
+        std::fs::write(temp_dir.path().join("file2.txt"), "content2").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = true;
+        let result = serialize_repo(&config).unwrap();
+        let output_string = result.0;
+        assert!(output_string.contains(r#""filename": "file1.txt""#));
+        assert!(output_string.contains(r#""content": "content1""#));
+        assert!(output_string.contains(r#""filename": "file2.txt""#));
+        assert!(output_string.contains(r#""content": "content2""#));
+    }
+
+    #[test]
+    fn test_serialize_repo_template_output_no_files() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        let result = serialize_repo(&config).unwrap();
+        let output_string = result.0;
+        assert_eq!(output_string, ""); // Should be empty string when no files
+    }
+
+    #[test]
+    fn test_serialize_repo_json_output_no_files() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = true;
+        let result = serialize_repo(&config).unwrap();
+        let output_string = result.0;
+        assert_eq!(output_string, "[]"); // Should be empty JSON array when no files
+    }
+
+    #[test]
+    fn test_serialize_repo_template_output_special_chars() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let file_path = "file with spaces and ünicöde.txt";
+        let file_content = "content with <special> & \"chars\"\nand newlines";
+        std::fs::write(temp_dir.path().join(file_path), file_content).unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.output_template = "Path: FILE_PATH\nContent:\nFILE_CONTENT".to_string();
+        let result = serialize_repo(&config).unwrap();
+        let output_string = result.0;
+
+        assert!(output_string.contains(&format!("Path: {}", file_path)));
+        assert!(output_string.contains(&format!("Content:\n{}", file_content)));
+    }
+
+    #[test]
+    fn test_serialize_repo_json_output_special_chars() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let file_path = "file with spaces and ünicöde.txt";
+        let file_content = "content with <special> & \"chars\"\nand newlines";
+        std::fs::write(temp_dir.path().join(file_path), file_content).unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = true;
+        let result = serialize_repo(&config).unwrap();
+        let output_string = result.0;
+
+        assert!(output_string.contains(r#""filename": "file with spaces and ünicöde.txt""#));
+        assert!(output_string
+            .contains(r#""content": "content with <special> & \"chars\"\nand newlines""#));
+    }
+
+    #[test]
+    fn test_serialize_repo_template_backslash_n_replace() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.output_template = "Path: FILE_PATH\\nContent: FILE_CONTENT".to_string(); // Using literal "\\n"
+        let result = serialize_repo(&config).unwrap();
+        let output_string = result.0;
+        assert!(output_string.contains("FILE_PATH\\nContent: FILE_CONTENT")); // Should not replace "\\n" literally
+
+        let mut config_replace =
+            create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config_replace.output_template = "Path: FILE_PATH\\\\nContent: FILE_CONTENT".to_string(); // Using literal "\\\\n" to represent escaped backslash n
+        let result_replace = serialize_repo(&config_replace).unwrap();
+        let output_string_replace = result_replace.0;
+        assert!(output_string_replace.contains("Path: test.txt\nContent: test content"));
+        // Should replace "\\\\n" with newline
+    }
+
+    #[test]
+    fn test_serialize_repo_sort_order() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        // Create files with different priorities and names to check sort order
+        std::fs::write(temp_dir.path().join("file_b.txt"), "content").unwrap(); // Default priority 0, index 1
+        std::fs::write(temp_dir.path().join("file_a.txt"), "content").unwrap(); // Default priority 0, index 0
+        std::fs::create_dir(temp_dir.path().join("src")).unwrap();
+        std::fs::write(temp_dir.path().join("src/file_c.rs"), "content").unwrap(); // Priority 100, index 0
+
+        let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        let result = serialize_repo(&config).unwrap();
+        let files = result.1;
+
+        assert_eq!(files.len(), 3);
+        assert_eq!(files[0].rel_path, "src/file_c.rs"); // Highest priority first
+        assert_eq!(files[1].rel_path, "file_a.txt"); // Then by file_index (alphabetical name)
+        assert_eq!(files[2].rel_path, "file_b.txt");
     }
 }
