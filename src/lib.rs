@@ -86,7 +86,7 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     Ok((output_string, files))
 }
 
-fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Result<String> {
+pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Result<String> {
     if config.json {
         // JSON array of objects
         Ok(serde_json::to_string_pretty(
