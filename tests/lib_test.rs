@@ -8,8 +8,8 @@ mod lib_tests {
     use yek::config::YekConfig;
     use yek::is_text_file;
 
-    use std::io;
-    use std::path::Path;
+    
+    
     use yek::priority::PriorityRule;
     use yek::serialize_repo;
 
@@ -356,7 +356,9 @@ mod lib_tests {
         let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
 
         // Make the file unreadable
-        let _ = fs::set_permissions(&file_path, fs::Permissions::readonly());
+        let mut permissions = fs::metadata(&file_path).unwrap().permissions();
+        permissions.set_readonly(true);
+        let _ = fs::set_permissions(&file_path, permissions);
 
         let result = serialize_repo(&config);
         // In case of read error, it should still return Ok but skip the file
@@ -365,9 +367,9 @@ mod lib_tests {
         assert_eq!(output.1.len(), 0); // No files processed due to read error
 
         // Restore permissions so temp dir can be deleted
-        let mut permissions = fs::Permissions::builder();
-        permissions.set_readonly(false);
-        fs::set_permissions(&file_path, permissions.build()).unwrap();
+        let mut permissions = fs::metadata(&file_path).unwrap().permissions();
+        permissions.set_readonly(false); // Set back to readable
+        fs::set_permissions(&file_path, permissions).unwrap();
     }
 
     #[test]
@@ -391,7 +393,9 @@ mod lib_tests {
         fs::write(&file_path, "test content").unwrap();
 
         // Make the file unreadable
-        let _ = fs::set_permissions(&file_path, fs::Permissions::readonly());
+        let mut permissions = fs::metadata(&file_path).unwrap().permissions();
+        permissions.set_readonly(true);
+        let _ = fs::set_permissions(&file_path, permissions);
 
         let result = is_text_file(&file_path, &[]);
         assert!(
@@ -400,8 +404,8 @@ mod lib_tests {
         );
 
         // Restore permissions so temp dir can be deleted
-        let mut permissions = fs::Permissions::builder();
-        permissions.set_readonly(false);
-        fs::set_permissions(&file_path, permissions.build()).unwrap();
+        let mut permissions = fs::metadata(&file_path).unwrap().permissions();
+        permissions.set_readonly(false); // Set back to readable
+        fs::set_permissions(&file_path, permissions).unwrap();
     }
 }
