@@ -314,7 +314,7 @@ mod lib_tests {
         config.output_template = "Path: FILE_PATH\\nContent: FILE_CONTENT".to_string(); // Using literal "\\n"
         let result = serialize_repo(&config).unwrap();
         let output_string = result.0;
-        assert!(output_string.contains("Path: FILE_PATH\nContent: FILE_CONTENT")); // Should not replace "\\n" literally
+        assert!(output_string.contains("Path: FILE_PATH\\nContent: FILE_CONTENT")); // Should not replace "\\n" literally
 
         let mut config_replace =
             create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
