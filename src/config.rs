@@ -17,6 +17,7 @@ use crate::{
 pub struct YekConfig {
     /// Print version of yek
     #[config_arg(long = "version", short = 'V')]
+    #[arg(action = clap::ArgAction::SetTrue)]
     pub version: bool,
 
     /// Input directories to process
