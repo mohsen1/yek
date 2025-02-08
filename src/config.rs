@@ -83,8 +83,8 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    // Removed "last = true" to fix conflict with trailing_var_arg.
-    #[arg(trailing_var_arg = true)]
+    // Added last = true to resolve positional argument conflicts.
+    #[arg(trailing_var_arg = true, last = true)]
     pub extra_args: Option<Vec<String>>,
 
     /// Version flag.
