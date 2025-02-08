@@ -3,70 +3,58 @@ use bytesize::ByteSize;
 use clap::Parser;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
-use std::{fs, path::Path, str::FromStr, time::UNIX_EPOCH};
+use std::{collections::HashSet, fs, path::Path, str::FromStr, time::UNIX_EPOCH};
 
 use crate::{
     defaults::{BINARY_FILE_EXTENSIONS, DEFAULT_IGNORE_PATTERNS, DEFAULT_OUTPUT_TEMPLATE},
     priority::PriorityRule,
 };
 
-#[derive(Parser, ClapConfigFile, Clone)]
-// Removed "allow_external_subcommands = true" to avoid conflicts with built‐in flags like --version.
+#[derive(Parser, ClapConfigFile, Clone, Debug)]
 #[command(version = "0.17.0", about = "Yek repository serialization tool")]
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
     /// Input directories to process
-    #[config_arg(positional)]
     pub input_dirs: Vec<String>,
 
     /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
-    #[config_arg(default_value = "10MB")]
     pub max_size: String,
 
     /// Use token mode instead of byte mode
-    #[config_arg()]
     pub tokens: String,
 
     /// Enable JSON output
-    #[config_arg()]
-    #[arg(long)]
     pub json: bool,
 
     /// Enable debug output
-    #[config_arg()]
-    #[arg(long)]
     pub debug: bool,
 
     /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
-    #[config_arg()]
     pub output_dir: Option<String>,
 
     /// Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
-    #[config_arg(default_value = DEFAULT_OUTPUT_TEMPLATE)]
     pub output_template: String,
 
     /// Ignore patterns
-    #[config_arg(long = "ignore-patterns", multi_value_behavior = "extend")]
     pub ignore_patterns: Vec<String>,
 
     /// Unignore patterns. Yek has some built-in ignore patterns, but you can override them here.
-    #[config_arg(long = "unignore-patterns", multi_value_behavior = "extend")]
     pub unignore_patterns: Vec<String>,
 
     /// Priority rules
-    #[config_arg(accept_from = "config_only")]
     pub priority_rules: Vec<PriorityRule>,
 
     /// Binary file extensions to ignore
-    #[config_arg(accept_from = "config_only", default_value = BINARY_FILE_EXTENSIONS)]
     pub binary_extensions: Vec<String>,
 
     /// Maximum additional boost from Git commit times (0..1000)
-    #[config_arg(accept_from = "config_only")]
     pub git_boost_max: Option<i32>,
 
-    // Renamed the "version" field to _version so that clap's built‐in --version flag is enabled.
+    // computed fields
+
+    // Version flag.
+    // (Converted to a normal comment because this does not document a struct field.)
     #[arg(skip)]
     pub _version: bool,
 
@@ -83,18 +71,15 @@ pub struct YekConfig {
     pub output_file_full_path: Option<String>,
 
     /// Maximum depth to search for Git commit times
-    #[config_arg(accept_from = "config_only", default_value = "100")]
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    // Removed "last = true" to prevent conflict with trailing_var_arg
     #[arg(trailing_var_arg = true)]
     pub extra_args: Option<Vec<String>>,
 
-    /// Version flag.
-    // This field has been renamed to avoid causing a conflict with clap's auto--version.
-    // Do not use this field; rely on the auto-generated --version output.
-    // #[arg(skip)]  <-- Removed as the version is now provided automatically.
+    /// Dummy field for version (assigned via clap’s built‐in --version flag)
+    #[arg(skip)]
+    pub version_flag: bool,
 }
 
 impl Default for YekConfig {
@@ -122,6 +107,7 @@ impl Default for YekConfig {
             output_file_full_path: None,
             max_git_depth: 100,
             extra_args: None,
+            version_flag: false,
         }
     }
 }
@@ -192,7 +178,7 @@ impl YekConfig {
         merged_bins.append(&mut cfg.binary_extensions);
         cfg.binary_extensions = merged_bins
             .into_iter()
-            .collect::<std::collections::HashSet<_>>()
+            .collect::<HashSet<_>>()
             .into_iter()
             .collect();
 
