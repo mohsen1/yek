@@ -10,6 +10,10 @@ mod config_unignore_tests {
         config.ignore_patterns = vec!["*.log".to_string(), "temp/**".to_string()];
         config.unignore_patterns = vec!["debug.log".to_string(), "temp/keep/**".to_string()];
 
+        // Verify original patterns are preserved
+        assert!(config.ignore_patterns.contains(&"*.log".to_string()));
+        assert!(config.ignore_patterns.contains(&"temp/**".to_string()));
+
         // Simulate the merging step that occurs in init_config.
         // (The unignore patterns are applied by prefixing them with "!" and extending ignore_patterns.)
         config.ignore_patterns.extend(
