@@ -44,12 +44,9 @@ pub fn process_files_parallel(
     // If there is a .gitignore in this folder, add it last so its "!" lines override prior patterns
     let gitignore_file = base_dir.join(".gitignore");
     if gitignore_file.exists() {
-        match gitignore_builder.add(&gitignore_file) {
-            Ok(_) => {} // Successfully added gitignore file
-            Err(e) => {
-                debug!("Error adding .gitignore: {}", e);
-                return Err(e.into()); // Propagate gitignore error
-            }
+        if let Err(e) = gitignore_builder.add(&gitignore_file) {
+            debug!("Error adding .gitignore: {}", e);
+            return Err(e.into()); // Propagate gitignore error
         }
     }
 
