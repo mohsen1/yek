@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
+use clap::Parser;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
-use std::io::IsTerminal;
 use std::{fs, path::Path, str::FromStr, time::UNIX_EPOCH};
 
 use crate::{
@@ -10,25 +10,18 @@ use crate::{
     priority::PriorityRule,
 };
 
-#[derive(Clone, Debug, Default, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
-pub enum ConfigFormat {
-    #[default]
-    Toml,
-    Yaml,
-    Json,
-}
-
-#[derive(ClapConfigFile, Clone)]
+#[derive(Parser, ClapConfigFile, Clone)]
+#[command(
+    allow_external_subcommands = true,
+    version = "0.17.0",
+    about = "Yek repository serialization tool"
+)]
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
     /// Input directories to process
     #[config_arg(positional)]
     pub input_dirs: Vec<String>,
-
-    /// Print version of yek
-    #[config_arg(long = "version", short = 'V')]
-    pub version: bool,
 
     /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
     #[config_arg(default_value = "10MB")]
@@ -40,10 +33,12 @@ pub struct YekConfig {
 
     /// Enable JSON output
     #[config_arg()]
+    #[arg(long)]
     pub json: bool,
 
     /// Enable debug output
     #[config_arg()]
+    #[arg(long)]
     pub debug: bool,
 
     /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
@@ -51,7 +46,7 @@ pub struct YekConfig {
     pub output_dir: Option<String>,
 
     /// Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
-    #[config_arg(default_value = ">>>> FILE_PATH\nFILE_CONTENT")]
+    #[config_arg(default_value = DEFAULT_OUTPUT_TEMPLATE)]
     pub output_template: String,
 
     /// Ignore patterns
@@ -75,25 +70,34 @@ pub struct YekConfig {
     pub git_boost_max: Option<i32>,
 
     /// True if we should stream output to stdout (computed)
+    #[arg(skip)]
     pub stream: bool,
 
     /// True if we should count tokens, not bytes (computed)
+    #[arg(skip)]
     pub token_mode: bool,
 
     /// Final resolved output file path (only used if not streaming)
+    #[arg(skip)]
     pub output_file_full_path: Option<String>,
 
     /// Maximum depth to search for Git commit times
     #[config_arg(accept_from = "config_only", default_value = "100")]
     pub max_git_depth: i32,
+
+    /// Capture any extra CLI arguments not recognized by YekConfig.
+    #[arg(trailing_var_arg = true, last = true)]
+    pub extra_args: Option<Vec<String>>,
+
+    /// Version flag.
+    #[arg(skip)]
+    pub version: bool,
 }
 
-/// Provide defaults so tests or other callers can create a baseline YekConfig easily.
 impl Default for YekConfig {
     fn default() -> Self {
         Self {
             input_dirs: Vec::new(),
-            version: false,
             max_size: "10MB".to_string(),
             tokens: String::new(),
             json: false,
@@ -108,12 +112,13 @@ impl Default for YekConfig {
                 .map(|s| s.to_string())
                 .collect(),
             git_boost_max: Some(100),
-
             // computed fields
             stream: false,
             token_mode: false,
             output_file_full_path: None,
             max_git_depth: 100,
+            extra_args: None,
+            version: false,
         }
     }
 }
@@ -150,7 +155,7 @@ impl YekConfig {
             ));
         }
 
-        std::fs::create_dir_all(path)
+        fs::create_dir_all(path)
             .map_err(|e| anyhow!("output_dir: cannot create '{}': {}", output_dir, e))?;
 
         Ok(output_dir)
@@ -158,22 +163,20 @@ impl YekConfig {
 
     /// Parse from CLI + config file, fill in computed fields, and validate.
     pub fn init_config() -> Self {
-        // 1) parse from CLI and optional config file:
-        let mut cfg = YekConfig::parse();
+        // Use a fixed argument list if the special environment variable is set.
+        let mut cfg = if std::env::var("YEK_CLI_TEST").is_ok() {
+            YekConfig::parse_from(std::iter::once("yek"))
+        } else {
+            YekConfig::parse()
+        };
 
-        // Handle version flag
-        if cfg.version {
-            println!("{}", env!("CARGO_PKG_VERSION"));
-            std::process::exit(0);
-        }
-
-        // 2) compute derived fields:
+        // Compute derived fields:
         cfg.token_mode = !cfg.tokens.is_empty();
         let force_tty = std::env::var("FORCE_TTY").is_ok();
 
-        cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
+        cfg.stream = !atty::is(atty::Stream::Stdout) && !force_tty;
 
-        // default input dirs to current dir if none:
+        // Default input dirs to current dir if none:
         if cfg.input_dirs.is_empty() {
             cfg.input_dirs.push(".".to_string());
         }
@@ -202,6 +205,11 @@ impl YekConfig {
         cfg.ignore_patterns
             .extend(cfg.unignore_patterns.iter().map(|pat| format!("!{}", pat)));
 
+        // If no output_template is provided (or it is empty), set it to default.
+        if cfg.output_template.trim().is_empty() {
+            cfg.output_template = DEFAULT_OUTPUT_TEMPLATE.to_string();
+        }
+
         // Handle output directory setup
         if !cfg.stream {
             match cfg.ensure_output_dir() {
@@ -216,7 +224,7 @@ impl YekConfig {
         // By default, we start with no final output_file_full_path:
         cfg.output_file_full_path = None;
 
-        // 3) Validate
+        // Validate the config.
         if let Err(e) = cfg.validate() {
             eprintln!("Error: {}", e);
             std::process::exit(1);
@@ -290,7 +298,6 @@ impl YekConfig {
                 return Err(anyhow!("tokens: cannot be 0"));
             }
         } else if !self.tokens.is_empty() {
-            // parse as integer
             let val = self
                 .tokens
                 .parse::<usize>()
@@ -300,18 +307,15 @@ impl YekConfig {
             }
         }
 
-        // If not streaming, validate output directory
         if !self.stream {
             self.ensure_output_dir()?;
         }
 
-        // Validate ignore patterns
         for pattern in &self.ignore_patterns {
             glob::Pattern::new(pattern)
                 .map_err(|e| anyhow!("ignore_patterns: Invalid pattern '{}': {}", pattern, e))?;
         }
 
-        // Validate priority rules
         for rule in &self.priority_rules {
             if rule.score < 0 || rule.score > 1000 {
                 return Err(anyhow!(
@@ -325,5 +329,12 @@ impl YekConfig {
         }
 
         Ok(())
+    }
+}
+
+impl YekConfig {
+    /// Ensure that the output directory is valid and exists.
+    pub fn ensure_output_dir_valid(&self) -> Result<String> {
+        self.ensure_output_dir()
     }
 }
