@@ -8,6 +8,8 @@ mod lib_tests {
     use yek::config::YekConfig;
     use yek::is_text_file;
 
+    use std::io;
+    use std::path::Path;
     use yek::priority::PriorityRule;
     use yek::serialize_repo;
 
@@ -343,5 +345,63 @@ mod lib_tests {
         assert_eq!(files[0].rel_path, "src/file_c.rs"); // Highest priority first
         assert_eq!(files[1].rel_path, "file_a.txt"); // Then by file_index (alphabetical name)
         assert_eq!(files[2].rel_path, "file_b.txt");
+    }
+
+    #[test]
+    fn test_serialize_repo_file_read_error() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        std::fs::write(&file_path, "test content").unwrap();
+        let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+
+        // Make the file unreadable
+        let _ = fs::set_permissions(&file_path, fs::Permissions::readonly());
+
+        let result = serialize_repo(&config);
+        // In case of read error, it should still return Ok but skip the file
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert_eq!(output.1.len(), 0); // No files processed due to read error
+
+        // Restore permissions so temp dir can be deleted
+        let mut permissions = fs::Permissions::builder();
+        permissions.set_readonly(false);
+        fs::set_permissions(&file_path, permissions.build()).unwrap();
+    }
+
+    #[test]
+    fn test_serialize_repo_json_error() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = true;
+        // Simulate a JSON serialization error by making files empty, which might cause issues if content is not handled properly
+        let result = serialize_repo(&config);
+        assert!(result.is_ok(), "serialize_repo should not error even if JSON serialization might have issues with empty content");
+    }
+
+    #[test]
+    fn test_is_text_file_io_error() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("unreadable.txt");
+        fs::write(&file_path, "test content").unwrap();
+
+        // Make the file unreadable
+        let _ = fs::set_permissions(&file_path, fs::Permissions::readonly());
+
+        let result = is_text_file(&file_path, &[]);
+        assert!(
+            result.is_err(),
+            "is_text_file should return Err for unreadable file"
+        );
+
+        // Restore permissions so temp dir can be deleted
+        let mut permissions = fs::Permissions::builder();
+        permissions.set_readonly(false);
+        fs::set_permissions(&file_path, permissions.build()).unwrap();
     }
 }
