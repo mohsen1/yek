@@ -3,7 +3,7 @@ mod extra_tests {
     use std::collections::HashMap;
     use std::fs;
     use std::io::Write;
-    
+
     use tempfile::tempdir;
     use yek::{
         concat_files,
