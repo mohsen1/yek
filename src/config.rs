@@ -88,7 +88,7 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    #[command(trailing_var_arg = true)]
+    #[clap(trailing_var_arg = true)]
     pub extra_args: Option<Vec<String>>,
 }
 
@@ -111,7 +111,6 @@ impl Default for YekConfig {
                 .map(|s| s.to_string())
                 .collect(),
             git_boost_max: Some(100),
-
             // computed fields
             stream: false,
             token_mode: false,
@@ -329,5 +328,12 @@ impl YekConfig {
         }
 
         Ok(())
+    }
+}
+
+impl YekConfig {
+    /// Ensure that the output directory is valid and exists.
+    pub fn ensure_output_dir_valid(&self) -> Result<String> {
+        self.ensure_output_dir()
     }
 }
