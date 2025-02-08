@@ -11,11 +11,8 @@ use crate::{
 };
 
 #[derive(Parser, ClapConfigFile, Clone)]
-#[command(
-    allow_external_subcommands = true,
-    version = "0.17.0",
-    about = "Yek repository serialization tool"
-)]
+// Removed "allow_external_subcommands = true" to avoid conflicts with built‐in flags like --version.
+#[command(version = "0.17.0", about = "Yek repository serialization tool")]
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
@@ -86,7 +83,8 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    #[arg(trailing_var_arg = true, last = true)]
+    // Removed "last = true" to fix conflict with trailing_var_arg.
+    #[arg(trailing_var_arg = true)]
     pub extra_args: Option<Vec<String>>,
 
     /// Version flag.
