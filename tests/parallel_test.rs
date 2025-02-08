@@ -1,17 +1,26 @@
+use normalize_path::NormalizePath;
 use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use tempfile::tempdir;
 use yek::config::YekConfig;
-use yek::parallel::{normalize_path, process_files_parallel};
+use yek::parallel::process_files_parallel;
 
 #[test]
 fn test_normalize_path_unix_style() {
     let input = Path::new("/usr/local/bin");
     let base = Path::new("/"); // Dummy base path
     let expected = "usr/local/bin".to_string();
-    assert_eq!(normalize_path(input, base), expected);
+    assert_eq!(
+        input
+            .strip_prefix(base)
+            .unwrap()
+            .normalize()
+            .to_string_lossy()
+            .to_string(),
+        expected
+    );
 }
 
 #[test]
@@ -19,7 +28,15 @@ fn test_normalize_path_windows_style() {
     let input = Path::new("C:\\Program Files\\Yek");
     let base = Path::new("C:\\"); // Dummy base for normalization
     let expected = "C:\\Program Files\\Yek".to_string();
-    assert_eq!(normalize_path(input, base), expected);
+    assert_eq!(
+        input
+            .strip_prefix(base)
+            .unwrap()
+            .normalize()
+            .to_string_lossy()
+            .to_string(),
+        expected
+    );
 }
 
 #[test]
