@@ -3,7 +3,6 @@ use bytesize::ByteSize;
 use clap::Parser; // <-- Added to bring in the parse_from function
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
-use std::io::IsTerminal;
 use std::{fs, path::Path, str::FromStr, time::UNIX_EPOCH};
 
 use crate::{
@@ -89,7 +88,7 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    #[command(external_subcommand)]
+    #[clap(external_subcommand)]
     pub extra_args: Option<Vec<String>>,
 }
 
