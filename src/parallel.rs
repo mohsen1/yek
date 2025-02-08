@@ -1,7 +1,6 @@
 use crate::{config::YekConfig, priority::get_file_priority, Result};
 use content_inspector::{inspect, ContentType};
 use ignore::gitignore::GitignoreBuilder;
-use path_slash::PathBufExt;
 use rayon::prelude::*;
 use std::{
     collections::HashMap,
@@ -18,6 +17,7 @@ pub struct ProcessedFile {
     pub rel_path: String,
     pub content: String,
 }
+use normalize_path::normalize;
 
 /// Walk files in parallel, skipping ignored paths, then read each file's contents
 /// in a separate thread. Return the resulting `ProcessedFile` objects.
@@ -109,7 +109,9 @@ pub fn process_files_parallel(
             }
 
             let path = entry.path().to_path_buf();
-            let rel_path = normalize_path(&path, &base_dir);
+            let rel_path = normalize(path.strip_prefix(&base_dir).unwrap())
+                .to_string_lossy()
+                .to_string();
 
             // If gitignore says skip, we do not even read
             if gitignore.matched(&path, false).is_ignore() {
