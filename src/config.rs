@@ -15,13 +15,13 @@ use crate::{
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
-    /// Input directories to process
-    #[config_arg(positional)]
-    pub input_dirs: Vec<String>,
-
     /// Print version of yek
     #[config_arg(long = "version", short = 'V')]
     pub version: bool,
+
+    /// Input directories to process
+    #[config_arg(positional)]
+    pub input_dirs: Vec<String>,
 
     /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
     #[config_arg(default_value = "10MB")]
