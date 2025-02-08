@@ -199,4 +199,34 @@ mod lib_tests {
 
         assert!(is_text_file(&script_file, &[]).unwrap());
     }
+
+    #[test]
+    fn test_serialize_repo_json_output() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = true;
+        let result = serialize_repo(&config).unwrap();
+        let output_string = result.0;
+        assert!(output_string.contains(r#""filename": "test.txt""#));
+        assert!(output_string.contains(r#""content": "test content""#));
+    }
+
+    #[test]
+    fn test_serialize_repo_template_output() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.output_template =
+            "Custom template:\nPath: FILE_PATH\nContent: FILE_CONTENT".to_string();
+        let result = serialize_repo(&config).unwrap();
+        let output_string = result.0;
+        assert!(output_string.contains("Custom template:"));
+        assert!(output_string.contains("Path: test.txt"));
+        assert!(output_string.contains("Content: test content"));
+    }
 }

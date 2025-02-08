@@ -320,11 +320,11 @@ fn test_extend_config_with_defaults() {
     assert_eq!(cfg.output_dir.unwrap(), output_dir);
 
     // Check other fields are default
-    assert_eq!(cfg.version, false);
+    assert!(!cfg.version);
     assert_eq!(cfg.max_size, "10MB");
     assert_eq!(cfg.tokens, String::new());
-    assert_eq!(cfg.json, false);
-    assert_eq!(cfg.debug, false);
+    assert!(!cfg.json);
+    assert!(!cfg.debug);
     assert_eq!(cfg.output_template, DEFAULT_OUTPUT_TEMPLATE.to_string());
     assert_eq!(cfg.ignore_patterns, Vec::<String>::new());
     assert_eq!(cfg.unignore_patterns, Vec::<String>::new());
@@ -337,8 +337,8 @@ fn test_extend_config_with_defaults() {
             .collect::<Vec<_>>()
     );
     assert_eq!(cfg.git_boost_max, Some(100));
-    assert_eq!(cfg.stream, false);
-    assert_eq!(cfg.token_mode, false);
+    assert!(!cfg.stream);
+    assert!(!cfg.token_mode);
     assert_eq!(cfg.output_file_full_path, None);
     assert_eq!(cfg.max_git_depth, 100);
 }
