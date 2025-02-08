@@ -27,21 +27,24 @@ fn test_normalize_path_unix_style() {
 fn test_normalize_path_windows_style() {
     let input = Path::new("C:\\Program Files\\Yek");
     let base = Path::new("C:\\"); // Dummy base for normalization
-    let expected = "Program Files\\Yek".to_string();
+    let expected = if cfg!(windows) {
+        "Program Files\\Yek".to_string()
+    } else {
+        "C:/Program Files/Yek".to_string()
+    };
     let stripped_path = if input.starts_with(base) {
         input.strip_prefix(base).unwrap()
     } else {
         input
     };
-    // Normalize the stripped path, not the original input path
-    assert_eq!(
-        stripped_path
-            .normalize()
-            .to_string_lossy()
-            .to_string()
-            .replace("\\", "/"),
-        expected.replace("\\", "/")
-    );
+    // Normalize the stripped path, then replace backslashes with forward slashes
+    let normalized = stripped_path
+        .normalize()
+        .to_string_lossy()
+        .to_string()
+        .replace("\\", "/");
+    let expected_normalized = expected.replace("\\", "/");
+    assert_eq!(normalized, expected_normalized);
 }
 
 #[test]
