@@ -411,4 +411,76 @@ mod lib_tests {
         permissions.set_mode(0o644);
         fs::set_permissions(&file_path, permissions).unwrap();
     }
+
+    #[test]
+    fn test_serialize_repo_with_priority_rules() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("file.txt"), "content").unwrap();
+        std::fs::write(temp_dir.path().join("src_file.rs"), "content").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.priority_rules = vec![PriorityRule {
+            pattern: "src_.*".to_string(),
+            score: 500,
+        }];
+        let result = serialize_repo(&config).unwrap();
+        let files = result.1;
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].rel_path, "src_file.rs"); // Should be first due to priority
+        assert_eq!(files[0].priority, 500);
+        assert_eq!(files[1].rel_path, "file.txt");
+        assert_eq!(files[1].priority, 0);
+    }
+
+    #[test]
+    fn test_serialize_repo_with_ignore_patterns_config() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("file.txt"), "content").unwrap();
+        std::fs::write(temp_dir.path().join("log.log"), "log content").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.ignore_patterns = vec!["*.log".to_string()];
+        let result = serialize_repo(&config).unwrap();
+        let files = result.1;
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].rel_path, "file.txt"); // log.log should be ignored
+    }
+
+    #[test]
+    fn test_serialize_repo_with_binary_extensions_config() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("file.txt"), "content").unwrap();
+        std::fs::write(temp_dir.path().join("data.bin"), [0u8, 1u8, 2u8]).unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.binary_extensions = vec!["bin".to_string()];
+        let result = serialize_repo(&config).unwrap();
+        let files = result.1;
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].rel_path, "file.txt"); // data.bin should be ignored
+    }
+
+    #[test]
+    fn test_concat_files_empty_files() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        let files = vec![];
+        let output = yek::concat_files(&files, &config).unwrap();
+        assert_eq!(output, "");
+    }
+
+    #[test]
+    fn test_concat_files_json_output_empty_files() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = true;
+        let files = vec![];
+        let output = yek::concat_files(&files, &config).unwrap();
+        assert_eq!(output, "[]");
+    }
 }
