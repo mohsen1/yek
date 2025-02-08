@@ -144,7 +144,7 @@ fn test_process_files_parallel_walk_error() {
     let boosts: HashMap<String, i32> = HashMap::new();
     let result = process_files_parallel(temp_dir.path(), &config, &boosts);
 
-    // Walk error should be propagated as Err
+    // Walk errors are logged and skipped, not propagated as Err
     assert!(result.is_ok()); // Walk errors are logged and skipped, not propagated as Err
     let processed_files = result.unwrap();
     assert_eq!(processed_files.len(), 0); // No files processed due to walk error
