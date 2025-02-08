@@ -28,13 +28,13 @@ fn test_normalize_path_windows_style() {
     let input = Path::new("C:\\Program Files\\Yek");
     let base = Path::new("C:\\"); // Dummy base for normalization
     let expected = "Program Files\\Yek".to_string();
-    assert_eq!(
+    let stripped_path = if input.starts_with(base) {
+        input.strip_prefix(base).unwrap()
+    } else {
         input
-            .strip_prefix(base)
-            .unwrap()
-            .normalize()
-            .to_string_lossy()
-            .to_string(),
+    };
+    assert_eq!(
+        stripped_path.normalize().to_string_lossy().to_string(),
         expected.replace("\\\\", "\\") // fix for windows path
     );
 }
