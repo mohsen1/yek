@@ -17,7 +17,7 @@ pub struct ProcessedFile {
     pub rel_path: String,
     pub content: String,
 }
-use normalize_path::*;
+use normalize_path::NormalizePath;
 
 /// Walk files in parallel, skipping ignored paths, then read each file's contents
 /// in a separate thread. Return the resulting `ProcessedFile` objects.
@@ -109,7 +109,10 @@ pub fn process_files_parallel(
             }
 
             let path = entry.path().to_path_buf();
-            let rel_path = normalize(path.strip_prefix(&base_dir).unwrap())
+            let rel_path = path
+                .strip_prefix(&base_dir)
+                .unwrap()
+                .normalize()
                 .to_string_lossy()
                 .to_string();
 
