@@ -66,6 +66,10 @@ pub struct YekConfig {
     #[config_arg(accept_from = "config_only")]
     pub git_boost_max: Option<i32>,
 
+    // Renamed the "version" field to _version so that clap's built‐in --version flag is enabled.
+    #[arg(skip)]
+    pub _version: bool,
+
     /// True if we should stream output to stdout (computed)
     #[arg(skip)]
     pub stream: bool,
@@ -83,13 +87,14 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    // Added last = true to resolve positional argument conflicts.
-    #[arg(trailing_var_arg = true, last = true)]
+    // Removed "last = true" to prevent conflict with trailing_var_arg
+    #[arg(trailing_var_arg = true)]
     pub extra_args: Option<Vec<String>>,
 
     /// Version flag.
-    #[arg(skip)]
-    pub version: bool,
+    // This field has been renamed to avoid causing a conflict with clap's auto--version.
+    // Do not use this field; rely on the auto-generated --version output.
+    // #[arg(skip)]  <-- Removed as the version is now provided automatically.
 }
 
 impl Default for YekConfig {
@@ -111,12 +116,12 @@ impl Default for YekConfig {
                 .collect(),
             git_boost_max: Some(100),
             // computed fields
+            _version: false,
             stream: false,
             token_mode: false,
             output_file_full_path: None,
             max_git_depth: 100,
             extra_args: None,
-            version: false,
         }
     }
 }
