@@ -88,7 +88,7 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    #[clap(external_subcommand)]
+    #[command(external_subcommand)]
     pub extra_args: Option<Vec<String>>,
 }
 
@@ -175,7 +175,7 @@ impl YekConfig {
         cfg.token_mode = !cfg.tokens.is_empty();
         let force_tty = std::env::var("FORCE_TTY").is_ok();
 
-        cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
+        cfg.stream = !atty::is(atty::Stream::Stdout) && !force_tty;
 
         // default input dirs to current dir if none:
         if cfg.input_dirs.is_empty() {
