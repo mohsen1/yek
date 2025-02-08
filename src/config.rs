@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Parser, ClapConfigFile, Clone)]
-#[command(external_subcommands = true)]
+#[command(allow_external_subcommands = true)]
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
