@@ -70,12 +70,15 @@ pub struct YekConfig {
     pub git_boost_max: Option<i32>,
 
     /// True if we should stream output to stdout (computed)
+    #[arg(skip)]
     pub stream: bool,
 
     /// True if we should count tokens, not bytes (computed)
+    #[arg(skip)]
     pub token_mode: bool,
 
     /// Final resolved output file path (only used if not streaming)
+    #[arg(skip)]
     pub output_file_full_path: Option<String>,
 
     /// Maximum depth to search for Git commit times
