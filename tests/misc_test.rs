@@ -18,9 +18,10 @@ mod misc_tests {
     // Test that YekConfig::init_config fills in default input_dirs if none are provided.
     #[test]
     fn test_yek_config_default_input_dirs() {
-        // Clear the CLI arguments by resetting env var FORCE_TTY if needed.
-        // When no input_dirs are given, init_config should add current directory ["."]
+        // Set a special environment variable so that init_config uses a fixed argument list.
+        std::env::set_var("YEK_CLI_TEST", "1");
         let config = YekConfig::init_config();
+        std::env::remove_var("YEK_CLI_TEST");
         assert!(
             !config.input_dirs.is_empty(),
             "Expected default input_dirs to be populated if empty"
