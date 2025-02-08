@@ -27,7 +27,7 @@ fn test_normalize_path_unix_style() {
 fn test_normalize_path_windows_style() {
     let input = Path::new("C:\\Program Files\\Yek");
     let base = Path::new("C:\\"); // Dummy base for normalization
-    let expected = "C:\\Program Files\\Yek".to_string();
+    let expected = "Program Files\\Yek".to_string();
     assert_eq!(
         input
             .strip_prefix(base)
@@ -35,7 +35,7 @@ fn test_normalize_path_windows_style() {
             .normalize()
             .to_string_lossy()
             .to_string(),
-        expected
+        expected.replace("\\\\", "\\") // fix for windows path
     );
 }
 
