@@ -86,11 +86,11 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    #[arg(trailing_var_arg = true)]
+    #[arg(trailing_var_arg = true, last = true)]
     pub extra_args: Option<Vec<String>>,
 
     /// Version flag.
-    #[arg(skip)]
+    #[arg(long, action = clap::ArgAction::Version, hide = true)]
     pub version: bool,
 }
 
