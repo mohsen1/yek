@@ -69,10 +69,8 @@ mod extra_tests {
             vec!["nonexistent_directory_xyz".to_string()],
             "output".to_string(),
         );
-        let result = serialize_repo(&config);
-        // Should succeed (i.e. return Ok) but yield no processed files.
-        assert!(result.is_ok());
-        let (_output, files) = result.unwrap();
+        let (_output, files) = serialize_repo(&config).unwrap();
+        // Should yield no processed files for non-existent directory
         assert_eq!(
             files.len(),
             0,
