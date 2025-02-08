@@ -90,7 +90,7 @@ pub struct YekConfig {
     pub extra_args: Option<Vec<String>>,
 
     /// Version flag.
-    #[arg(long, action = clap::ArgAction::Version)]
+    #[arg(skip)]
     pub version: bool,
 }
 
