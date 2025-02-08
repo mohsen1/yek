@@ -83,6 +83,9 @@ pub struct YekConfig {
     /// Capture any extra CLI arguments not recognized by YekConfig.
     #[clap(trailing_var_arg = true)]
     pub extra_args: Option<Vec<String>>,
+
+    /// Version flag (computed). Default is false.
+    pub version: bool,
 }
 
 impl Default for YekConfig {
@@ -109,6 +112,7 @@ impl Default for YekConfig {
             output_file_full_path: None,
             max_git_depth: 100,
             extra_args: None,
+            version: false,
         }
     }
 }
