@@ -87,6 +87,10 @@ pub struct YekConfig {
     /// Maximum depth to search for Git commit times
     #[config_arg(accept_from = "config_only", default_value = "100")]
     pub max_git_depth: i32,
+
+    /// Capture any extra CLI arguments not recognized by YekConfig.
+    #[clap(external_subcommand)]
+    pub extra_args: Option<Vec<String>>,
 }
 
 /// Provide defaults so tests or other callers can create a baseline YekConfig easily.
@@ -115,6 +119,7 @@ impl Default for YekConfig {
             token_mode: false,
             output_file_full_path: None,
             max_git_depth: 100,
+            extra_args: None,
         }
     }
 }
