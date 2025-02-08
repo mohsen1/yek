@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use tempfile::tempdir;
 use yek::config::YekConfig;
@@ -55,4 +57,32 @@ fn test_process_files_parallel_with_files() {
     for file in file_names {
         assert!(names.contains(&file), "Missing file: {}", file);
     }
+}
+
+#[test]
+fn test_process_files_parallel_file_read_error() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let file_path = temp_dir.path().join("unreadable.txt");
+    fs::write(&file_path, "content").expect("failed to write file");
+
+    // Make the file unreadable
+    let mut permissions = fs::metadata(&file_path).unwrap().permissions();
+    permissions.set_mode(0o000); // No permissions
+    fs::set_permissions(&file_path, permissions).unwrap();
+
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts)
+        .expect("process_files_parallel failed");
+
+    // The unreadable file should be skipped, so the result should be empty
+    assert_eq!(result.len(), 0);
+
+    // Restore permissions so the directory can be cleaned up
+    let mut permissions = fs::metadata(&file_path).unwrap().permissions();
+    permissions.set_mode(0o644); // Read permissions
+    fs::set_permissions(&file_path, permissions).unwrap();
 }
