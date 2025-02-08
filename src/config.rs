@@ -10,7 +10,7 @@ use crate::{
     priority::PriorityRule,
 };
 
-#[derive(Parser, ClapConfigFile, Clone, Debug)]
+#[derive(Parser, ClapConfigFile, Clone)]
 #[command(version = "0.17.0", about = "Yek repository serialization tool")]
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
