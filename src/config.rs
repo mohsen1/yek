@@ -75,7 +75,7 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    #[arg(trailing_var_arg = true)]
+    #[arg(hide = true)]
     pub extra_args: Vec<String>,
 
     /// Dummy field for version (assigned via clap’s built‐in --version flag)
