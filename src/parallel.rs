@@ -44,7 +44,10 @@ pub fn process_files_parallel(
     // If there is a .gitignore in this folder, add it last so its "!" lines override prior patterns
     let gitignore_file = base_dir.join(".gitignore");
     if gitignore_file.exists() {
-        gitignore_builder.add(&gitignore_file);
+        if let Err(e) = gitignore_builder.add(&gitignore_file) {
+            debug!("Error adding .gitignore: {}", e);
+            return Err(e.into()); // Propagate gitignore error
+        }
     }
 
     let gitignore = Arc::new(gitignore_builder.build()?);
