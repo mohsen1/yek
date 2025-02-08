@@ -199,6 +199,11 @@ impl YekConfig {
         cfg.ignore_patterns
             .extend(cfg.unignore_patterns.iter().map(|pat| format!("!{}", pat)));
 
+        // If no output_template is provided (or it is empty), set it to default.
+        if cfg.output_template.trim().is_empty() {
+            cfg.output_template = DEFAULT_OUTPUT_TEMPLATE.to_string();
+        }
+
         // Handle output directory setup
         if !cfg.stream {
             match cfg.ensure_output_dir() {
