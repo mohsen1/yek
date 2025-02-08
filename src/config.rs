@@ -33,10 +33,12 @@ pub struct YekConfig {
 
     /// Enable JSON output
     #[config_arg()]
+    #[arg(long)]
     pub json: bool,
 
     /// Enable debug output
     #[config_arg()]
+    #[arg(long)]
     pub debug: bool,
 
     /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
@@ -85,6 +87,7 @@ pub struct YekConfig {
     pub extra_args: Option<Vec<String>>,
 
     /// Version flag (computed). Default is false.
+    #[arg(skip)]
     pub version: bool,
 }
 
