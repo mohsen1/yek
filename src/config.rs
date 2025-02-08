@@ -76,7 +76,7 @@ pub struct YekConfig {
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
     #[arg(trailing_var_arg = true)]
-    pub extra_args: Option<Vec<String>>,
+    pub extra_args: Vec<String>,
 
     /// Dummy field for version (assigned via clap’s built‐in --version flag)
     #[arg(skip)]
@@ -107,7 +107,7 @@ impl Default for YekConfig {
             token_mode: false,
             output_file_full_path: None,
             max_git_depth: 100,
-            extra_args: None,
+            extra_args: Vec::new(),
             version_flag: false,
         }
     }
