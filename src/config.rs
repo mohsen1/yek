@@ -11,15 +11,14 @@ use crate::{
 };
 
 #[derive(Parser, ClapConfigFile, Clone)]
-#[command(allow_external_subcommands = true)]
+#[command(
+    allow_external_subcommands = true,
+    version,
+    about = "Yek repository serialization tool"
+)]
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
-    /// Print version of yek
-    #[config_arg(long = "version", short = 'V')]
-    #[arg(action = clap::ArgAction::SetTrue)]
-    pub version: bool,
-
     /// Input directories to process
     #[config_arg(positional)]
     pub input_dirs: Vec<String>,
@@ -45,7 +44,7 @@ pub struct YekConfig {
     pub output_dir: Option<String>,
 
     /// Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
-    #[config_arg(default_value = ">>>> FILE_PATH\nFILE_CONTENT")]
+    #[config_arg(default_value = DEFAULT_OUTPUT_TEMPLATE)]
     pub output_template: String,
 
     /// Ignore patterns
@@ -90,7 +89,6 @@ impl Default for YekConfig {
     fn default() -> Self {
         Self {
             input_dirs: Vec::new(),
-            version: false,
             max_size: "10MB".to_string(),
             tokens: String::new(),
             json: false,
@@ -147,7 +145,7 @@ impl YekConfig {
             ));
         }
 
-        std::fs::create_dir_all(path)
+        fs::create_dir_all(path)
             .map_err(|e| anyhow!("output_dir: cannot create '{}': {}", output_dir, e))?;
 
         Ok(output_dir)
@@ -162,19 +160,13 @@ impl YekConfig {
             YekConfig::parse()
         };
 
-        // Handle version flag
-        if cfg.version {
-            println!("{}", env!("CARGO_PKG_VERSION"));
-            std::process::exit(0);
-        }
-
-        // 2) compute derived fields:
+        // Compute derived fields:
         cfg.token_mode = !cfg.tokens.is_empty();
         let force_tty = std::env::var("FORCE_TTY").is_ok();
 
         cfg.stream = !atty::is(atty::Stream::Stdout) && !force_tty;
 
-        // default input dirs to current dir if none:
+        // Default input dirs to current dir if none:
         if cfg.input_dirs.is_empty() {
             cfg.input_dirs.push(".".to_string());
         }
@@ -217,7 +209,7 @@ impl YekConfig {
         // By default, we start with no final output_file_full_path:
         cfg.output_file_full_path = None;
 
-        // 3) Validate
+        // Validate the config.
         if let Err(e) = cfg.validate() {
             eprintln!("Error: {}", e);
             std::process::exit(1);
@@ -291,7 +283,6 @@ impl YekConfig {
                 return Err(anyhow!("tokens: cannot be 0"));
             }
         } else if !self.tokens.is_empty() {
-            // parse as integer
             let val = self
                 .tokens
                 .parse::<usize>()
@@ -301,18 +292,15 @@ impl YekConfig {
             }
         }
 
-        // If not streaming, validate output directory
         if !self.stream {
             self.ensure_output_dir()?;
         }
 
-        // Validate ignore patterns
         for pattern in &self.ignore_patterns {
             glob::Pattern::new(pattern)
                 .map_err(|e| anyhow!("ignore_patterns: Invalid pattern '{}': {}", pattern, e))?;
         }
 
-        // Validate priority rules
         for rule in &self.priority_rules {
             if rule.score < 0 || rule.score > 1000 {
                 return Err(anyhow!(
