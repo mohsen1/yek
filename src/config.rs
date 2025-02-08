@@ -16,6 +16,7 @@ use crate::{
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
     /// Input directories to process
+    #[arg()]
     pub input_dirs: Vec<String>,
 
     /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
