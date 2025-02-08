@@ -154,11 +154,12 @@ impl YekConfig {
 
     /// Parse from CLI + config file, fill in computed fields, and validate.
     pub fn init_config() -> Self {
-        // 1) parse from CLI and optional config file:
-        #[cfg(test)]
-        let mut cfg = YekConfig::parse_from(std::iter::once("yek"));
-        #[cfg(not(test))]
-        let mut cfg = YekConfig::parse();
+        // Use a fixed argument list if the special environment variable is set.
+        let mut cfg = if std::env::var("YEK_CLI_TEST").is_ok() {
+            YekConfig::parse_from(std::iter::once("yek"))
+        } else {
+            YekConfig::parse()
+        };
 
         // Handle version flag
         if cfg.version {
