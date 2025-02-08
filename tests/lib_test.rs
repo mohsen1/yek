@@ -8,10 +8,9 @@ mod lib_tests {
     use yek::config::YekConfig;
     use yek::is_text_file;
 
-    
-    
+    use std::os::unix::fs::PermissionsExt;
     use yek::priority::PriorityRule;
-    use yek::serialize_repo;
+    use yek::serialize_repo; // Import PermissionsExt for set_mode
 
     // Initialize tracing subscriber for tests
     fn init_tracing() {
@@ -357,7 +356,8 @@ mod lib_tests {
 
         // Make the file unreadable
         let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-        permissions.set_readonly(true);
+        // Set permissions to 000 (no read, no write, no execute)
+        permissions.set_mode(0o000);
         let _ = fs::set_permissions(&file_path, permissions);
 
         let result = serialize_repo(&config);
@@ -368,7 +368,8 @@ mod lib_tests {
 
         // Restore permissions so temp dir can be deleted
         let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-        permissions.set_readonly(false); // Set back to readable
+        // Set back to readable
+        permissions.set_mode(0o644);
         fs::set_permissions(&file_path, permissions).unwrap();
     }
 
@@ -394,7 +395,8 @@ mod lib_tests {
 
         // Make the file unreadable
         let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-        permissions.set_readonly(true);
+        // Set permissions to 000 (no read, no write, no execute)
+        permissions.set_mode(0o000);
         let _ = fs::set_permissions(&file_path, permissions);
 
         let result = is_text_file(&file_path, &[]);
@@ -405,7 +407,8 @@ mod lib_tests {
 
         // Restore permissions so temp dir can be deleted
         let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-        permissions.set_readonly(false); // Set back to readable
+        // Set back to readable
+        permissions.set_mode(0o644);
         fs::set_permissions(&file_path, permissions).unwrap();
     }
 }
