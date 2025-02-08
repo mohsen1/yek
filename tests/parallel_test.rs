@@ -33,7 +33,7 @@ fn test_normalize_path_windows_style() {
     } else {
         input
     };
-    // Normalize both paths to handle potential differences in path separators
+    // Normalize the stripped path, not the original input path
     assert_eq!(
         stripped_path
             .normalize()
