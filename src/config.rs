@@ -89,7 +89,7 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 
     /// Capture any extra CLI arguments not recognized by YekConfig.
-    #[clap(external_subcommand)]
+    #[command(external_subcommand)]
     pub extra_args: Option<Vec<String>>,
 }
 
