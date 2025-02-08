@@ -159,6 +159,11 @@ impl YekConfig {
             YekConfig::parse()
         };
 
+        // Ensure max_size is not empty; if empty, set default "10MB"
+        if cfg.max_size.trim().is_empty() {
+            cfg.max_size = "10MB".to_string();
+        }
+
         // Compute derived fields:
         cfg.token_mode = !cfg.tokens.is_empty();
         let force_tty = std::env::var("FORCE_TTY").is_ok();
