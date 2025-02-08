@@ -155,13 +155,3 @@ pub fn process_files_parallel(
 
     Ok(processed_files)
 }
-
-/// Create a relative, slash-normalized path
-pub fn normalize_path(path: &Path, base: &Path) -> String {
-    path.strip_prefix(base)
-        .unwrap_or(path)
-        .to_path_buf()
-        .to_slash()
-        .unwrap_or_default()
-        .to_string()
-}
