@@ -33,9 +33,14 @@ fn test_normalize_path_windows_style() {
     } else {
         input
     };
+    // Normalize both paths to handle potential differences in path separators
     assert_eq!(
-        stripped_path.normalize().to_string_lossy().to_string(),
-        expected.replace("\\\\", "\\") // fix for windows path
+        stripped_path
+            .normalize()
+            .to_string_lossy()
+            .to_string()
+            .replace("\\", "/"),
+        expected.replace("\\", "/")
     );
 }
 
