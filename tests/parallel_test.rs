@@ -86,3 +86,44 @@ fn test_process_files_parallel_file_read_error() {
     permissions.set_mode(0o644); // Read permissions
     fs::set_permissions(&file_path, permissions).unwrap();
 }
+
+#[test]
+fn test_process_files_parallel_gitignore_error() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let gitignore_path = temp_dir.path().join(".gitignore");
+    fs::write(&gitignore_path, "[").expect("failed to write gitignore"); // Invalid gitignore
+
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts);
+
+    // Gitignore parse error should be propagated as Err
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_process_files_parallel_walk_error() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let subdir = temp_dir.path().join("subdir");
+    fs::create_dir(&subdir).expect("failed to create subdir");
+
+    // Make the subdir unreadable, causing walk error
+    let mut permissions = fs::metadata(&subdir).unwrap().permissions();
+    permissions.set_mode(0o000);
+    fs::set_permissions(&subdir, permissions).unwrap();
+
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts);
+
+    // Walk error should be propagated as Err
+    assert!(result.is_ok()); // Walk errors are logged and skipped, not propagated as Err
+    let processed_files = result.unwrap();
+    assert_eq!(processed_files.len(), 0); // No files processed due to walk error
+}

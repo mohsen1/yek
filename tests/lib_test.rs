@@ -2,13 +2,12 @@
 mod lib_tests {
     use std::fs;
     use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
 
     use tracing_subscriber::{EnvFilter, FmtSubscriber};
     use yek::config::YekConfig;
     use yek::is_text_file;
-
-    use std::os::unix::fs::PermissionsExt;
     use yek::parallel::ProcessedFile;
     use yek::priority::PriorityRule;
     use yek::serialize_repo; // Import PermissionsExt for set_mode
@@ -203,6 +202,7 @@ mod lib_tests {
         assert!(is_text_file(&script_file, &[]).unwrap());
     }
 
+    // Output format tests
     #[test]
     fn test_serialize_repo_json_output() {
         init_tracing();
@@ -326,6 +326,7 @@ mod lib_tests {
         assert!(output_string_replace.contains("Path: test.txt\nContent: test content"));
         // Should replace "\\\\n" with newline
     }
+    // Sort order tests
 
     #[test]
     fn test_serialize_repo_sort_order() {
@@ -346,6 +347,8 @@ mod lib_tests {
         assert_eq!(files[1].rel_path, "file_a.txt"); // Then by file_index (alphabetical name)
         assert_eq!(files[2].rel_path, "file_b.txt");
     }
+
+    // Error handling tests
 
     #[test]
     fn test_serialize_repo_file_read_error() {
@@ -525,5 +528,56 @@ mod lib_tests {
         let output_custom = yek::concat_files(&files, &config).unwrap();
         assert!(output_custom.contains("==src/main.rs==\n---\nfn main() {}\n===="));
         assert!(output_custom.contains("==README.md==\n---\n# Yek\n===="));
+    }
+
+    #[test]
+    fn test_concat_files_json_output_special_chars_in_filename() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = true;
+
+        let files = vec![ProcessedFile {
+            priority: 100,
+            file_index: 0,
+            rel_path: "file with ünicöde.txt".to_string(),
+            content: "content".to_string(),
+        }];
+        let output_json = yek::concat_files(&files, &config).unwrap();
+        assert!(output_json.contains(r#""filename": "file with ünicöde.txt""#));
+    }
+
+    #[test]
+    fn test_concat_files_template_output_empty_content() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = false;
+
+        let files = vec![ProcessedFile {
+            priority: 100,
+            file_index: 0,
+            rel_path: "file.txt".to_string(),
+            content: "".to_string(), // Empty content
+        }];
+        let output_template = yek::concat_files(&files, &config).unwrap();
+        assert!(output_template.contains(">>>> file.txt\n")); // Should handle empty content
+    }
+
+    #[test]
+    fn test_concat_files_json_output_empty_content() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = true;
+
+        let files = vec![ProcessedFile {
+            priority: 100,
+            file_index: 0,
+            rel_path: "file.txt".to_string(),
+            content: "".to_string(), // Empty content
+        }];
+        let output_json = yek::concat_files(&files, &config).unwrap();
+        assert!(output_json.contains(r#""content": """#)); // Should handle empty content in JSON
     }
 }
