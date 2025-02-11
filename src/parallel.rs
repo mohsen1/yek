@@ -1,6 +1,7 @@
 use crate::{config::YekConfig, priority::get_file_priority, Result};
 use content_inspector::{inspect, ContentType};
 use ignore::gitignore::GitignoreBuilder;
+use path_slash::PathBufExt;
 use rayon::prelude::*;
 use std::{
     collections::HashMap,
@@ -17,7 +18,6 @@ pub struct ProcessedFile {
     pub rel_path: String,
     pub content: String,
 }
-use normalize_path::NormalizePath;
 
 /// Walk files in parallel, skipping ignored paths, then read each file's contents
 /// in a separate thread. Return the resulting `ProcessedFile` objects.
@@ -44,10 +44,7 @@ pub fn process_files_parallel(
     // If there is a .gitignore in this folder, add it last so its "!" lines override prior patterns
     let gitignore_file = base_dir.join(".gitignore");
     if gitignore_file.exists() {
-        if let Some(e) = gitignore_builder.add(&gitignore_file) {
-            debug!("Error adding .gitignore: {}", e);
-            return Err(e.into()); // Propagate gitignore error
-        }
+        gitignore_builder.add(&gitignore_file);
     }
 
     let gitignore = Arc::new(gitignore_builder.build()?);
@@ -112,12 +109,7 @@ pub fn process_files_parallel(
             }
 
             let path = entry.path().to_path_buf();
-            let rel_path = path
-                .strip_prefix(&base_dir)
-                .unwrap()
-                .normalize()
-                .to_string_lossy()
-                .to_string();
+            let rel_path = normalize_path(&path, &base_dir);
 
             // If gitignore says skip, we do not even read
             if gitignore.matched(&path, false).is_ignore() {
@@ -162,4 +154,14 @@ pub fn process_files_parallel(
     });
 
     Ok(processed_files)
+}
+
+/// Create a relative, slash-normalized path
+pub fn normalize_path(path: &Path, base: &Path) -> String {
+    path.strip_prefix(base)
+        .unwrap_or(path)
+        .to_path_buf()
+        .to_slash()
+        .unwrap_or_default()
+        .to_string()
 }

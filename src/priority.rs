@@ -152,16 +152,3 @@ pub fn get_recent_commit_times_git2(
 
     Some(commit_times)
 }
-
-impl std::str::FromStr for PriorityRule {
-    type Err = String;
-    fn from_str(_s: &str) -> Result<Self, Self::Err> {
-        Err("PriorityRule cannot be parsed from a string; it must be specified in the configuration file".to_string())
-    }
-}
-
-impl std::fmt::Display for PriorityRule {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "pattern: {}, score: {}", self.pattern, self.score)
-    }
-}
