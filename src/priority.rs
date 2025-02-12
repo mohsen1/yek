@@ -1,13 +1,20 @@
 use git2;
 use regex;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path, str::FromStr};
 use tracing::debug;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PriorityRule {
     pub pattern: String,
     pub score: i32,
+}
+
+impl FromStr for PriorityRule {
+    type Err = String;
+    fn from_str(_s: &str) -> Result<Self, Self::Err> {
+        Err("Parsing from string is not supported for PriorityRule".into())
+    }
 }
 
 /// Determine final priority of a file by scanning the priority list

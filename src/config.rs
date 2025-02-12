@@ -154,7 +154,7 @@ impl YekConfig {
         // 1) parse from CLI and optional config file:
         let mut cfg = if std::env::var("YEK_CLI_TEST").is_ok() {
             // When running tests, use only the program name so no unexpected CLI args are parsed.
-            <YekConfig as clap::Parser>::parse_from(&["yek"])
+            <YekConfig as clap::Parser>::parse_from(["yek"])
         } else {
             YekConfig::parse()
         };
