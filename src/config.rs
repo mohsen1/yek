@@ -11,15 +11,7 @@ use crate::{
     priority::PriorityRule,
 };
 
-#[derive(Clone, Debug, Default, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
-pub enum ConfigFormat {
-    #[default]
-    Toml,
-    Yaml,
-    Json,
-}
-
-#[derive(ClapConfigFile, Clone)]
+#[derive(Parser, ClapConfigFile, Clone)]
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
