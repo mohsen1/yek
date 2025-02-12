@@ -52,7 +52,7 @@ pub struct YekConfig {
     pub output_dir: Option<String>,
 
     /// Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
-    #[config_arg(default_value = ">>>> FILE_PATH\nFILE_CONTENT")]
+    #[config_arg(default_value = DEFAULT_OUTPUT_TEMPLATE)]
     pub output_template: String,
 
     /// Ignore patterns
@@ -162,7 +162,7 @@ impl YekConfig {
         // 1) parse from CLI and optional config file:
         let mut cfg = if std::env::var("YEK_CLI_TEST").is_ok() {
             // When running tests, use only the program name so no unexpected CLI args are parsed.
-            YekConfig::parse_from(std::iter::once("yek".into()))
+            YekConfig::parse()
         } else {
             YekConfig::parse()
         };
