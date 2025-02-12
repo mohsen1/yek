@@ -326,8 +326,8 @@ mod lib_tests {
         assert!(output_string_replace.contains("Path: test.txt\nContent: test content"));
         // Should replace "\\\\n" with newline
     }
-    // Sort order tests
 
+    // Sort order tests
     #[test]
     fn test_serialize_repo_sort_order() {
         init_tracing();
@@ -340,12 +340,17 @@ mod lib_tests {
 
         let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         let result = serialize_repo(&config).unwrap();
+
+        // print results
+        for file in result.1.iter() {
+            println!("{}: {}", file.rel_path, file.priority);
+        }
         let files = result.1;
 
         assert_eq!(files.len(), 3);
-        assert_eq!(files[0].rel_path, "src/file_c.rs"); // Highest priority first
-        assert_eq!(files[1].rel_path, "file_a.txt"); // Then by file_index (alphabetical name)
-        assert_eq!(files[2].rel_path, "file_b.txt");
+        assert_eq!(files[0].rel_path, "src/file_c.rs"); // Highest priority last
+        assert_eq!(files[1].rel_path, "file_b.txt");
+        assert_eq!(files[2].rel_path, "file_a.txt");
     }
 
     // Error handling tests

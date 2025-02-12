@@ -80,7 +80,6 @@ pub fn process_files_parallel(
                     }
                     Err(e) => {
                         debug!("Failed to read {rel_path}: {e}");
-                        // Just skip
                     }
                 }
             }

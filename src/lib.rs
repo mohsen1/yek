@@ -109,8 +109,9 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                     .output_template
                     .replace("FILE_PATH", &f.rel_path)
                     .replace("FILE_CONTENT", &f.content)
-                    // replace literal "\n" if desired
-                    .replace("\\\n", "\n")
+                    // Handle both literal "\n" and escaped "\\n"
+                    .replace("\\\\\n", "\n") // First handle escaped newline
+                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
             })
             .collect::<Vec<_>>()
             .join("\n"))
