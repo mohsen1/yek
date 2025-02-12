@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
+use clap::Parser;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
 use std::io::IsTerminal;
