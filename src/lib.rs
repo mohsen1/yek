@@ -72,12 +72,11 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 
     let mut files = merged_files;
 
-    // Sort final (priority desc, then file_index asc)
+    // Sort final (priority descending, then by relative path descending)
     files.par_sort_by(|a, b| {
-        a.priority
-            .cmp(&b.priority)
-            .reverse()
-            .then_with(|| a.file_index.cmp(&b.file_index))
+        b.priority
+            .cmp(&a.priority)
+            .then_with(|| b.rel_path.cmp(&a.rel_path))
     });
 
     // Build the final output string
@@ -110,8 +109,8 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                     .replace("FILE_PATH", &f.rel_path)
                     .replace("FILE_CONTENT", &f.content)
                     // Handle both literal "\n" and escaped "\\n"
-                    .replace("\\\\\n", "\n") // First handle escaped newline
-                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
+                    .replace("\\\\\n", "\n")
+                    .replace("\\\\n", "\n")
             })
             .collect::<Vec<_>>()
             .join("\n"))
