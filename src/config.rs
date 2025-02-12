@@ -167,6 +167,11 @@ impl YekConfig {
             YekConfig::parse()
         };
 
+        // Fix for missing output_template when not provided via config file.
+        if cfg.output_template.trim().is_empty() {
+            cfg.output_template = DEFAULT_OUTPUT_TEMPLATE.to_string();
+        }
+
         // Handle version flag
         if cfg.version {
             println!("{}", env!("CARGO_PKG_VERSION"));
