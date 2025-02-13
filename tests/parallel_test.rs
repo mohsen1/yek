@@ -1,23 +1,50 @@
+use normalize_path::NormalizePath;
 use std::collections::HashMap;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use tempfile::tempdir;
 use yek::config::YekConfig;
-use yek::parallel::{normalize_path, process_files_parallel};
+use yek::parallel::process_files_parallel;
 
 #[test]
 fn test_normalize_path_unix_style() {
     let input = Path::new("/usr/local/bin");
     let base = Path::new("/"); // Dummy base path
     let expected = "usr/local/bin".to_string();
-    assert_eq!(normalize_path(input, base), expected);
+    assert_eq!(
+        input
+            .strip_prefix(base)
+            .unwrap()
+            .normalize()
+            .to_string_lossy()
+            .to_string(),
+        expected
+    );
 }
 
 #[test]
 fn test_normalize_path_windows_style() {
     let input = Path::new("C:\\Program Files\\Yek");
     let base = Path::new("C:\\"); // Dummy base for normalization
-    let expected = "C:\\Program Files\\Yek".to_string();
-    assert_eq!(normalize_path(input, base), expected);
+    let expected = if cfg!(windows) {
+        "Program Files\\Yek".to_string()
+    } else {
+        "C:/Program Files/Yek".to_string()
+    };
+    let stripped_path = if input.starts_with(base) {
+        input.strip_prefix(base).unwrap()
+    } else {
+        input
+    };
+    // Normalize the stripped path, then replace backslashes with forward slashes
+    let normalized = stripped_path
+        .normalize()
+        .to_string_lossy()
+        .to_string()
+        .replace("\\", "/");
+    let expected_normalized = expected.replace("\\", "/");
+    assert_eq!(normalized, expected_normalized);
 }
 
 #[test]
@@ -55,4 +82,56 @@ fn test_process_files_parallel_with_files() {
     for file in file_names {
         assert!(names.contains(&file), "Missing file: {}", file);
     }
+}
+
+#[test]
+fn test_process_files_parallel_file_read_error() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let file_path = temp_dir.path().join("unreadable.txt");
+    fs::write(&file_path, "content").expect("failed to write file");
+
+    // Make the file unreadable
+    let mut permissions = fs::metadata(&file_path).unwrap().permissions();
+    permissions.set_mode(0o000); // No permissions
+    fs::set_permissions(&file_path, permissions).unwrap();
+
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts)
+        .expect("process_files_parallel failed");
+
+    // The unreadable file should be skipped, so the result should be empty
+    assert_eq!(result.len(), 0);
+
+    // Restore permissions so the directory can be cleaned up
+    let mut permissions = fs::metadata(&file_path).unwrap().permissions();
+    permissions.set_mode(0o644); // Read permissions
+    fs::set_permissions(&file_path, permissions).unwrap();
+}
+
+#[test]
+fn test_process_files_parallel_walk_error() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    let subdir = temp_dir.path().join("subdir");
+    fs::create_dir(&subdir).expect("failed to create subdir");
+
+    // Make the subdir unreadable, causing walk error
+    let mut permissions = fs::metadata(&subdir).unwrap().permissions();
+    permissions.set_mode(0o000);
+    fs::set_permissions(&subdir, permissions).unwrap();
+
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts);
+
+    // Walk errors are logged and skipped, not propagated as Err
+    assert!(result.is_ok()); // Walk errors are logged and skipped, not propagated as Err
+    let processed_files = result.unwrap();
+    assert_eq!(processed_files.len(), 0); // No files processed due to walk error
 }
