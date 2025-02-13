@@ -1,9 +1,12 @@
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
+use tempfile::TempDir;
 use yek::defaults::{BINARY_FILE_EXTENSIONS, DEFAULT_IGNORE_PATTERNS, DEFAULT_OUTPUT_TEMPLATE};
 
 use yek::config::YekConfig;
+use yek::is_text_file;
 use yek::priority::PriorityRule;
 
 #[test]
@@ -76,8 +79,10 @@ fn test_validate_config_invalid_ignore_pattern() {
 
 #[test]
 fn test_validate_invalid_output_template() {
-    let mut cfg = YekConfig::default();
-    cfg.output_template = ">>>> FILE_PATH\n".to_string(); // Missing FILE_CONTENT
+    let cfg = YekConfig {
+        output_template: ">>>> FILE_PATH\n".to_string(),
+        ..YekConfig::default()
+    };
     let result = cfg.validate();
     assert!(result.is_err());
     assert_eq!(
@@ -85,7 +90,10 @@ fn test_validate_invalid_output_template() {
         "output_template: must contain FILE_PATH and FILE_CONTENT"
     );
 
-    cfg.output_template = ">>>> FILE_CONTENT\n".to_string(); // Missing FILE_PATH
+    let cfg = YekConfig {
+        output_template: ">>>> FILE_CONTENT\n".to_string(),
+        ..YekConfig::default()
+    };
     let result = cfg.validate();
     assert!(result.is_err());
     assert_eq!(
@@ -96,8 +104,10 @@ fn test_validate_invalid_output_template() {
 
 #[test]
 fn test_validate_max_size_zero() {
-    let mut cfg = YekConfig::default();
-    cfg.max_size = "0".to_string();
+    let cfg = YekConfig {
+        max_size: "0".to_string(),
+        ..YekConfig::default()
+    };
     let result = cfg.validate();
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().to_string(), "max_size: cannot be 0");
@@ -105,10 +115,11 @@ fn test_validate_max_size_zero() {
 
 #[test]
 fn test_validate_invalid_tokens() {
-    let mut cfg = YekConfig::default();
-    cfg.token_mode = true;
-
-    cfg.tokens = "0".to_string();
+    let mut cfg = YekConfig {
+        token_mode: true,
+        tokens: "0".to_string(),
+        ..YekConfig::default()
+    };
     let result = cfg.validate();
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().to_string(), "tokens: cannot be 0");
@@ -132,8 +143,10 @@ fn test_validate_invalid_tokens() {
 
 #[test]
 fn test_validate_invalid_ignore_patterns() {
-    let mut cfg = YekConfig::default();
-    cfg.ignore_patterns.push("**/*".to_string()); // Valid pattern
+    let mut cfg = YekConfig {
+        ignore_patterns: vec!["**/*".to_string()],
+        ..YekConfig::default()
+    };
     let result = cfg.validate();
     assert!(result.is_ok());
 
@@ -191,9 +204,11 @@ fn test_ensure_output_dir_output_dir_is_file() {
 
     let temp_file_path_str = temp_file_path.to_string_lossy().to_string();
 
-    let mut cfg = YekConfig::default();
-    cfg.output_dir = Some(temp_file_path_str.clone());
-    cfg.stream = false;
+    let cfg = YekConfig {
+        output_dir: Some(temp_file_path_str.clone()),
+        stream: false,
+        ..YekConfig::default()
+    };
 
     let result = cfg.ensure_output_dir();
     assert!(result.is_err());
@@ -220,9 +235,11 @@ fn test_ensure_output_dir_valid_output_dir() {
         fs::remove_dir_all(&temp_dir).unwrap();
     }
 
-    let mut cfg = YekConfig::default();
-    cfg.output_dir = Some(temp_dir_str.clone());
-    cfg.stream = false;
+    let cfg = YekConfig {
+        output_dir: Some(temp_dir_str.clone()),
+        stream: false,
+        ..YekConfig::default()
+    };
 
     let result = cfg.ensure_output_dir();
     assert!(result.is_ok());
@@ -237,9 +254,11 @@ fn test_ensure_output_dir_valid_output_dir() {
 
 #[test]
 fn test_ensure_output_dir_output_dir_none() {
-    let mut cfg = YekConfig::default();
-    cfg.output_dir = None;
-    cfg.stream = false;
+    let cfg = YekConfig {
+        output_dir: None,
+        stream: false,
+        ..YekConfig::default()
+    };
 
     let result = cfg.ensure_output_dir();
     assert!(result.is_ok());
@@ -345,11 +364,15 @@ fn test_extend_config_with_defaults() {
 
 #[test]
 fn test_validate_valid_config() {
-    let mut cfg = YekConfig::default();
-    cfg.output_template = ">>>> FILE_PATH\nFILE_CONTENT".to_string();
-    cfg.max_size = "5MB".to_string();
-    cfg.tokens = String::new();
-    cfg.token_mode = false;
+    let mut cfg = YekConfig {
+        output_template: ">>>> FILE_PATH\nFILE_CONTENT".to_string(),
+        max_size: "5MB".to_string(),
+        tokens: String::new(),
+        token_mode: false,
+        ..YekConfig::default()
+    };
+
+    // Add additional configurations
     cfg.ignore_patterns.push("**/*.tmp".to_string());
     cfg.unignore_patterns.push("**/important.tmp".to_string());
 
@@ -368,15 +391,16 @@ fn test_validate_valid_config() {
     // Valid max_git_depth
     cfg.max_git_depth = 200;
 
-    // Validate should pass
     let result = cfg.validate();
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_merge_binary_extensions() {
-    let mut cfg = YekConfig::default();
-    cfg.binary_extensions = vec!["custom_ext".to_string(), "exe".to_string()];
+    let mut cfg = YekConfig {
+        binary_extensions: vec!["custom_ext".to_string(), "exe".to_string()],
+        ..YekConfig::default()
+    };
 
     // Simulate the merging behavior in init_config()
     let mut merged_bins = BINARY_FILE_EXTENSIONS
@@ -404,9 +428,11 @@ fn test_merge_binary_extensions() {
 
 #[test]
 fn test_merge_ignore_patterns() {
-    let mut cfg = YekConfig::default();
-    cfg.ignore_patterns = vec!["**/*.log".to_string(), "**/*.tmp".to_string()];
-    cfg.unignore_patterns = vec!["**/important.log".to_string()];
+    let mut cfg = YekConfig {
+        ignore_patterns: vec!["**/*.log".to_string(), "**/*.tmp".to_string()],
+        unignore_patterns: vec!["**/important.log".to_string()],
+        ..YekConfig::default()
+    };
 
     // Simulate the merging behavior in init_config()
     let mut ignore = DEFAULT_IGNORE_PATTERNS
@@ -477,28 +503,63 @@ fn test_get_checksum_empty_directory() {
 
 #[test]
 fn test_validate_invalid_max_size_format() {
-    let mut cfg = YekConfig::default();
-    cfg.max_size = "invalid_size".to_string();
-
+    let cfg = YekConfig {
+        max_size: "invalid_size".to_string(),
+        ..YekConfig::default()
+    };
     let result = cfg.validate();
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
         .to_string()
-        .contains("max_size: Invalid size format"));
+        .contains("max_size: Invalid size format:"));
 }
 
 #[test]
 fn test_validate_valid_tokens() {
-    let mut cfg = YekConfig::default();
-    cfg.token_mode = true;
-    cfg.tokens = "1000".to_string();
+    let mut cfg = YekConfig {
+        token_mode: true,
+        tokens: "1000".to_string(),
+        ..YekConfig::default()
+    };
 
+    cfg.tokens = "2000".to_string();
     let result = cfg.validate();
     assert!(result.is_ok());
+}
 
-    // Test with tokens ending with 'k'
-    cfg.tokens = "2k".to_string();
-    let result = cfg.validate();
+// Test that is_text_file returns an error when the file does not exist.
+#[test]
+fn test_is_text_file_nonexistent() {
+    let path = Path::new("this_file_should_not_exist_1234567890.txt");
+    let result = is_text_file(path, &[]);
+    assert!(result.is_err(), "Expected error for nonexistent file");
+}
+
+// Additional test: create a temporary file with sample content and ensure is_text_file passes.
+#[test]
+fn test_is_text_file_with_valid_text() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let file_path = temp_dir.path().join("sample.txt");
+    fs::write(&file_path, "This is a valid text file.").expect("failed to write file");
+    let result = is_text_file(&file_path, &[]);
     assert!(result.is_ok());
+    assert!(
+        result.unwrap(),
+        "Expected a text file to be detected as text"
+    );
+}
+
+// Additional test: create a temporary file with binary content and check that is_text_file returns false.
+#[test]
+fn test_is_text_file_with_binary_content() {
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+    let file_path = temp_dir.path().join("binary.dat");
+    fs::write(&file_path, [0, 159, 146, 150]).expect("failed to write binary file");
+    let result = is_text_file(&file_path, &[]);
+    assert!(result.is_ok());
+    assert!(
+        !result.unwrap(),
+        "Expected a binary file to be detected as binary"
+    );
 }

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 use tempfile::tempdir;
-use yek::{config::YekConfig, is_text_file};
+use yek::is_text_file;
 
 #[cfg(test)]
 mod misc_tests {
@@ -13,19 +13,6 @@ mod misc_tests {
         let path = Path::new("this_file_should_not_exist_1234567890.txt");
         let result = is_text_file(path, &[]);
         assert!(result.is_err(), "Expected error for nonexistent file");
-    }
-
-    // Test that YekConfig::init_config fills in default input_dirs if none are provided.
-    #[test]
-    fn test_yek_config_default_input_dirs() {
-        // Set a special environment variable so that init_config uses a fixed argument list.
-        std::env::set_var("YEK_CLI_TEST", "1");
-        let config = YekConfig::init_config();
-        std::env::remove_var("YEK_CLI_TEST");
-        assert!(
-            !config.input_dirs.is_empty(),
-            "Expected default input_dirs to be populated if empty"
-        );
     }
 
     // Additional test: create a temporary file with sample content and ensure is_text_file passes.

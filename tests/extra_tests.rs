@@ -56,8 +56,10 @@ mod extra_tests {
     // Test that ensure_output_dir returns an empty string when stream is true.
     #[test]
     fn test_ensure_output_dir_streaming() {
-        let mut config = YekConfig::default();
-        config.stream = true;
+        let config = YekConfig {
+            stream: true,
+            ..YekConfig::default()
+        };
         let output_dir = config.ensure_output_dir().unwrap();
         assert_eq!(output_dir, "");
     }

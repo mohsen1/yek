@@ -47,7 +47,7 @@ pub fn process_files_parallel(
         gitignore_builder.add(&gitignore_file);
     }
 
-    let gitignore = Arc::new(gitignore_builder.build()?);
+    let gitignore = Arc::new(gitignore_builder.build()?); // Propagate error here
 
     // This channel will carry (path, rel_path) to the processing thread
     let (processed_files_tx, processed_files_rx) = mpsc::channel::<(std::path::PathBuf, String)>();

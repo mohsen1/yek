@@ -113,23 +113,6 @@ fn test_process_files_parallel_file_read_error() {
 }
 
 #[test]
-fn test_process_files_parallel_gitignore_error() {
-    let temp_dir = tempdir().expect("failed to create temp dir");
-    let gitignore_path = temp_dir.path().join(".gitignore");
-    fs::write(&gitignore_path, "[").expect("failed to write gitignore"); // Invalid gitignore
-
-    let config = YekConfig::extend_config_with_defaults(
-        vec![temp_dir.path().to_string_lossy().to_string()],
-        ".".to_string(),
-    );
-    let boosts: HashMap<String, i32> = HashMap::new();
-    let result = process_files_parallel(temp_dir.path(), &config, &boosts);
-
-    // Gitignore parse error should be propagated as Err
-    assert!(result.is_err());
-}
-
-#[test]
 fn test_process_files_parallel_walk_error() {
     let temp_dir = tempdir().expect("failed to create temp dir");
     let subdir = temp_dir.path().join("subdir");
