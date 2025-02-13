@@ -1,6 +1,6 @@
 [package]
 name = "yek"
-version = "0.17.0"
+version = "0.18.0"
 edition = "2021"
 description = "A tool to serialize a repository into chunks of text files"
 license = "MIT"
@@ -36,7 +36,7 @@ serde_yaml = "0.9.34"
 sha2 = "0.10"
 time = "0.3"
 toml = "0.8"
-tracing = { version = "0.1", features = ["release_max_level_info"] }
+tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2.4"
 
