@@ -88,42 +88,20 @@ pub struct YekConfig {
     pub max_git_depth: i32,
 }
 
-/// Provide defaults so tests or other callers can create a baseline YekConfig easily.
-impl Default for YekConfig {
-    fn default() -> Self {
-        Self {
-            input_dirs: Vec::new(),
-            version: false,
-            max_size: "10MB".to_string(),
-            tokens: String::new(),
-            json: false,
-            debug: false,
-            output_dir: None,
-            output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
-            ignore_patterns: Vec::new(),
-            unignore_patterns: Vec::new(),
-            priority_rules: Vec::new(),
-            binary_extensions: BINARY_FILE_EXTENSIONS
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-            git_boost_max: Some(100),
-
-            // computed fields
-            stream: false,
-            token_mode: false,
-            output_file_full_path: None,
-            max_git_depth: 100,
-        }
-    }
-}
-
 impl YekConfig {
     pub fn extend_config_with_defaults(input_dirs: Vec<String>, output_dir: String) -> Self {
         YekConfig {
             input_dirs,
             output_dir: Some(output_dir),
             ..Default::default()
+        }
+    }
+
+    pub fn get_env_filter(&self) -> String {
+        if self.debug {
+            "yek=debug,ignore=off".to_string()
+        } else {
+            "yek=info,ignore=off".to_string()
         }
     }
 }
