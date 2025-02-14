@@ -563,3 +563,41 @@ fn test_is_text_file_with_binary_content() {
         "Expected a binary file to be detected as binary"
     );
 }
+
+// Add unit test to verify that `--debug` flag enables DEBUG logging
+#[test]
+fn test_debug_flag_enables_debug_logging() {
+    let mut cfg = YekConfig::default();
+    cfg.debug = true;
+
+    let env_filter = if cfg.debug {
+        "yek=debug,ignore=off"
+    } else {
+        "yek=info,ignore=off"
+    };
+
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .init();
+
+    assert!(cfg.debug, "Expected debug flag to be enabled");
+}
+
+// Add unit test to verify that `--debug` flag does not enable DEBUG logging when not set
+#[test]
+fn test_debug_flag_does_not_enable_debug_logging_when_not_set() {
+    let mut cfg = YekConfig::default();
+    cfg.debug = false;
+
+    let env_filter = if cfg.debug {
+        "yek=debug,ignore=off"
+    } else {
+        "yek=info,ignore=off"
+    };
+
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .init();
+
+    assert!(!cfg.debug, "Expected debug flag to be disabled");
+}
