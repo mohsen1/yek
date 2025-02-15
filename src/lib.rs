@@ -72,12 +72,12 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 
     let mut files = merged_files;
 
-    // Sort final (priority desc, then file_index asc)
+    // Sort final (priority desc, then filename asc)
     files.par_sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
             .reverse()
-            .then_with(|| a.file_index.cmp(&b.file_index))
+            .then_with(|| a.filename.cmp(&b.filename))
     });
 
     // Build the final output string
