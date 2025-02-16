@@ -75,37 +75,39 @@ jobs:
         run: cargo fmt --check
 
   test:
-    name: Test
     needs: determine-changes
-    runs-on: ubuntu-latest
     if: needs.determine-changes.outputs.only_docs != 'true'
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os_runner }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu
+            os_runner: ubuntu-latest
+          - os: windows
+            os_runner: windows-latest
+          - os: macos
+            os_runner: macos-latest
+          - os: void
+            os_runner: ubuntu-latest
+    
     steps:
       - uses: actions/checkout@v4
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install OpenSSL (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev
-
-      - name: Install OpenSSL (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install openssl@3
-          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
-
-      - name: Install OpenSSL (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install openssl --params='/InstallationPath:C:\OpenSSL\'
-          echo "OPENSSL_DIR=C:\OpenSSL" >> $env:GITHUB_ENV
-          echo "PKG_CONFIG_PATH=C:\OpenSSL\lib\pkgconfig" >> $env:GITHUB_ENV
-
       - name: Run tests
-        run: cargo test --verbose
+        run: |
+          if [ "${{ matrix.os }}" = "void" ]; then
+            echo "Running tests in Void Linux container..."
+            docker run --rm \
+              -v "${{ github.workspace }}:/workspace" \
+              -w /workspace \
+              voidlinux/voidlinux:latest \
+              sh -c "cargo test"
+          else
+            cargo test
+          fi
 
   build:
     name: Build ${{ matrix.target }}
