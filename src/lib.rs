@@ -8,8 +8,10 @@ use std::{
     io::{self, Read},
     path::Path,
     str::FromStr,
+    sync::OnceLock,
 };
 use bytesize::ByteSize;
+use tiktoken_rs::CoreBPE;
 
 pub mod config;
 pub mod defaults;
@@ -19,6 +21,15 @@ pub mod priority;
 use config::YekConfig;
 use parallel::{process_files_parallel, ProcessedFile};
 use priority::compute_recentness_boost;
+
+// Add a static BPE encoder for reuse
+static TOKENIZER: OnceLock<CoreBPE> = OnceLock::new();
+
+fn get_tokenizer() -> &'static CoreBPE {
+    TOKENIZER.get_or_init(|| {
+        tiktoken_rs::get_bpe_from_model("gpt-3.5-turbo").expect("Failed to load tokenizer")
+    })
+}
 
 /// Check if a file is likely text or binary by reading only a small chunk.
 /// This avoids reading large files fully just to detect their type.
@@ -182,9 +193,7 @@ fn parse_token_limit(limit: &str) -> anyhow::Result<usize> {
     }
 }
 
-/// Count tokens in a string by splitting on whitespace and punctuation
+/// Count tokens using tiktoken's GPT-3.5-Turbo tokenizer for accuracy
 fn count_tokens(text: &str) -> usize {
-    text.split(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
-        .filter(|s| !s.is_empty())
-        .count()
+    get_tokenizer().encode_with_special_tokens(text).len()
 }
