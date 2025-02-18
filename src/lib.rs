@@ -99,8 +99,17 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .as_u64() as usize
     };
 
+    // First sort by priority (desc) and file_index (asc)
+    let mut sorted_files: Vec<_> = files.iter().collect();
+    sorted_files.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .reverse()
+            .then_with(|| a.file_index.cmp(&b.file_index))
+    });
+
     let mut files_to_include = Vec::new();
-    for file in files {
+    for file in sorted_files {
         let content_size = if config.token_mode {
             // Format the file content with template first, then count tokens
             let formatted = if config.json {
