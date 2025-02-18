@@ -1,4 +1,5 @@
 use anyhow::Result;
+use anyhow::anyhow;
 use content_inspector::{inspect, ContentType};
 use rayon::prelude::*;
 use std::{
@@ -6,7 +7,9 @@ use std::{
     fs::File,
     io::{self, Read},
     path::Path,
+    str::FromStr,
 };
+use bytesize::ByteSize;
 
 pub mod config;
 pub mod defaults;
@@ -87,10 +90,47 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 }
 
 pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Result<String> {
+    let mut accumulated = 0_usize;
+    let cap = if config.token_mode {
+        parse_token_limit(&config.tokens)?
+    } else {
+        ByteSize::from_str(&config.max_size)
+            .map_err(|e| anyhow!("max_size: Invalid size format: {}", e))?
+            .as_u64() as usize
+    };
+
+    let mut files_to_include = Vec::new();
+    for file in files {
+        let content_size = if config.token_mode {
+            // Format the file content with template first, then count tokens
+            let formatted = if config.json {
+                serde_json::to_string(&serde_json::json!({
+                    "filename": &file.rel_path,
+                    "content": &file.content,
+                })).unwrap_or_default()
+            } else {
+                config
+                    .output_template
+                    .replace("FILE_PATH", &file.rel_path)
+                    .replace("FILE_CONTENT", &file.content)
+            };
+            count_tokens(&formatted)
+        } else {
+            file.content.len()
+        };
+
+        if accumulated + content_size <= cap {
+            accumulated += content_size;
+            files_to_include.push(file);
+        } else {
+            break;
+        }
+    }
+
     if config.json {
         // JSON array of objects
         Ok(serde_json::to_string_pretty(
-            &files
+            &files_to_include
                 .iter()
                 .map(|f| {
                     serde_json::json!({
@@ -102,7 +142,7 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
         )?)
     } else {
         // Use the user-defined template
-        Ok(files
+        Ok(files_to_include
             .iter()
             .map(|f| {
                 config
@@ -116,4 +156,26 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .collect::<Vec<_>>()
             .join("\n"))
     }
+}
+
+/// Parse a token limit string like "800k" or "1000" into a number
+fn parse_token_limit(limit: &str) -> anyhow::Result<usize> {
+    if limit.to_lowercase().ends_with('k') {
+        limit[..limit.len() - 1]
+            .trim()
+            .parse::<usize>()
+            .map(|n| n * 1000)
+            .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))
+    } else {
+        limit
+            .parse::<usize>()
+            .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))
+    }
+}
+
+/// Count tokens in a string by splitting on whitespace and punctuation
+fn count_tokens(text: &str) -> usize {
+    text.split(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
+        .filter(|s| !s.is_empty())
+        .count()
 }
