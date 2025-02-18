@@ -132,7 +132,7 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                 serde_json::to_string(&serde_json::json!({
                     "filename": &file.rel_path,
                     "content": &file.content,
-                })).unwrap_or_default()
+                })).map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?
             } else {
                 config
                     .output_template
