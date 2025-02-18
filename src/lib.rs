@@ -97,6 +97,9 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     // Build the final output string
     let output_string = concat_files(&files, config)?;
 
+    // Add debug logging for token count
+    tracing::debug!("{} tokens generated", count_tokens(&output_string));
+
     Ok((output_string, files))
 }
 
