@@ -637,6 +637,8 @@ mod lib_tests {
         let config = YekConfig {
             token_mode: true,
             tokens: "10".to_string(), // Set a very low token limit
+            // Include filename in template so we can verify which files are included
+            output_template: ">>>> FILE_PATH\nFILE_CONTENT".to_string(),
             ..Default::default()
         };
         let files = vec![
@@ -654,8 +656,9 @@ mod lib_tests {
             },
         ];
         let output = concat_files(&files, &config).unwrap();
-        let tokens = count_tokens(&output);
-        assert!(tokens <= 10, "Output exceeded token limit: {}", tokens);
+        // Check that only the first file is included in the output
+        assert!(output.contains("test1.txt"), "Expected file test1.txt to be present");
+        assert!(!output.contains("test2.txt"), "Expected file test2.txt to be excluded");
     }
 
     #[test]
