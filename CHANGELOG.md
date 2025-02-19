@@ -5,8 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2025-02-19
+[0.19.0]: https://github.com/bodo-run/yek/compare/v0.18.0...v0.19.0
+### Bug Fixes
+
+- Improve token counting accuracy
+- Ensure token and max-size limits are respected
+- Remove unnecessary mut keywords from test configs
+- Update token limit enforcement test
+
+### Features
+
+- Use tiktoken for accurate token counting
+- Add token count to debug output
+
+### Miscellaneous Tasks
+
+- Bump clap from 4.5.28 to 4.5.30
+- Bump tempfile from 3.16.0 to 3.17.1
+
+### Performance
+
+- Only count tokens when debug logging is enabled
+
 ## [0.18.0] - 2025-02-13
-[0.18.0]: https://github.com/bodo-run/yek/compare/v0.17.0...v0.18.0
+[0.18.0]: https://github.com/bodo-run/yek/compare/v0.16.0...v0.18.0
 ### Bug Fixes
 
 - Ensure files with same timestamp get same boost
@@ -42,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Release
 
 - V0.17.0
+- V0.18.0
 
 ## [0.16.0] - 2025-01-30
 [0.16.0]: https://github.com/bodo-run/yek/compare/v0.15.0...v0.16.0
