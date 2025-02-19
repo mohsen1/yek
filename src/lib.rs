@@ -88,9 +88,8 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 
     // Sort final (priority desc, then file_index asc)
     files.par_sort_by(|a, b| {
-        a.priority
-            .cmp(&b.priority)
-            .reverse()
+        b.priority
+            .cmp(&a.priority)
             .then_with(|| a.file_index.cmp(&b.file_index))
     });
 
@@ -115,12 +114,11 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .as_u64() as usize
     };
 
-    // First sort by priority (desc) and file_index (asc)
+    // Sort by priority (desc) and file_index (asc)
     let mut sorted_files: Vec<_> = files.iter().collect();
     sorted_files.sort_by(|a, b| {
-        a.priority
-            .cmp(&b.priority)
-            .reverse()
+        b.priority
+            .cmp(&a.priority)
             .then_with(|| a.file_index.cmp(&b.file_index))
     });
 
@@ -184,7 +182,7 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
 }
 
 /// Parse a token limit string like "800k" or "1000" into a number
-fn parse_token_limit(limit: &str) -> anyhow::Result<usize> {
+pub fn parse_token_limit(limit: &str) -> anyhow::Result<usize> {
     if limit.to_lowercase().ends_with('k') {
         limit[..limit.len() - 1]
             .trim()
@@ -199,6 +197,6 @@ fn parse_token_limit(limit: &str) -> anyhow::Result<usize> {
 }
 
 /// Count tokens using tiktoken's GPT-3.5-Turbo tokenizer for accuracy
-fn count_tokens(text: &str) -> usize {
+pub fn count_tokens(text: &str) -> usize {
     get_tokenizer().encode_with_special_tokens(text).len()
 }
