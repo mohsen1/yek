@@ -86,11 +86,11 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 
     let mut files = merged_files;
 
-    // Sort final (priority desc, then file_index asc)
+    // Sort final (priority asc, then file_index asc)
     files.par_sort_by(|a, b| {
-        b.priority
-            .cmp(&a.priority)
-            .then_with(|| a.file_index.cmp(&b.file_index))
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| a.rel_path.cmp(&b.rel_path))
     });
 
     // Build the final output string
@@ -114,12 +114,12 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .as_u64() as usize
     };
 
-    // Sort by priority (desc) and file_index (asc)
+    // Sort by priority (asc) and file_index (asc)
     let mut sorted_files: Vec<_> = files.iter().collect();
     sorted_files.sort_by(|a, b| {
-        b.priority
-            .cmp(&a.priority)
-            .then_with(|| a.file_index.cmp(&b.file_index))
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| a.rel_path.cmp(&b.rel_path))
     });
 
     let mut files_to_include = Vec::new();

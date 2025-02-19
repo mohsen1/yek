@@ -348,9 +348,9 @@ mod lib_tests {
         let files = result.1;
 
         assert_eq!(files.len(), 3);
-        assert_eq!(files[0].rel_path, "src/file_c.rs"); // Highest priority (100)
-        assert_eq!(files[1].rel_path, "file_b.txt"); // Priority 0, discovered first
-        assert_eq!(files[2].rel_path, "file_a.txt"); // Priority 0, discovered second
+        assert_eq!(files[0].rel_path, "file_a.txt"); // Priority 0, index 0
+        assert_eq!(files[1].rel_path, "file_b.txt"); // Priority 0, index 1
+        assert_eq!(files[2].rel_path, "src/file_c.rs"); // Highest priority (100) comes last
     }
 
     // Error handling tests
@@ -436,10 +436,10 @@ mod lib_tests {
         let result = serialize_repo(&config).unwrap();
         let files = result.1;
         assert_eq!(files.len(), 2);
-        assert_eq!(files[0].rel_path, "src_file.rs"); // Should be first due to priority
-        assert_eq!(files[0].priority, 500);
-        assert_eq!(files[1].rel_path, "file.txt");
-        assert_eq!(files[1].priority, 0);
+        assert_eq!(files[0].rel_path, "file.txt");
+        assert_eq!(files[0].priority, 0);
+        assert_eq!(files[1].rel_path, "src_file.rs"); // Highest priority comes last
+        assert_eq!(files[1].priority, 500);
     }
 
     #[test]
