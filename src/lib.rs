@@ -1,5 +1,6 @@
-use anyhow::Result;
 use anyhow::anyhow;
+use anyhow::Result;
+use bytesize::ByteSize;
 use content_inspector::{inspect, ContentType};
 use rayon::prelude::*;
 use std::{
@@ -10,7 +11,6 @@ use std::{
     str::FromStr,
     sync::OnceLock,
 };
-use bytesize::ByteSize;
 use tiktoken_rs::CoreBPE;
 
 pub mod config;
@@ -130,7 +130,8 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                 serde_json::to_string(&serde_json::json!({
                     "filename": &file.rel_path,
                     "content": &file.content,
-                })).map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?
+                }))
+                .map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?
             } else {
                 config
                     .output_template

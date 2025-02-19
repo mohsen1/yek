@@ -8,10 +8,8 @@ mod lib_tests {
     use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
     use yek::{
-        config::YekConfig,
-        parallel::ProcessedFile,
-        priority::PriorityRule,
-        serialize_repo, concat_files, count_tokens, parse_token_limit, is_text_file,
+        concat_files, config::YekConfig, count_tokens, is_text_file, parallel::ProcessedFile,
+        parse_token_limit, priority::PriorityRule, serialize_repo,
     };
 
     // Initialize tracing subscriber for tests
@@ -657,8 +655,14 @@ mod lib_tests {
         ];
         let output = concat_files(&files, &config).unwrap();
         // Check that only the first file is included in the output
-        assert!(output.contains("test1.txt"), "Expected file test1.txt to be present");
-        assert!(!output.contains("test2.txt"), "Expected file test2.txt to be excluded");
+        assert!(
+            output.contains("test1.txt"),
+            "Expected file test1.txt to be present"
+        );
+        assert!(
+            !output.contains("test2.txt"),
+            "Expected file test2.txt to be excluded"
+        );
     }
 
     #[test]
