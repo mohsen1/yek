@@ -25,7 +25,7 @@ fn process_single_file(
     config: &YekConfig,
     boost_map: &HashMap<String, i32>,
 ) -> Result<Vec<ProcessedFile>> {
-    let base_dir = file_path.parent().unwrap_or(Path::new("."));
+    let base_dir = file_path.parent().unwrap_or(Path::new(""));
     let rel_path = normalize_path(file_path, base_dir);
 
     // Build the gitignore
