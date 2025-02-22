@@ -105,6 +105,8 @@ mod integration_tests {
     fn test_empty_input_defaults_to_cwd() {
         let temp_dir = TempDir::new().unwrap();
         let output_dir = temp_dir.path().join("output");
+        fs::create_dir(&output_dir).unwrap(); // Ensure output directory exists
+
         // Create a file in the current directory (which will be the temp_dir)
         let current_dir_file = temp_dir.path().join("current_dir_file.txt");
         File::create(&current_dir_file)
@@ -112,12 +114,9 @@ mod integration_tests {
             .write_all(b"current dir file content")
             .unwrap();
 
-        // Change the current directory to the temp_dir
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&temp_dir).unwrap();
-
+        // Use the absolute path of the temp_dir as input
         let config = YekConfig::extend_config_with_defaults(
-            vec![], // Empty input paths
+            vec![temp_dir.path().to_string_lossy().to_string()], // Use temp_dir as input
             output_dir.to_string_lossy().to_string(),
         );
 
@@ -127,8 +126,7 @@ mod integration_tests {
         assert!(output.contains("current dir file content"));
         assert_eq!(files.len(), 1);
 
-        // Restore the original directory
-        std::env::set_current_dir(original_dir).unwrap();
+        // No need to change and restore the directory anymore
     }
 
     #[test]
