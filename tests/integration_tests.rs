@@ -105,6 +105,7 @@ mod integration_tests {
             .unwrap();
 
         // Change the current directory to the temp_dir
+        let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&temp_dir).unwrap();
 
         let config = YekConfig::extend_config_with_defaults(
