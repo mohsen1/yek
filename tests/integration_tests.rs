@@ -47,8 +47,11 @@ mod integration_tests {
 
         let result = serialize_repo(&config);
         assert!(result.is_ok());
-        // Further assertions could be added here to check the content of the output,
-        // but that would depend on the specific output format and template.
+        let (output, files) = result.unwrap();
+        assert!(output.contains("file1 content"));
+        assert!(output.contains("file2 content"));
+        assert!(output.contains("nested content"));
+        assert_eq!(files.len(), 3);
     }
 
     #[test]
@@ -91,6 +94,11 @@ mod integration_tests {
         // Should not panic, even with non-existent paths
         let result = serialize_repo(&config);
         assert!(result.is_ok());
+        let (output, files) = result.unwrap();
+        assert!(output.contains("file1 content"));
+        assert!(output.contains("file2 content"));
+        assert!(output.contains("nested content"));
+        assert_eq!(files.len(), 3);
     }
 
     #[test]
@@ -115,9 +123,12 @@ mod integration_tests {
 
         let result = serialize_repo(&config);
         assert!(result.is_ok());
-        // You could add an assertion here to check if the output contains
-        // the content of "current_dir_file.txt", but it depends on your
-        // output format.
+        let (output, files) = result.unwrap();
+        assert!(output.contains("current dir file content"));
+        assert_eq!(files.len(), 1);
+
+        // Restore the original directory
+        std::env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
