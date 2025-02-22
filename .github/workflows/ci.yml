@@ -102,8 +102,7 @@ jobs:
             echo "Running tests in Void Linux container with Rust installation..."
             docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace voidlinux/voidlinux:latest sh -c "\
               xbps-install -Sy --repository=https://repo.voidlinux.org/current curl && \
-              curl https://sh.rustup.rs -sSf | sh -s -- -y && \
-              export PATH=/root/.cargo/bin:\$PATH && \
+              sudo xbps-install -Sy cargo && \
               cargo test"
           else
             cargo test
