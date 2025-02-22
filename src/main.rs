@@ -53,7 +53,7 @@ fn main() -> Result<()> {
         // Not streaming => run repo serialization & checksum in parallel
         let (serialization_res, checksum_res) = join(
             || serialize_repo(&full_config),
-            || YekConfig::get_checksum(&full_config.input_dirs),
+            || YekConfig::get_checksum(&full_config.input_paths),
         );
 
         // Handle both results

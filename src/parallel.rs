@@ -19,14 +19,75 @@ pub struct ProcessedFile {
     pub content: String,
 }
 
-/// Walk files in parallel, skipping ignored paths, then read each file's contents
-/// in a separate thread. Return the resulting `ProcessedFile` objects.
-pub fn process_files_parallel(
-    base_dir: &Path,
+/// Process a single file, checking ignore patterns and reading its contents.
+fn process_single_file(
+    file_path: &Path,
     config: &YekConfig,
     boost_map: &HashMap<String, i32>,
 ) -> Result<Vec<ProcessedFile>> {
-    let mut walk_builder = ignore::WalkBuilder::new(base_dir);
+    let base_dir = file_path.parent().unwrap_or(Path::new(""));
+    let rel_path = normalize_path(file_path, base_dir);
+
+    // Build the gitignore
+    let mut gitignore_builder = GitignoreBuilder::new(base_dir);
+    for pattern in &config.ignore_patterns {
+        gitignore_builder.add_line(None, pattern)?;
+    }
+
+    // If there is a .gitignore in this folder, add it last so its "!" lines override prior patterns
+    let gitignore_file = base_dir.join(".gitignore");
+    if gitignore_file.exists() {
+        gitignore_builder.add(&gitignore_file);
+    }
+
+    let gitignore = gitignore_builder.build()?;
+    if gitignore.matched(file_path, false).is_ignore() {
+        debug!("Skipping ignored file: {rel_path}");
+        return Ok(Vec::new());
+    }
+
+    let mut processed_files = Vec::new();
+
+    match fs::read(file_path) {
+        Ok(content) => {
+            if inspect(&content) == ContentType::BINARY {
+                debug!("Skipping binary file: {rel_path}");
+            } else {
+                let rule_priority = get_file_priority(&rel_path, &config.priority_rules);
+                let boost = boost_map.get(&rel_path).copied().unwrap_or(0);
+                let combined_priority = rule_priority + boost;
+
+                processed_files.push(ProcessedFile {
+                    priority: combined_priority,
+                    file_index: 0, // For a single file, the index is always 0
+                    rel_path,
+                    content: String::from_utf8_lossy(&content).to_string(),
+                });
+            }
+        }
+        Err(e) => {
+            debug!("Failed to read {rel_path}: {e}");
+        }
+    }
+
+    Ok(processed_files)
+}
+
+/// Walk files in parallel (if a directory is given), skipping ignored paths,
+/// then read each file's contents in a separate thread.
+/// Return the resulting `ProcessedFile` objects.
+pub fn process_files_parallel(
+    base_path: &Path,
+    config: &YekConfig,
+    boost_map: &HashMap<String, i32>,
+) -> Result<Vec<ProcessedFile>> {
+    // If it's a file, process it directly
+    if base_path.is_file() {
+        return process_single_file(base_path, config, boost_map);
+    }
+
+    // Otherwise, it's a directory, so walk it
+    let mut walk_builder = ignore::WalkBuilder::new(base_path);
 
     // Standard filters + no follow symlinks
     walk_builder
@@ -35,14 +96,14 @@ pub fn process_files_parallel(
         .require_git(false);
 
     // Build the gitignore
-    let mut gitignore_builder = GitignoreBuilder::new(base_dir);
+    let mut gitignore_builder = GitignoreBuilder::new(base_path);
     // Add our custom patterns first
     for pattern in &config.ignore_patterns {
         gitignore_builder.add_line(None, pattern)?;
     }
 
     // If there is a .gitignore in this folder, add it last so its "!" lines override prior patterns
-    let gitignore_file = base_dir.join(".gitignore");
+    let gitignore_file = base_path.join(".gitignore");
     if gitignore_file.exists() {
         gitignore_builder.add(&gitignore_file);
     }
@@ -88,7 +149,7 @@ pub fn process_files_parallel(
     });
 
     // Use ignore's parallel walker to skip ignored files
-    let base_cloned = base_dir.to_owned();
+    let base_cloned = base_path.to_owned();
     let walker_tx = processed_files_tx.clone();
 
     // Now build the walker (no .gitignore custom filename)
@@ -138,9 +199,9 @@ pub fn process_files_parallel(
 
     if config.debug {
         debug!(
-            "Processed {} files in parallel for base_dir: {}",
+            "Processed {} files in parallel for base_path: {}",
             processed_files.len(),
-            base_dir.display()
+            base_path.display()
         );
     }
 

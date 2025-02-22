@@ -53,16 +53,20 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 
 /// Main entrypoint for serialization, used by CLI and tests
 pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)> {
-    // Gather commit times from each input dir
+    // Gather commit times from each input path that is a directory
     let combined_commit_times = config
-        .input_dirs
+        .input_paths
         .par_iter()
-        .filter_map(|dir| {
-            let repo_path = Path::new(dir);
-            priority::get_recent_commit_times_git2(
-                repo_path,
-                config.max_git_depth.try_into().unwrap_or(0),
-            )
+        .filter_map(|path_str| {
+            let repo_path = Path::new(path_str);
+            if repo_path.is_dir() {
+                priority::get_recent_commit_times_git2(
+                    repo_path,
+                    config.max_git_depth.try_into().unwrap_or(0),
+                )
+            } else {
+                None
+            }
         })
         .flatten()
         .collect::<HashMap<String, u64>>();
@@ -71,12 +75,12 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     let recentness_boost =
         compute_recentness_boost(&combined_commit_times, config.git_boost_max.unwrap_or(100));
 
-    // Process files in parallel for each directory
+    // Process files in parallel for each input path
     let merged_files = config
-        .input_dirs
+        .input_paths
         .par_iter()
-        .map(|dir| {
-            let path = Path::new(dir);
+        .map(|path_str| {
+            let path = Path::new(path_str);
             process_files_parallel(path, config, &recentness_boost)
         })
         .collect::<Result<Vec<Vec<ProcessedFile>>>>()?
