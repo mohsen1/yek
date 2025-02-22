@@ -63,7 +63,7 @@ mod e2e_tests {
         fs::write(temp_dir.path().join("test.txt"), "Test content")?;
 
         let config_content = r#"
-            input_dirs = ["."]
+            input_paths = ["."]
             [[priority_rules]]
             pattern = "src/.*\\.rs"
             score = 100
@@ -220,7 +220,7 @@ mod e2e_tests {
         let temp_dir = tempdir()?;
         let config_content = r#"
             max_size = "1KB"
-            input_dirs = ["."]
+            input_paths = ["."]
         "#;
         fs::write(temp_dir.path().join("yek.toml"), config_content)?;
 
@@ -278,7 +278,7 @@ mod e2e_tests {
         fs::write(temp_dir.path().join("data.bin"), [0, 1, 2, 3])?;
 
         let config_content = r#"
-            input_dirs = ["."]
+            input_paths = ["."]
             binary_extensions = ["bin"]
         "#;
         fs::write(temp_dir.path().join("yek.toml"), config_content)?;
@@ -295,7 +295,7 @@ mod e2e_tests {
     fn test_git_boost_config() -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempdir()?;
         let config_content = r#"
-            input_dirs = ["."]
+            input_paths = ["."]
             git_boost_max = 50
         "#;
         fs::write(temp_dir.path().join("yek.toml"), config_content)?;

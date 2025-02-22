@@ -331,19 +331,18 @@ fn test_get_checksum_consistency() {
 
 #[test]
 fn test_extend_config_with_defaults() {
-    let input_dirs = vec!["src".to_string(), "tests".to_string()];
+    let input_paths = vec!["dir1".to_string(), "dir2".to_string()];
     let output_dir = "output".to_string();
-    let cfg = YekConfig::extend_config_with_defaults(input_dirs.clone(), output_dir.clone());
 
-    assert_eq!(cfg.input_dirs, input_dirs);
-    assert_eq!(cfg.output_dir.unwrap(), output_dir);
+    let cfg = YekConfig::extend_config_with_defaults(input_paths.clone(), output_dir.clone());
 
-    // Check other fields are default
-    assert!(!cfg.version);
-    assert_eq!(cfg.max_size, "10MB");
+    assert_eq!(cfg.input_paths, input_paths);
+    assert_eq!(cfg.output_dir, Some(output_dir));
+    assert_eq!(cfg.version, false);
+    assert_eq!(cfg.max_size, "10MB".to_string());
     assert_eq!(cfg.tokens, String::new());
-    assert!(!cfg.json);
-    assert!(!cfg.debug);
+    assert_eq!(cfg.json, false);
+    assert_eq!(cfg.debug, false);
     assert_eq!(cfg.output_template, DEFAULT_OUTPUT_TEMPLATE.to_string());
     assert_eq!(cfg.ignore_patterns, Vec::<String>::new());
     assert_eq!(cfg.unignore_patterns, Vec::<String>::new());
@@ -356,8 +355,8 @@ fn test_extend_config_with_defaults() {
             .collect::<Vec<_>>()
     );
     assert_eq!(cfg.git_boost_max, Some(100));
-    assert!(!cfg.stream);
-    assert!(!cfg.token_mode);
+    assert_eq!(cfg.stream, false);
+    assert_eq!(cfg.token_mode, false);
     assert_eq!(cfg.output_file_full_path, None);
     assert_eq!(cfg.max_git_depth, 100);
 }
@@ -458,15 +457,13 @@ fn test_merge_ignore_patterns() {
 }
 
 #[test]
-fn test_input_dirs_default() {
+fn test_input_paths_default() {
     let mut cfg = YekConfig::default();
-
-    // Simulate init_config() behavior
-    if cfg.input_dirs.is_empty() {
-        cfg.input_dirs.push(".".to_string());
+    if cfg.input_paths.is_empty() {
+        cfg.input_paths.push(".".to_string());
     }
 
-    assert_eq!(cfg.input_dirs, vec![".".to_string()]);
+    assert_eq!(cfg.input_paths, vec![".".to_string()]);
 }
 
 #[test]
