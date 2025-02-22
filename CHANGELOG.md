@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2025-02-22
+[0.20.0]: https://github.com/bodo-run/yek/compare/v0.19.0...v0.20.0
+### Bug Fixes
+
+- Handle root directory paths correctly
+- Update input_dirs to input_paths in benchmarks
+
+### Features
+
+- Allow files as input
+
+### Fix
+
+- Use absolute path in test_empty_input_defaults_to_cwd
+
+### Testing
+
+- Add integration test
+
 ## [0.19.0] - 2025-02-19
 [0.19.0]: https://github.com/bodo-run/yek/compare/v0.18.0...v0.19.0
 ### Bug Fixes
@@ -27,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance
 
 - Only count tokens when debug logging is enabled
+
+### Release
+
+- V0.19.0
 
 ## [0.18.0] - 2025-02-13
 [0.18.0]: https://github.com/bodo-run/yek/compare/v0.16.0...v0.18.0
