@@ -220,17 +220,12 @@ mod e2e_tests {
         let temp_dir = tempdir()?;
         fs::write(temp_dir.path().join("test.txt"), "Test content")?;
 
-        Command::cargo_bin("yek")?
-            .current_dir(temp_dir.path())
-            .arg("*.txt")
-            .assert()
-            .success();
-
         let output = Command::cargo_bin("yek")?
             .current_dir(temp_dir.path())
             .arg("*.txt")
             .output()?;
         let stdout = String::from_utf8(output.stdout)?;
+        assert!(output.status.success());
         assert!(stdout.contains("Test content"));
         Ok(())
     }
