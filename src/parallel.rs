@@ -104,9 +104,7 @@ pub fn process_files_parallel(
             all_processed_files.extend(process_single_file(&path, config, boost_map)?);
         } else if path.is_dir() {
             // For directories, use the original recursive logic
-            all_processed_files.extend(process_files_parallel_internal(
-                &path, config, boost_map,
-            )?);
+            all_processed_files.extend(process_files_parallel_internal(&path, config, boost_map)?);
         }
     }
 
