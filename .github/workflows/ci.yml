@@ -318,12 +318,35 @@ jobs:
         with:
           name: criterion-${{ matrix.benchmark_group.group }}-results
           path: benchmark_results.md
+  should-release:
+    name: Should Release
+    runs-on: ubuntu-latest
+    outputs:
+      yes: ${{ steps.check.outputs.yes }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          # get current cargo version from Cargo.toml using cargo CLI tool
+          # then use `cargo info` to see if it's already released
+          cargo_version=$(cargo pkgid | cut -d# -f2)
+          if cargo info "yek@$cargo_version"; then
+            echo "yek@$cargo_version is already released"
+            echo "yes=false" >> $GITHUB_OUTPUT
+          else
+            if git tag -l "v$cargo_version" | grep -q "v$cargo_version"; then
+              echo "yes=true" >> $GITHUB_OUTPUT
+            else
+              echo "Error: Git tag v$cargo_version is not pushed"
+              echo "yes=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+        id: check
 
   release:
     name: Release
     needs: [test, lint, build]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') && endsWith(github.event.base_ref, 'main')
+    if: ${{ needs.should-release.outputs.yes }} == 'true' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -351,7 +374,7 @@ jobs:
     name: Publish to crates.io
     needs: [test, lint, build]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') && endsWith(github.event.base_ref, 'main')
+    if: ${{ needs.should-release.outputs.yes }} == 'true' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
