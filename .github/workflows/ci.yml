@@ -104,7 +104,9 @@ jobs:
               xbps-install -Sy && \
               xbps-install -y base-devel git curl gcc pkg-config openssl-devel && \
               curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-              source $HOME/.cargo/env && \
+              export PATH=/root/.cargo/bin:\$PATH && \
+              rustc --version && \
+              cargo --version && \
               cargo test"
           else
             cargo test
