@@ -245,7 +245,7 @@ fn custom_config_test(c: &mut Criterion) {
                 create_test_data_bytes(temp_dir.path(), 1024, "test.rs");
                 let output_dir = temp_dir.path().join("output");
                 let mut config = config_template.clone();
-                config.input_dirs = vec![temp_dir.path().to_string_lossy().to_string()];
+                config.input_paths = vec![temp_dir.path().to_string_lossy().to_string()];
                 config.output_dir = Some(output_dir.to_string_lossy().to_string());
                 (temp_dir, output_dir, config)
             },

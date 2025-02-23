@@ -6,11 +6,11 @@ mod lib_tests {
     use tempfile::tempdir;
 
     use tracing_subscriber::{EnvFilter, FmtSubscriber};
-    use yek::config::YekConfig;
-    use yek::is_text_file;
-    use yek::parallel::ProcessedFile;
-    use yek::priority::PriorityRule;
-    use yek::serialize_repo; // Import PermissionsExt for set_mode
+
+    use yek::{
+        concat_files, config::YekConfig, count_tokens, is_text_file, parallel::ProcessedFile,
+        parse_token_limit, priority::PriorityRule, serialize_repo,
+    };
 
     // Initialize tracing subscriber for tests
     fn init_tracing() {
@@ -348,9 +348,9 @@ mod lib_tests {
         let files = result.1;
 
         assert_eq!(files.len(), 3);
-        assert_eq!(files[0].rel_path, "src/file_c.rs"); // Highest priority last
-        assert_eq!(files[1].rel_path, "file_b.txt");
-        assert_eq!(files[2].rel_path, "file_a.txt");
+        assert_eq!(files[0].rel_path, "file_a.txt"); // Priority 0, index 0
+        assert_eq!(files[1].rel_path, "file_b.txt"); // Priority 0, index 1
+        assert_eq!(files[2].rel_path, "src/file_c.rs"); // Highest priority (100) comes last
     }
 
     // Error handling tests
@@ -436,10 +436,10 @@ mod lib_tests {
         let result = serialize_repo(&config).unwrap();
         let files = result.1;
         assert_eq!(files.len(), 2);
-        assert_eq!(files[0].rel_path, "src_file.rs"); // Should be first due to priority
-        assert_eq!(files[0].priority, 500);
-        assert_eq!(files[1].rel_path, "file.txt");
-        assert_eq!(files[1].priority, 0);
+        assert_eq!(files[0].rel_path, "file.txt");
+        assert_eq!(files[0].priority, 0);
+        assert_eq!(files[1].rel_path, "src_file.rs"); // Highest priority comes last
+        assert_eq!(files[1].priority, 500);
     }
 
     #[test]
@@ -584,5 +584,93 @@ mod lib_tests {
         }];
         let output_json = yek::concat_files(&files, &config).unwrap();
         assert!(output_json.contains(r#""content": """#)); // Should handle empty content in JSON
+    }
+
+    #[test]
+    fn test_token_counting_basic() {
+        let text = "Hello, world! This is a test.";
+        let tokens = count_tokens(text);
+        // GPT tokenizer has its own tokenization rules that may not match our assumptions
+        assert_eq!(tokens, 9);
+    }
+
+    #[test]
+    fn test_token_counting_with_template() {
+        let config = YekConfig {
+            output_template: "File: FILE_PATH\nContent:\nFILE_CONTENT".to_string(),
+            ..Default::default()
+        };
+        let files = vec![ProcessedFile {
+            rel_path: "test.txt".to_string(),
+            content: "Hello world".to_string(),
+            priority: 0,
+            file_index: 0,
+        }];
+        let output = concat_files(&files, &config).unwrap();
+        let tokens = count_tokens(&output);
+        // Verify token count includes template overhead
+        assert!(tokens > count_tokens("Hello world"));
+    }
+
+    #[test]
+    fn test_token_counting_with_json() {
+        let config = YekConfig {
+            json: true,
+            ..Default::default()
+        };
+        let files = vec![ProcessedFile {
+            rel_path: "test.txt".to_string(),
+            content: "Hello world".to_string(),
+            priority: 0,
+            file_index: 0,
+        }];
+        let output = concat_files(&files, &config).unwrap();
+        let tokens = count_tokens(&output);
+        // Verify token count includes JSON structure overhead
+        assert!(tokens > count_tokens("Hello world"));
+    }
+
+    #[test]
+    fn test_token_limit_enforcement() {
+        let config = YekConfig {
+            token_mode: true,
+            tokens: "10".to_string(), // Set a very low token limit
+            // Include filename in template so we can verify which files are included
+            output_template: ">>>> FILE_PATH\nFILE_CONTENT".to_string(),
+            ..Default::default()
+        };
+        let files = vec![
+            ProcessedFile {
+                rel_path: "test1.txt".to_string(),
+                content: "This is a short test".to_string(),
+                priority: 0,
+                file_index: 0,
+            },
+            ProcessedFile {
+                rel_path: "test2.txt".to_string(),
+                content: "This is another test that should be excluded".to_string(),
+                priority: 0,
+                file_index: 1,
+            },
+        ];
+        let output = concat_files(&files, &config).unwrap();
+        // Check that only the first file is included in the output
+        assert!(
+            output.contains("test1.txt"),
+            "Expected file test1.txt to be present"
+        );
+        assert!(
+            !output.contains("test2.txt"),
+            "Expected file test2.txt to be excluded"
+        );
+    }
+
+    #[test]
+    fn test_parse_token_limit() {
+        assert_eq!(parse_token_limit("1000").unwrap(), 1000);
+        assert_eq!(parse_token_limit("1k").unwrap(), 1000);
+        assert_eq!(parse_token_limit("1K").unwrap(), 1000);
+        assert!(parse_token_limit("-1").is_err());
+        assert!(parse_token_limit("invalid").is_err());
     }
 }

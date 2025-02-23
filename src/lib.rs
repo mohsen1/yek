@@ -1,4 +1,6 @@
+use anyhow::anyhow;
 use anyhow::Result;
+use bytesize::ByteSize;
 use content_inspector::{inspect, ContentType};
 use rayon::prelude::*;
 use std::{
@@ -6,7 +8,10 @@ use std::{
     fs::File,
     io::{self, Read},
     path::Path,
+    str::FromStr,
+    sync::OnceLock,
 };
+use tiktoken_rs::CoreBPE;
 
 pub mod config;
 pub mod defaults;
@@ -16,6 +21,15 @@ pub mod priority;
 use config::YekConfig;
 use parallel::{process_files_parallel, ProcessedFile};
 use priority::compute_recentness_boost;
+
+// Add a static BPE encoder for reuse
+static TOKENIZER: OnceLock<CoreBPE> = OnceLock::new();
+
+fn get_tokenizer() -> &'static CoreBPE {
+    TOKENIZER.get_or_init(|| {
+        tiktoken_rs::get_bpe_from_model("gpt-3.5-turbo").expect("Failed to load tokenizer")
+    })
+}
 
 /// Check if a file is likely text or binary by reading only a small chunk.
 /// This avoids reading large files fully just to detect their type.
@@ -39,16 +53,20 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 
 /// Main entrypoint for serialization, used by CLI and tests
 pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)> {
-    // Gather commit times from each input dir
+    // Gather commit times from each input path that is a directory
     let combined_commit_times = config
-        .input_dirs
+        .input_paths
         .par_iter()
-        .filter_map(|dir| {
-            let repo_path = Path::new(dir);
-            priority::get_recent_commit_times_git2(
-                repo_path,
-                config.max_git_depth.try_into().unwrap_or(0),
-            )
+        .filter_map(|path_str| {
+            let repo_path = Path::new(path_str);
+            if repo_path.is_dir() {
+                priority::get_recent_commit_times_git2(
+                    repo_path,
+                    config.max_git_depth.try_into().unwrap_or(0),
+                )
+            } else {
+                None
+            }
         })
         .flatten()
         .collect::<HashMap<String, u64>>();
@@ -57,12 +75,12 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     let recentness_boost =
         compute_recentness_boost(&combined_commit_times, config.git_boost_max.unwrap_or(100));
 
-    // Process files in parallel for each directory
+    // Process files in parallel for each input path
     let merged_files = config
-        .input_dirs
+        .input_paths
         .par_iter()
-        .map(|dir| {
-            let path = Path::new(dir);
+        .map(|path_str| {
+            let path = Path::new(path_str);
             process_files_parallel(path, config, &recentness_boost)
         })
         .collect::<Result<Vec<Vec<ProcessedFile>>>>()?
@@ -72,25 +90,75 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 
     let mut files = merged_files;
 
-    // Sort final (priority desc, then file_index asc)
+    // Sort final (priority asc, then file_index asc)
     files.par_sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
-            .reverse()
-            .then_with(|| a.file_index.cmp(&b.file_index))
+            .then_with(|| a.rel_path.cmp(&b.rel_path))
     });
 
     // Build the final output string
     let output_string = concat_files(&files, config)?;
 
+    // Only count tokens if debug logging is enabled
+    if tracing::Level::DEBUG <= tracing::level_filters::STATIC_MAX_LEVEL {
+        tracing::debug!("{} tokens generated", count_tokens(&output_string));
+    }
+
     Ok((output_string, files))
 }
 
 pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Result<String> {
+    let mut accumulated = 0_usize;
+    let cap = if config.token_mode {
+        parse_token_limit(&config.tokens)?
+    } else {
+        ByteSize::from_str(&config.max_size)
+            .map_err(|e| anyhow!("max_size: Invalid size format: {}", e))?
+            .as_u64() as usize
+    };
+
+    // Sort by priority (asc) and file_index (asc)
+    let mut sorted_files: Vec<_> = files.iter().collect();
+    sorted_files.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| a.rel_path.cmp(&b.rel_path))
+    });
+
+    let mut files_to_include = Vec::new();
+    for file in sorted_files {
+        let content_size = if config.token_mode {
+            // Format the file content with template first, then count tokens
+            let formatted = if config.json {
+                serde_json::to_string(&serde_json::json!({
+                    "filename": &file.rel_path,
+                    "content": &file.content,
+                }))
+                .map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?
+            } else {
+                config
+                    .output_template
+                    .replace("FILE_PATH", &file.rel_path)
+                    .replace("FILE_CONTENT", &file.content)
+            };
+            count_tokens(&formatted)
+        } else {
+            file.content.len()
+        };
+
+        if accumulated + content_size <= cap {
+            accumulated += content_size;
+            files_to_include.push(file);
+        } else {
+            break;
+        }
+    }
+
     if config.json {
         // JSON array of objects
         Ok(serde_json::to_string_pretty(
-            &files
+            &files_to_include
                 .iter()
                 .map(|f| {
                     serde_json::json!({
@@ -102,7 +170,7 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
         )?)
     } else {
         // Use the user-defined template
-        Ok(files
+        Ok(files_to_include
             .iter()
             .map(|f| {
                 config
@@ -116,4 +184,24 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .collect::<Vec<_>>()
             .join("\n"))
     }
+}
+
+/// Parse a token limit string like "800k" or "1000" into a number
+pub fn parse_token_limit(limit: &str) -> anyhow::Result<usize> {
+    if limit.to_lowercase().ends_with('k') {
+        limit[..limit.len() - 1]
+            .trim()
+            .parse::<usize>()
+            .map(|n| n * 1000)
+            .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))
+    } else {
+        limit
+            .parse::<usize>()
+            .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))
+    }
+}
+
+/// Count tokens using tiktoken's GPT-3.5-Turbo tokenizer for accuracy
+pub fn count_tokens(text: &str) -> usize {
+    get_tokenizer().encode_with_special_tokens(text).len()
 }

@@ -1,6 +1,6 @@
 [package]
 name = "yek"
-version = "0.18.0"
+version = "0.20.0"
 edition = "2021"
 description = "A tool to serialize a repository into chunks of text files"
 license = "MIT"
@@ -39,12 +39,13 @@ toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2.4"
+tiktoken-rs = "0.6.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"
 chrono = "0.4"
 predicates = "3.0"
-tempfile = "3.9"
+tempfile = "3.17"
 criterion = "0.5"
 rand = "0.8"
 git-cliff = "1.4.0"

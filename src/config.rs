@@ -22,9 +22,9 @@ pub enum ConfigFormat {
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
 pub struct YekConfig {
-    /// Input directories to process
+    /// Input files and/or directories to process
     #[config_arg(positional)]
-    pub input_dirs: Vec<String>,
+    pub input_paths: Vec<String>,
 
     /// Print version of yek
     #[config_arg(long = "version", short = 'V')]
@@ -92,7 +92,7 @@ pub struct YekConfig {
 impl Default for YekConfig {
     fn default() -> Self {
         Self {
-            input_dirs: Vec::new(),
+            input_paths: Vec::new(),
             version: false,
             max_size: "10MB".to_string(),
             tokens: String::new(),
@@ -119,9 +119,9 @@ impl Default for YekConfig {
 }
 
 impl YekConfig {
-    pub fn extend_config_with_defaults(input_dirs: Vec<String>, output_dir: String) -> Self {
+    pub fn extend_config_with_defaults(input_paths: Vec<String>, output_dir: String) -> Self {
         YekConfig {
-            input_dirs,
+            input_paths,
             output_dir: Some(output_dir),
             ..Default::default()
         }
@@ -174,8 +174,8 @@ impl YekConfig {
         cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
 
         // default input dirs to current dir if none:
-        if cfg.input_dirs.is_empty() {
-            cfg.input_dirs.push(".".to_string());
+        if cfg.input_paths.is_empty() {
+            cfg.input_paths.push(".".to_string());
         }
 
         // Extend binary extensions with the built-in list:
@@ -225,14 +225,33 @@ impl YekConfig {
         cfg
     }
 
-    /// Compute a quick checksum for the *top-level listing* of each input dir.
-    pub fn get_checksum(input_dirs: &[String]) -> String {
+    /// Compute a quick checksum for the input paths (files and directories).
+    /// For directories, it uses the top-level listing. For files, it uses the file metadata.
+    pub fn get_checksum(input_paths: &[String]) -> String {
         let mut hasher = Sha256::new();
-        for dir in input_dirs {
-            let base_path = Path::new(dir);
+        for path_str in input_paths {
+            let base_path = Path::new(path_str);
             if !base_path.exists() {
                 continue;
             }
+
+            // If it's a file, hash the file metadata directly
+            if base_path.is_file() {
+                if let Ok(meta) = fs::metadata(base_path) {
+                    hasher.update(path_str.as_bytes());
+                    hasher.update(meta.len().to_le_bytes());
+
+                    if let Ok(mod_time) = meta.modified() {
+                        if let Ok(dur) = mod_time.duration_since(UNIX_EPOCH) {
+                            hasher.update(dur.as_secs().to_le_bytes());
+                            hasher.update(dur.subsec_nanos().to_le_bytes());
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // If it's a directory, hash its contents
             let entries = match fs::read_dir(base_path) {
                 Ok(iter) => iter.filter_map(|e| e.ok()).collect::<Vec<_>>(),
                 Err(_) => continue,
