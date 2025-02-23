@@ -9,6 +9,7 @@ By default:
 - Infers additional ignore patterns (binary, large, etc.).
 - Automatically detects if output is being piped and streams content instead of writing to files.
 - Supports processing multiple directories in a single command.
+- Supports glob patterns and individual file selection.
 - Configurable via a `yek.yaml` file.
 
 Yek <a href="https://fa.wikipedia.org/wiki/۱">يک</a> means "One" in Farsi/Persian.
@@ -112,6 +113,25 @@ Process multiple directories:
 ```bash
 yek src/ tests/
 ```
+
+Porcess multiple files
+
+```bash
+yek file1.txt file2.txt file3.txt
+```
+
+Use glob patterns:
+
+```bash
+yek "src/**/*.ts"
+```
+
+```bash
+yek "src/main.rs" "tests/*.rs" "docs/README.md"
+```
+
+> [!NOTE]
+> When using glob patterns, make sure to quote them to prevent shell expansion.
 
 ### CLI Reference
 
