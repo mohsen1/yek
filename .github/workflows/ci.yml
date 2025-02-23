@@ -101,8 +101,10 @@ jobs:
           if [ "${{ matrix.os }}" = "void" ]; then
             echo "Running tests in Void Linux container with Rust installation..."
             docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace voidlinux/voidlinux:latest sh -c "\
-              xbps-install -Sy --repository=https://repo.voidlinux.org/current curl && \
-              sudo xbps-install -Sy cargo && \
+              xbps-install -Sy && \
+              xbps-install -y base-devel git curl gcc pkg-config openssl-devel && \
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+              source $HOME/.cargo/env && \
               cargo test"
           else
             cargo test
