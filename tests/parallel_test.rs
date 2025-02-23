@@ -1,8 +1,10 @@
+use anyhow::Result;
 use normalize_path::NormalizePath;
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 use yek::config::YekConfig;
 use yek::parallel::process_files_parallel;
@@ -62,7 +64,6 @@ fn test_process_files_parallel_empty() {
 
 #[test]
 fn test_process_files_parallel_with_files() {
-    use std::fs;
     let temp_dir = tempdir().expect("failed to create temp dir");
     let file_names = vec!["a.txt", "b.txt", "c.txt"];
     for &file in &file_names {
@@ -134,4 +135,106 @@ fn test_process_files_parallel_walk_error() {
     assert!(result.is_ok()); // Walk errors are logged and skipped, not propagated as Err
     let processed_files = result.unwrap();
     assert_eq!(processed_files.len(), 0); // No files processed due to walk error
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_glob_pattern_single_file() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let file_path = temp_dir.path().join("test.txt");
+        let mut file = File::create(&file_path)?;
+        writeln!(file, "Test content")?;
+
+        let glob_pattern = temp_dir.path().join("*.txt").to_string_lossy().to_string();
+        let config = YekConfig::default();
+        let boost_map = HashMap::new();
+
+        let result = process_files_parallel(&PathBuf::from(&glob_pattern), &config, &boost_map)?;
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].rel_path, "test.txt");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_glob_pattern_multiple_files() -> Result<()> {
+        let temp_dir = tempdir()?;
+
+        // Create multiple test files
+        let files = vec!["test1.txt", "test2.txt", "other.md"];
+        for fname in &files {
+            let file_path = temp_dir.path().join(fname);
+            let mut file = File::create(&file_path)?;
+            writeln!(file, "Test content for {}", fname)?;
+        }
+
+        let glob_pattern = temp_dir.path().join("*.txt").to_string_lossy().to_string();
+        let config = YekConfig::default();
+        let boost_map = HashMap::new();
+
+        let result = process_files_parallel(&PathBuf::from(&glob_pattern), &config, &boost_map)?;
+        assert_eq!(result.len(), 2); // Should only match .txt files
+
+        let paths: Vec<String> = result.iter().map(|f| f.rel_path.clone()).collect();
+        assert!(paths.contains(&"test1.txt".to_string()));
+        assert!(paths.contains(&"test2.txt".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_glob_pattern_nested_directories() -> Result<()> {
+        let temp_dir = tempdir()?;
+
+        // Create nested directory structure
+        let nested_dir = temp_dir.path().join("nested");
+        fs::create_dir(&nested_dir)?;
+
+        // Create files in both root and nested directory
+        let root_file = temp_dir.path().join("root.txt");
+        let nested_file = nested_dir.join("nested.txt");
+        let other_file = temp_dir.path().join("other.md");
+
+        for (path, content) in [
+            (&root_file, "Root content"),
+            (&nested_file, "Nested content"),
+            (&other_file, "Other content"),
+        ] {
+            let mut file = File::create(path)?;
+            writeln!(file, "{}", content)?;
+        }
+
+        let glob_pattern = temp_dir
+            .path()
+            .join("**/*.txt")
+            .to_string_lossy()
+            .to_string();
+        let config = YekConfig::default();
+        let boost_map = HashMap::new();
+
+        let result = process_files_parallel(&PathBuf::from(&glob_pattern), &config, &boost_map)?;
+        assert_eq!(result.len(), 2); // Should match both .txt files
+
+        let paths: Vec<String> = result.iter().map(|f| f.rel_path.clone()).collect();
+        assert!(paths.contains(&"root.txt".to_string()));
+        assert!(paths.contains(&"nested.txt".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_glob_pattern_no_matches() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let glob_pattern = temp_dir.path().join("*.txt").to_string_lossy().to_string();
+        let config = YekConfig::default();
+        let boost_map = HashMap::new();
+
+        let result = process_files_parallel(&PathBuf::from(&glob_pattern), &config, &boost_map)?;
+        assert!(result.is_empty());
+
+        Ok(())
+    }
 }

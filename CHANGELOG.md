@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2025-02-23
+[0.21.0]: https://github.com/bodo-run/yek/compare/v0.20.0...v0.21.0
+### Bug Fixes
+
+- Glob pattern handling in e2e tests
+
+### Documentation
+
+- Update README with glob pattern and file selection support
+
+### Features
+
+- Handle glob patterns in input paths
+
+### Testing
+
+- Add comprehensive tests for glob pattern support
+
+### Ci
+
+- Run release and publish jobs on main branch
+- Only run release and publish on tag pushes
+- Trigger release on tag merge to main
+
 ## [0.20.0] - 2025-02-22
 [0.20.0]: https://github.com/bodo-run/yek/compare/v0.19.0...v0.20.0
 ### Bug Fixes
@@ -23,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Testing
 
 - Add integration test
+
+### Release
+
+- V0.20.0
 
 ## [0.19.0] - 2025-02-19
 [0.19.0]: https://github.com/bodo-run/yek/compare/v0.18.0...v0.19.0

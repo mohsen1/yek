@@ -1,5 +1,6 @@
 use crate::{config::YekConfig, priority::get_file_priority, Result};
 use content_inspector::{inspect, ContentType};
+use glob::glob;
 use ignore::gitignore::GitignoreBuilder;
 use path_slash::PathBufExt;
 use rayon::prelude::*;
@@ -81,12 +82,42 @@ pub fn process_files_parallel(
     config: &YekConfig,
     boost_map: &HashMap<String, i32>,
 ) -> Result<Vec<ProcessedFile>> {
-    // If it's a file, process it directly
-    if base_path.is_file() {
-        return process_single_file(base_path, config, boost_map);
+    // Expand globs into a list of paths
+    let mut expanded_paths = Vec::new();
+    let path_str = base_path.to_string_lossy();
+    for entry in glob(&path_str)? {
+        match entry {
+            Ok(path) => expanded_paths.push(path),
+            Err(e) => debug!("Glob entry error: {:?}", e),
+        }
     }
 
-    // Otherwise, it's a directory, so walk it
+    // If it's a single file (no glob expansion or single file result), process it directly
+    if expanded_paths.len() == 1 && expanded_paths[0].is_file() {
+        return process_single_file(&expanded_paths[0], config, boost_map);
+    }
+
+    // Iterate over expanded paths, handling files and directories
+    let mut all_processed_files = Vec::new();
+    for path in expanded_paths {
+        if path.is_file() {
+            all_processed_files.extend(process_single_file(&path, config, boost_map)?);
+        } else if path.is_dir() {
+            // For directories, use the original recursive logic
+            all_processed_files.extend(process_files_parallel_internal(&path, config, boost_map)?);
+        }
+    }
+
+    Ok(all_processed_files)
+}
+
+/// Internal function to handle directory recursion (separated for clarity)
+fn process_files_parallel_internal(
+    base_path: &Path,
+    config: &YekConfig,
+    boost_map: &HashMap<String, i32>,
+) -> Result<Vec<ProcessedFile>> {
+    // It's a directory, so walk it
     let mut walk_builder = ignore::WalkBuilder::new(base_path);
 
     // Standard filters + no follow symlinks
