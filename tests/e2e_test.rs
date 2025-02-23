@@ -111,7 +111,7 @@ mod e2e_tests {
         assert!(output.status.success());
 
         // Ensure output dir is printed in stdout
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = String::from_utf8(output.stdout)?;
         assert!(
             stdout.contains(&output_dir.display().to_string()),
             "Expected output directory `{}` to be printed in stdout, but it was {}",
@@ -212,6 +212,80 @@ mod e2e_tests {
             .arg(temp_dir2.path())
             .assert()
             .success();
+        Ok(())
+    }
+
+    #[test]
+    fn test_glob_pattern() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        fs::write(temp_dir.path().join("test.txt"), "Test content")?;
+
+        Command::cargo_bin("yek")?
+            .current_dir(temp_dir.path())
+            .arg("*.txt")
+            .assert()
+            .success();
+
+        let output = Command::cargo_bin("yek")?
+            .current_dir(temp_dir.path())
+            .arg("*.txt")
+            .output()?;
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("Test content"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_mix_of_files_and_dirs() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        fs::write(temp_dir.path().join("test.txt"), "Test content")?;
+        fs::write(temp_dir.path().join("test2.txt"), "Test content 2")?;
+        let dir = temp_dir.path().join("dir");
+        fs::create_dir(&dir)?;
+        fs::write(dir.join("test3"), "Test content 3")?;
+
+        Command::cargo_bin("yek")?
+            .current_dir(temp_dir.path())
+            .arg("*.txt")
+            .assert()
+            .success();
+
+        let output = Command::cargo_bin("yek")?
+            .current_dir(temp_dir.path())
+            .arg("*.txt")
+            .output()?;
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("Test content"));
+        assert!(stdout.contains("Test content 2"));
+        assert!(!stdout.contains("Test content 3"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_mix_of_files_and_dirs_with_glob_pattern() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempdir()?;
+        fs::write(temp_dir.path().join("test.txt"), "Test content")?;
+        fs::write(temp_dir.path().join("test2.txt"), "Test content 2")?;
+        fs::write(temp_dir.path().join("code.rs"), "use std::fs;")?;
+        let dir = temp_dir.path().join("dir");
+        fs::create_dir(&dir)?;
+        fs::write(dir.join("test4"), "Test content 4")?;
+
+        Command::cargo_bin("yek")?
+            .current_dir(temp_dir.path())
+            .args(["*.txt", "code.rs"])
+            .assert()
+            .success();
+
+        let output = Command::cargo_bin("yek")?
+            .current_dir(temp_dir.path())
+            .args(["*.txt", "code.rs"])
+            .output()?;
+        let stdout = String::from_utf8(output.stdout)?;
+        assert!(stdout.contains("Test content"));
+        assert!(stdout.contains("Test content 2"));
+        assert!(!stdout.contains("Test content 4"));
+        assert!(stdout.contains("use std::fs;"));
         Ok(())
     }
 
