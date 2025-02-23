@@ -100,14 +100,17 @@ jobs:
         run: |
           if [ "${{ matrix.os }}" = "void" ]; then
             echo "Running tests in Void Linux container with Rust installation..."
-            docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace voidlinux/voidlinux:latest sh -c "\
-              xbps-install -Sy && \
-              xbps-install -y base-devel git curl gcc pkg-config openssl-devel && \
+            docker run --platform linux/amd64 --rm -v "${{ github.workspace }}:/workspace" -w /workspace voidlinux/voidlinux:latest sh -c "\
+              echo 'repository=https://repo-us.voidlinux.org/current' > /etc/xbps.d/00-repository-main.conf && \
+              echo 'repository=https://repo-de.voidlinux.org/current' >> /etc/xbps.d/00-repository-main.conf && \
+              echo 'repository=https://repo-fi.voidlinux.org/current' >> /etc/xbps.d/00-repository-main.conf && \
+              xbps-install -Syu && \
+              xbps-install -y base-devel git curl gcc pkg-config openssl-devel cmake python3 make && \
               curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
               export PATH=/root/.cargo/bin:\$PATH && \
               rustc --version && \
               cargo --version && \
-              cargo test"
+              RUST_BACKTRACE=1 cargo test"
           else
             cargo test
           fi
