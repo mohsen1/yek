@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use bytesize::ByteSize;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
@@ -348,6 +348,21 @@ impl YekConfig {
             })?;
         }
 
+        // Validate max_size format
+        if !self.max_size.ends_with('B')
+            && !self.max_size.ends_with('K')
+            && !self.max_size.ends_with('M')
+            && !self.max_size.ends_with('G')
+            && !self.token_mode
+        {
+            bail!("Invalid max_size format. Must end with B, K, M, or G");
+        }
+
+        // Validate that XML and JSON are not both enabled
+        if self.xml && self.json {
+            bail!("Cannot enable both XML and JSON output formats");
+        }
+
         Ok(())
     }
 }
@@ -358,7 +373,7 @@ pub fn validate_config(config: &YekConfig) -> Result<()> {
         && !config.max_size.ends_with('K')
         && !config.max_size.ends_with('M')
         && !config.max_size.ends_with('G')
-        && config.tokens.is_none()
+        && !config.token_mode
     {
         bail!("Invalid max_size format. Must end with B, K, M, or G");
     }
@@ -368,5 +383,5 @@ pub fn validate_config(config: &YekConfig) -> Result<()> {
         bail!("Cannot enable both XML and JSON output formats");
     }
 
-    // ... rest of validation code ...
+    Ok(())
 }

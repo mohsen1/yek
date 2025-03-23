@@ -176,7 +176,7 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             xml.push_str(&format_file_as_xml(&file.rel_path, &file.content));
         }
         xml.push_str("</files>");
-        xml
+        Ok(xml)
     } else {
         // Use the user-defined template
         Ok(files_to_include
@@ -195,12 +195,14 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
     }
 }
 
-fn format_file_as_xml(rel_path: &str, content: &str) -> String {
+/// Format a file as XML with the given path and content
+pub fn format_file_as_xml(rel_path: &str, content: &str) -> String {
     let file_name = Path::new(rel_path)
         .file_name()
         .unwrap_or_default()
         .to_string_lossy()
-        .replace(".", "_");
+        .replace(".", "_")
+        .replace(" ", "_");
     format!(
         "<{} path=\"{}\">\n{}\n</{}>\n",
         file_name, rel_path, content, file_name

@@ -4,7 +4,7 @@ use rayon::join;
 use std::path::Path;
 use tracing::{debug, Level};
 use tracing_subscriber::fmt;
-use yek::{config::YekConfig, serialize_repo};
+use yek::{config::{validate_config, YekConfig}, serialize_repo};
 
 fn main() -> Result<()> {
     // 1) Parse CLI + config files:

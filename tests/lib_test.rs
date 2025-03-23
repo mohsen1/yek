@@ -9,7 +9,7 @@ mod lib_tests {
 
     use yek::{
         concat_files, config::YekConfig, count_tokens, is_text_file, parallel::ProcessedFile,
-        parse_token_limit, priority::PriorityRule, serialize_repo,
+        parse_token_limit, priority::PriorityRule, serialize_repo, format_file_as_xml,
     };
 
     // Initialize tracing subscriber for tests
@@ -685,11 +685,13 @@ mod lib_tests {
                 rel_path: "test.rs".to_string(),
                 content: "fn main() {}".to_string(),
                 priority: 0,
+                file_index: 0,
             },
             ProcessedFile {
                 rel_path: "src/lib.rs".to_string(),
                 content: "pub fn test() {}".to_string(),
                 priority: 1,
+                file_index: 1,
             },
         ];
         let result = concat_files(&files, &config).unwrap();
@@ -710,11 +712,13 @@ mod lib_tests {
                 rel_path: "test.spec.ts".to_string(),
                 content: "test('it works');".to_string(),
                 priority: 0,
+                file_index: 0,
             },
             ProcessedFile {
                 rel_path: "component.test.jsx".to_string(),
                 content: "describe('component');".to_string(),
                 priority: 1,
+                file_index: 1,
             },
         ];
         let result = concat_files(&files, &config).unwrap();
@@ -758,7 +762,7 @@ mod lib_tests {
             file_index: 0,
         }];
         let output = concat_files(&files, &config).unwrap();
-        assert!(output.contains(r#"<test with spaces.txt path="test with spaces.txt">"#));
+        assert!(output.contains(r#"<test_with_spaces_txt path="test with spaces.txt">"#));
         assert!(output.contains("Content with <xml> chars"));
     }
 
