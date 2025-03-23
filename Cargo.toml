@@ -34,7 +34,7 @@ serde_derive = "1.0"
 serde_json = "1.0.139"
 serde_yaml = "0.9.34"
 sha2 = "0.10"
-time = "0.3"
+time = "=0.3.34"
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
