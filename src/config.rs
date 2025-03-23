@@ -351,3 +351,22 @@ impl YekConfig {
         Ok(())
     }
 }
+
+pub fn validate_config(config: &YekConfig) -> Result<()> {
+    // Validate max_size format
+    if !config.max_size.ends_with('B')
+        && !config.max_size.ends_with('K')
+        && !config.max_size.ends_with('M')
+        && !config.max_size.ends_with('G')
+        && config.tokens.is_none()
+    {
+        bail!("Invalid max_size format. Must end with B, K, M, or G");
+    }
+
+    // Validate that XML and JSON are not both enabled
+    if config.xml && config.json {
+        bail!("Cannot enable both XML and JSON output formats");
+    }
+
+    // ... rest of validation code ...
+}

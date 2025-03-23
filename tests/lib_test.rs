@@ -682,25 +682,56 @@ mod lib_tests {
         };
         let files = vec![
             ProcessedFile {
-                rel_path: "src/test.txt".to_string(),
-                content: "Test content".to_string(),
+                rel_path: "test.rs".to_string(),
+                content: "fn main() {}".to_string(),
                 priority: 0,
-                file_index: 0,
             },
             ProcessedFile {
-                rel_path: "src/nested/file.rs".to_string(),
-                content: "fn main() {}".to_string(),
+                rel_path: "src/lib.rs".to_string(),
+                content: "pub fn test() {}".to_string(),
                 priority: 1,
-                file_index: 1,
             },
         ];
-        let output = concat_files(&files, &config).unwrap();
-        assert!(output.starts_with("<files>\n"));
-        assert!(output.contains(r#"<test.txt path="src/test.txt">"#));
-        assert!(output.contains("Test content"));
-        assert!(output.contains(r#"<file.rs path="src/nested/file.rs">"#));
-        assert!(output.contains("fn main() {}"));
-        assert!(output.ends_with("</files>"));
+        let result = concat_files(&files, &config).unwrap();
+        assert!(result.starts_with("<files>\n"));
+        assert!(result.contains("<test_rs path=\"test.rs\">\n"));
+        assert!(result.contains("<lib_rs path=\"src/lib.rs\">\n"));
+        assert!(result.ends_with("</files>"));
+    }
+
+    #[test]
+    fn test_xml_output_complex_filenames() {
+        let config = YekConfig {
+            xml: true,
+            ..Default::default()
+        };
+        let files = vec![
+            ProcessedFile {
+                rel_path: "test.spec.ts".to_string(),
+                content: "test('it works');".to_string(),
+                priority: 0,
+            },
+            ProcessedFile {
+                rel_path: "component.test.jsx".to_string(),
+                content: "describe('component');".to_string(),
+                priority: 1,
+            },
+        ];
+        let result = concat_files(&files, &config).unwrap();
+        assert!(result.contains("<test_spec_ts path=\"test.spec.ts\">\n"));
+        assert!(result.contains("<component_test_jsx path=\"component.test.jsx\">\n"));
+    }
+
+    #[test]
+    fn test_format_file_as_xml() {
+        let result = format_file_as_xml(
+            "src/test.spec.ts",
+            "describe('test suite');"
+        );
+        assert_eq!(
+            result,
+            "<test_spec_ts path=\"src/test.spec.ts\">\ndescribe('test suite');\n</test_spec_ts>\n"
+        );
     }
 
     #[test]

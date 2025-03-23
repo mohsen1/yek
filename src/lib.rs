@@ -137,14 +137,7 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                 }))
                 .map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?
             } else if config.xml {
-                let file_name = Path::new(&file.rel_path)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-                format!(
-                    "<{} path=\"{}\">\n{}\n</{}>\n",
-                    file_name, &file.rel_path, &file.content, file_name
-                )
+                format_file_as_xml(&file.rel_path, &file.content)
             } else {
                 config
                     .output_template
@@ -178,20 +171,12 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                 .collect::<Vec<_>>(),
         )?)
     } else if config.xml {
-        // XML format
         let mut xml = String::from("<files>\n");
         for file in files_to_include {
-            let file_name = Path::new(&file.rel_path)
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy();
-            xml.push_str(&format!(
-                "<{} path=\"{}\">\n{}\n</{}>\n",
-                file_name, &file.rel_path, &file.content, file_name
-            ));
+            xml.push_str(&format_file_as_xml(&file.rel_path, &file.content));
         }
         xml.push_str("</files>");
-        Ok(xml)
+        xml
     } else {
         // Use the user-defined template
         Ok(files_to_include
@@ -208,6 +193,18 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .collect::<Vec<_>>()
             .join("\n"))
     }
+}
+
+fn format_file_as_xml(rel_path: &str, content: &str) -> String {
+    let file_name = Path::new(rel_path)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .replace(".", "_");
+    format!(
+        "<{} path=\"{}\">\n{}\n</{}>\n",
+        file_name, rel_path, content, file_name
+    )
 }
 
 /// Parse a token limit string like "800k" or "1000" into a number

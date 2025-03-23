@@ -560,3 +560,37 @@ fn test_is_text_file_with_binary_content() {
         "Expected a binary file to be detected as binary"
     );
 }
+
+#[test]
+fn test_validate_xml_json_conflict() {
+    let config = YekConfig {
+        xml: true,
+        json: true,
+        ..Default::default()
+    };
+    let result = config.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Cannot enable both XML and JSON"));
+}
+
+#[test]
+fn test_validate_xml_only() {
+    let config = YekConfig {
+        xml: true,
+        json: false,
+        ..Default::default()
+    };
+    let result = config.validate();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_validate_json_only() {
+    let config = YekConfig {
+        xml: false,
+        json: true,
+        ..Default::default()
+    };
+    let result = config.validate();
+    assert!(result.is_ok());
+}

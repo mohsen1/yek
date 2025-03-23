@@ -10,11 +10,8 @@ fn main() -> Result<()> {
     // 1) Parse CLI + config files:
     let mut full_config = YekConfig::init_config();
 
-    // Validate that XML and JSON are not both enabled
-    if full_config.xml && full_config.json {
-        eprintln!("Error: Cannot use both --xml and --json flags together");
-        std::process::exit(1);
-    }
+    // Validate config
+    validate_config(&full_config)?;
 
     let env_filter = if full_config.debug {
         "yek=debug,ignore=off"
