@@ -673,4 +673,80 @@ mod lib_tests {
         assert!(parse_token_limit("-1").is_err());
         assert!(parse_token_limit("invalid").is_err());
     }
+
+    #[test]
+    fn test_xml_output() {
+        let config = YekConfig {
+            xml: true,
+            ..Default::default()
+        };
+        let files = vec![
+            ProcessedFile {
+                rel_path: "src/test.txt".to_string(),
+                content: "Test content".to_string(),
+                priority: 0,
+                file_index: 0,
+            },
+            ProcessedFile {
+                rel_path: "src/nested/file.rs".to_string(),
+                content: "fn main() {}".to_string(),
+                priority: 1,
+                file_index: 1,
+            },
+        ];
+        let output = concat_files(&files, &config).unwrap();
+        assert!(output.starts_with("<files>\n"));
+        assert!(output.contains(r#"<test.txt path="src/test.txt">"#));
+        assert!(output.contains("Test content"));
+        assert!(output.contains(r#"<file.rs path="src/nested/file.rs">"#));
+        assert!(output.contains("fn main() {}"));
+        assert!(output.ends_with("</files>"));
+    }
+
+    #[test]
+    fn test_xml_output_empty_files() {
+        let config = YekConfig {
+            xml: true,
+            ..Default::default()
+        };
+        let files = vec![];
+        let output = concat_files(&files, &config).unwrap();
+        assert_eq!(output, "<files>\n</files>");
+    }
+
+    #[test]
+    fn test_xml_output_special_chars() {
+        let config = YekConfig {
+            xml: true,
+            ..Default::default()
+        };
+        let files = vec![ProcessedFile {
+            rel_path: "test with spaces.txt".to_string(),
+            content: "Content with <xml> chars".to_string(),
+            priority: 0,
+            file_index: 0,
+        }];
+        let output = concat_files(&files, &config).unwrap();
+        assert!(output.contains(r#"<test with spaces.txt path="test with spaces.txt">"#));
+        assert!(output.contains("Content with <xml> chars"));
+    }
+
+    #[test]
+    fn test_xml_json_conflict() {
+        let config = YekConfig {
+            xml: true,
+            json: true,
+            ..Default::default()
+        };
+        let files = vec![ProcessedFile {
+            rel_path: "test.txt".to_string(),
+            content: "content".to_string(),
+            priority: 0,
+            file_index: 0,
+        }];
+        // The code should prioritize JSON if both are set
+        let output = concat_files(&files, &config).unwrap();
+        assert!(!output.contains("<files>"));
+        assert!(output.contains(r#""filename": "test.txt""#));
+    }
 }

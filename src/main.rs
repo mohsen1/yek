@@ -10,6 +10,12 @@ fn main() -> Result<()> {
     // 1) Parse CLI + config files:
     let mut full_config = YekConfig::init_config();
 
+    // Validate that XML and JSON are not both enabled
+    if full_config.xml && full_config.json {
+        eprintln!("Error: Cannot use both --xml and --json flags together");
+        std::process::exit(1);
+    }
+
     let env_filter = if full_config.debug {
         "yek=debug,ignore=off"
     } else {
@@ -61,7 +67,13 @@ fn main() -> Result<()> {
         let checksum = checksum_res;
 
         // Now set the final output file with the computed checksum
-        let extension = if full_config.json { "json" } else { "txt" };
+        let extension = if full_config.json {
+            "json"
+        } else if full_config.xml {
+            "xml"
+        } else {
+            "txt"
+        };
         let output_dir = full_config.output_dir.as_ref().ok_or_else(|| {
             anyhow::anyhow!("Output directory is required when not in streaming mode. This may indicate a configuration validation error.")
         })?;

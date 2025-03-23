@@ -42,6 +42,10 @@ pub struct YekConfig {
     #[config_arg()]
     pub json: bool,
 
+    /// Enable XML output
+    #[config_arg()]
+    pub xml: bool,
+
     /// Enable debug output
     #[config_arg()]
     pub debug: bool,
@@ -97,6 +101,7 @@ impl Default for YekConfig {
             max_size: "10MB".to_string(),
             tokens: String::new(),
             json: false,
+            xml: false,
             debug: false,
             output_dir: None,
             output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
