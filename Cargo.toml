@@ -16,7 +16,7 @@ atty = "0.2.14"
 bytesize = "2.0.0"
 clap = { version = "4.5", features = ["derive"] }
 clap-config-file = "0.5.0"
-config = "0.15.8"
+config = "0.15.11"
 content_inspector = "0.2.4"
 crossbeam = "0.8"
 crossbeam-channel = "0.5"
