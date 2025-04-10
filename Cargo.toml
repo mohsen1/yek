@@ -49,7 +49,7 @@ tempfile = "3.17"
 criterion = "0.5"
 rand = "0.8"
 git-cliff = "1.4.0"
-grcov = "0.8.19"
+grcov = "0.8.24"
 
 [[bench]]
 name = "serialization"
