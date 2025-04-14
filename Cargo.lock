@@ -1148,21 +1148,21 @@ dependencies = [
 
 [[package]]
 name = "grcov"
-version = "0.8.24"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e801dc53ca9aa80147c844b5de5e561e6e4f64660ca24618aaf52f8cb7d0fbc6"
+checksum = "80b2ea4f950622d257117df48f0fa112ea25ece602fd2ea3f36e3741d80efc18"
 dependencies = [
  "chrono",
  "clap",
  "crossbeam-channel",
  "flate2",
  "globset",
+ "ignore",
  "infer",
  "lazy_static",
  "log",
  "md-5",
  "num_cpus",
- "once_cell",
  "quick-xml",
  "rayon",
  "regex",
