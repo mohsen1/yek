@@ -47,7 +47,7 @@ chrono = "0.4"
 predicates = "3.0"
 tempfile = "3.19"
 criterion = "0.5"
-rand = "0.8"
+rand = "0.9"
 git-cliff = "1.4.0"
 grcov = "0.8.24"
 
