@@ -114,7 +114,7 @@ Process multiple directories:
 yek src/ tests/
 ```
 
-Porcess multiple files
+Process multiple files
 
 ```bash
 yek file1.txt file2.txt file3.txt
