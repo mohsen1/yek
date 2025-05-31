@@ -20,6 +20,69 @@ pub struct ProcessedFile {
     pub content: String,
 }
 
+/// Process a single file specified directly (not from glob expansion), preserving relative path from CWD.
+fn process_single_file_direct(
+    file_path: &Path,
+    config: &YekConfig,
+    boost_map: &HashMap<String, i32>,
+) -> Result<Vec<ProcessedFile>> {
+    // Use current working directory as base to preserve relative path structure
+    let base_dir = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+    
+    // Convert to absolute path first to handle relative inputs properly
+    let abs_file_path = if file_path.is_absolute() {
+        file_path.to_path_buf()
+    } else {
+        base_dir.join(file_path)
+    };
+    
+    let rel_path = normalize_path(&abs_file_path, &base_dir);
+
+    // Build the gitignore
+    let mut gitignore_builder = GitignoreBuilder::new(&base_dir);
+    for pattern in &config.ignore_patterns {
+        gitignore_builder.add_line(None, pattern)?;
+    }
+
+    // If there is a .gitignore in this folder, add it last so its "!" lines override prior patterns
+    let gitignore_file = base_dir.join(".gitignore");
+    if gitignore_file.exists() {
+        gitignore_builder.add(&gitignore_file);
+    }
+
+    let gitignore = gitignore_builder.build()?;
+    if gitignore.matched(&abs_file_path, false).is_ignore() {
+        debug!("Skipping ignored file: {rel_path}");
+        return Ok(Vec::new());
+    }
+
+    let mut processed_files = Vec::new();
+
+    match fs::read(&abs_file_path) {
+        Ok(content) => {
+            if inspect(&content) == ContentType::BINARY {
+                debug!("Skipping binary file: {rel_path}");
+            } else {
+                let rule_priority = get_file_priority(&rel_path, &config.priority_rules);
+                let boost = boost_map.get(&rel_path).copied().unwrap_or(0);
+                let combined_priority = rule_priority + boost;
+
+                processed_files.push(ProcessedFile {
+                    priority: combined_priority,
+                    file_index: 0, // For a single file, the index is always 0
+                    rel_path,
+                    content: String::from_utf8_lossy(&content).to_string(),
+                });
+            }
+        }
+        Err(e) => {
+            debug!("Failed to read {rel_path}: {e}");
+        }
+    }
+
+    Ok(processed_files)
+}
+
 /// Process a single file, checking ignore patterns and reading its contents.
 fn process_single_file(
     file_path: &Path,
@@ -30,7 +93,7 @@ fn process_single_file(
     let rel_path = normalize_path(file_path, base_dir);
 
     // Build the gitignore
-    let mut gitignore_builder = GitignoreBuilder::new(base_dir);
+    let mut gitignore_builder = GitignoreBuilder::new(&base_dir);
     for pattern in &config.ignore_patterns {
         gitignore_builder.add_line(None, pattern)?;
     }
@@ -82,9 +145,18 @@ pub fn process_files_parallel(
     config: &YekConfig,
     boost_map: &HashMap<String, i32>,
 ) -> Result<Vec<ProcessedFile>> {
+    let path_str = base_path.to_string_lossy();
+    
+    // Check if this is a direct file path (not a glob pattern)
+    let is_direct_file = base_path.exists() && base_path.is_file();
+    
+    if is_direct_file {
+        // This is a direct file argument, preserve the path structure relative to CWD
+        return process_single_file_direct(base_path, config, boost_map);
+    }
+    
     // Expand globs into a list of paths
     let mut expanded_paths = Vec::new();
-    let path_str = base_path.to_string_lossy();
     for entry in glob(&path_str)? {
         match entry {
             Ok(path) => expanded_paths.push(path),
@@ -92,7 +164,7 @@ pub fn process_files_parallel(
         }
     }
 
-    // If it's a single file (no glob expansion or single file result), process it directly
+    // If it's a single file (from glob expansion), process it with parent dir as base
     if expanded_paths.len() == 1 && expanded_paths[0].is_file() {
         return process_single_file(&expanded_paths[0], config, boost_map);
     }

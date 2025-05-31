@@ -673,4 +673,59 @@ mod lib_tests {
         assert!(parse_token_limit("-1").is_err());
         assert!(parse_token_limit("invalid").is_err());
     }
+
+    #[test]
+    fn test_process_individual_files_preserves_path_structure() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        
+        // Create nested directory structure
+        std::fs::create_dir_all(temp_dir.path().join("docs")).unwrap();
+        std::fs::create_dir_all(temp_dir.path().join("src/utils")).unwrap();
+        
+        // Create files in nested directories
+        std::fs::write(temp_dir.path().join("docs/readme.md"), "# Documentation").unwrap();
+        std::fs::write(temp_dir.path().join("src/main.rs"), "fn main() {}").unwrap();
+        std::fs::write(temp_dir.path().join("src/utils/helper.rs"), "// Helper functions").unwrap();
+        
+        // Create config that processes individual files (not directories)
+        // Use relative paths as they would be passed from command line
+        let config = create_test_config(vec![
+            "docs/readme.md".to_string(),
+            "src/main.rs".to_string(),
+            "src/utils/helper.rs".to_string(),
+        ]);
+        
+        // Change to the temp directory to simulate running from project root
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(temp_dir.path()).unwrap();
+        
+        let result = serialize_repo(&config);
+        
+        // Restore original directory
+        std::env::set_current_dir(original_dir).unwrap();
+        
+        assert!(result.is_ok());
+        let (output_string, files) = result.unwrap();
+        
+        // Verify that full relative paths are preserved in the output
+        assert!(output_string.contains(">>>> docs/readme.md"), 
+                "Expected full path 'docs/readme.md' but got output:\n{}", output_string);
+        assert!(output_string.contains(">>>> src/main.rs"),
+                "Expected full path 'src/main.rs' but got output:\n{}", output_string);
+        assert!(output_string.contains(">>>> src/utils/helper.rs"),
+                "Expected full path 'src/utils/helper.rs' but got output:\n{}", output_string);
+        
+        // Verify that file objects have correct relative paths
+        assert_eq!(files.len(), 3);
+        let rel_paths: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
+        assert!(rel_paths.contains(&"docs/readme.md"));
+        assert!(rel_paths.contains(&"src/main.rs"));
+        assert!(rel_paths.contains(&"src/utils/helper.rs"));
+        
+        // Ensure we don't have just filenames (the old buggy behavior)
+        assert!(!rel_paths.contains(&"readme.md"));
+        assert!(!rel_paths.contains(&"main.rs"));
+        assert!(!rel_paths.contains(&"helper.rs"));
+    }
 }
