@@ -74,6 +74,14 @@ pub struct YekConfig {
     #[config_arg(accept_from = "config_only")]
     pub git_boost_max: Option<i32>,
 
+    /// Include directory tree header in output (incompatible with JSON output)
+    #[config_arg(long = "tree-header", short = 't')]
+    pub tree_header: bool,
+
+    /// Show only the directory tree (no file contents, incompatible with JSON output)
+    #[config_arg(long = "tree-only")]
+    pub tree_only: bool,
+
     /// True if we should stream output to stdout (computed)
     pub stream: bool,
 
@@ -110,6 +118,8 @@ impl Default for YekConfig {
             git_boost_max: Some(100),
 
             // computed fields
+            tree_header: false,
+            tree_only: false,
             stream: false,
             token_mode: false,
             output_file_full_path: None,
@@ -341,6 +351,20 @@ impl YekConfig {
             glob::Pattern::new(&rule.pattern).map_err(|e| {
                 anyhow!("priority_rules: Invalid pattern '{}': {}", rule.pattern, e)
             })?;
+        }
+
+        // Validate tree options are mutually exclusive
+        if self.tree_header && self.tree_only {
+            return Err(anyhow!("tree_header and tree_only cannot both be enabled"));
+        }
+
+        // Validate JSON output is not used with tree modes
+        if self.json && self.tree_header {
+            return Err(anyhow!("JSON output not supported with tree header mode"));
+        }
+
+        if self.json && self.tree_only {
+            return Err(anyhow!("JSON output not supported in tree-only mode"));
         }
 
         Ok(())

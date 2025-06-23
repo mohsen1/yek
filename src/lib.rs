@@ -17,10 +17,12 @@ pub mod config;
 pub mod defaults;
 pub mod parallel;
 pub mod priority;
+pub mod tree;
 
 use config::YekConfig;
 use parallel::{process_files_parallel, ProcessedFile};
 use priority::compute_recentness_boost;
+use tree::generate_tree;
 
 // Add a static BPE encoder for reuse
 static TOKENIZER: OnceLock<CoreBPE> = OnceLock::new();
@@ -109,6 +111,22 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 }
 
 pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Result<String> {
+    // Generate tree header if requested
+    let tree_header = if config.tree_header || config.tree_only {
+        let file_paths: Vec<std::path::PathBuf> = files
+            .iter()
+            .map(|f| std::path::PathBuf::from(&f.rel_path))
+            .collect();
+        generate_tree(&file_paths)
+    } else {
+        String::new()
+    };
+
+    // If tree_only is requested, return just the tree
+    if config.tree_only {
+        return Ok(tree_header);
+    }
+
     let mut accumulated = 0_usize;
     let cap = if config.token_mode {
         parse_token_limit(&config.tokens)?
@@ -117,6 +135,19 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .map_err(|e| anyhow!("max_size: Invalid size format: {}", e))?
             .as_u64() as usize
     };
+
+    // Account for tree header size in capacity calculations
+    let tree_header_size = if config.tree_header {
+        if config.token_mode {
+            count_tokens(&tree_header)
+        } else {
+            tree_header.len()
+        }
+    } else {
+        0
+    };
+
+    accumulated += tree_header_size;
 
     // Sort by priority (asc) and file_index (asc)
     let mut sorted_files: Vec<_> = files.iter().collect();
@@ -155,9 +186,9 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
         }
     }
 
-    if config.json {
+    let main_content = if config.json {
         // JSON array of objects
-        Ok(serde_json::to_string_pretty(
+        serde_json::to_string_pretty(
             &files_to_include
                 .iter()
                 .map(|f| {
@@ -167,10 +198,10 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                     })
                 })
                 .collect::<Vec<_>>(),
-        )?)
+        )?
     } else {
         // Use the user-defined template
-        Ok(files_to_include
+        files_to_include
             .iter()
             .map(|f| {
                 config
@@ -182,7 +213,14 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                     .replace("\\\\n", "\n") // Then handle escaped \n sequence
             })
             .collect::<Vec<_>>()
-            .join("\n"))
+            .join("\n")
+    };
+
+    // Combine tree header with main content
+    if config.tree_header {
+        Ok(format!("{}{}", tree_header, main_content))
+    } else {
+        Ok(main_content)
     }
 }
 
