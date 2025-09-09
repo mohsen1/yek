@@ -194,8 +194,8 @@ mod tests {
         fs::create_dir(&nested_dir)?;
 
         // Create files in both root and nested directory
-        let root_file = temp_dir.path().join("root.txt");
-        let nested_file = nested_dir.join("nested.txt");
+        let root_file = temp_dir.path().join("root.rs"); // Use .rs to avoid default ignore patterns
+        let nested_file = nested_dir.join("nested.rs");
         let other_file = temp_dir.path().join("other.md");
 
         for (path, content) in [
@@ -209,18 +209,18 @@ mod tests {
 
         let glob_pattern = temp_dir
             .path()
-            .join("**/*.txt")
+            .join("**/*.rs") // Changed to .rs files
             .to_string_lossy()
             .to_string();
         let config = YekConfig::default();
         let boost_map = HashMap::new();
 
         let result = process_files_parallel(&PathBuf::from(&glob_pattern), &config, &boost_map)?;
-        assert_eq!(result.len(), 2); // Should match both .txt files
+        assert_eq!(result.len(), 2); // Should match both .rs files
 
         let paths: Vec<String> = result.iter().map(|f| f.rel_path.clone()).collect();
-        assert!(paths.contains(&"root.txt".to_string()));
-        assert!(paths.contains(&"nested.txt".to_string()));
+        assert!(paths.contains(&"root.rs".to_string()));
+        assert!(paths.contains(&"nested/nested.rs".to_string())); // Updated expectation
 
         Ok(())
     }
