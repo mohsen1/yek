@@ -101,7 +101,7 @@ pub fn process_files_parallel(
     let base_dir = if base_path.to_string_lossy().contains('*') || base_path.to_string_lossy().contains('?') {
         // It's a glob pattern - find the directory part
         let mut pattern_path = base_path.to_path_buf();
-        while pattern_path.file_name().map_or(false, |name| {
+        while pattern_path.file_name().is_some_and(|name| {
             let name_str = name.to_string_lossy();
             name_str.contains('*') || name_str.contains('?')
         }) {
