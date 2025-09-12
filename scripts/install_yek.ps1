@@ -41,7 +41,7 @@ try {
 } catch {
     Write-Host "Failed to fetch release info from GitHub."
     Write-Host "Please build from source or check back later."
-    exit 0
+    exit 1
 }
 
 # Find the asset download URL
@@ -49,7 +49,7 @@ $asset = $releaseData.assets | Where-Object { $_.name -eq $assetName }
 if (!$asset) {
     Write-Host "Failed to find an asset named $assetName in the latest release."
     Write-Host "Check that your OS/ARCH is built or consider building from source."
-    exit 0
+    exit 1
 }
 
 $downloadUrl = $asset.browser_download_url
@@ -66,12 +66,14 @@ if (Test-Path $extractDir) {
 Expand-Archive -Path $zipPath -DestinationPath $extractDir
 
 Write-Host "Moving binary to $InstallDir..."
-$binaryPath = Join-Path $extractDir "yek-$target" "yek.exe"
+$targetDir = Join-Path $extractDir "yek-$target"
+$binaryPath = Join-Path $targetDir "yek.exe"
 if (!(Test-Path $binaryPath)) {
     Write-Host "yek.exe not found in the extracted folder."
     exit 1
 }
-Move-Item -Force $binaryPath $InstallDir
+$destinationPath = Join-Path $InstallDir "yek.exe"
+Move-Item -Path $binaryPath -Destination $destinationPath -Force
 
 Write-Host "Cleanup temporary files..."
 Remove-Item -Force $zipPath
@@ -81,10 +83,11 @@ Write-Host "Installation complete!"
 
 # Check if $InstallDir is in PATH
 $pathDirs = $ENV:PATH -split ";"
-if ($pathDirs -notcontains (Resolve-Path $InstallDir)) {
+$resolvedInstallDir = Resolve-Path $InstallDir -ErrorAction SilentlyContinue
+if ($resolvedInstallDir -and ($pathDirs -notcontains $resolvedInstallDir.Path)) {
     Write-Host "NOTE: $InstallDir is not in your PATH. Add it by running something like:"
-    Write-Host "`$env:Path += `";$(Resolve-Path $InstallDir)`""
+    Write-Host "`$env:Path += `";$($resolvedInstallDir.Path)`""
     Write-Host "Or update your system's environment variables to persist this."
 }
 
-Write-Host "Now you can run: yek --help" 
+Write-Host "Now you can run: yek --help"
