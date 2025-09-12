@@ -674,3 +674,15 @@ mod lib_tests {
         assert!(parse_token_limit("invalid").is_err());
     }
 }
+
+    #[test]
+    #[should_panic(expected = "byte index .* is not a char boundary")]
+    fn test_emoji_handling_panic() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        let content = "er,\n🍃";
+        std::fs::write(&file_path, content.as_bytes()).unwrap();
+        let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        let _ = serialize_repo(&config);
+    }

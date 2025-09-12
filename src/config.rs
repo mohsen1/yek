@@ -301,12 +301,18 @@ impl YekConfig {
             ByteSize::from_str(&self.max_size)
                 .map_err(|e| anyhow!("max_size: Invalid size format: {}", e))?;
         } else if self.tokens.to_lowercase().ends_with('k') {
-            let val = self.tokens[..self.tokens.len() - 1]
-                .trim()
-                .parse::<usize>()
-                .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))?;
-            if val == 0 {
-                return Err(anyhow!("tokens: cannot be 0"));
+            // Use UTF-8 aware slicing to handle emojis and other multi-byte characters
+            let chars: Vec<char> = self.tokens.chars().collect();
+            if chars.len() > 1 {
+                let val = chars[..chars.len() - 1].iter().collect::<String>()
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))?;
+                if val == 0 {
+                    return Err(anyhow!("tokens: cannot be 0"));
+                }
+            } else {
+                return Err(anyhow!("tokens: Invalid token format: {}", self.tokens));
             }
         } else if !self.tokens.is_empty() {
             // parse as integer
