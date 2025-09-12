@@ -23,20 +23,24 @@ pub struct ProcessedFile {
 /// Process a single file, checking ignore patterns and reading its contents.
 fn process_single_file(
     file_path: &Path,
+    base_dir: &Path,
     config: &YekConfig,
     boost_map: &HashMap<String, i32>,
 ) -> Result<Vec<ProcessedFile>> {
-    let base_dir = file_path.parent().unwrap_or(Path::new(""));
     let rel_path = normalize_path(file_path, base_dir);
 
-    // Build the gitignore
-    let mut gitignore_builder = GitignoreBuilder::new(base_dir);
+    // Build the gitignore using the file's parent directory (for .gitignore discovery)
+    let file_parent = file_path.parent().unwrap_or(Path::new(""));
+    let mut gitignore_builder = GitignoreBuilder::new(file_parent);
     for pattern in &config.ignore_patterns {
         gitignore_builder.add_line(None, pattern)?;
     }
 
     // If there is a .gitignore in this folder, add it last so its "!" lines override prior patterns
-    let gitignore_file = base_dir.join(".gitignore");
+    let gitignore_file = file_parent.join(".gitignore");
+    if gitignore_file.exists() {
+        gitignore_builder.add(&gitignore_file);
+    }
     if gitignore_file.exists() {
         gitignore_builder.add(&gitignore_file);
     }
@@ -92,16 +96,36 @@ pub fn process_files_parallel(
         }
     }
 
+    // Determine the base directory for relative path calculation
+    // For glob patterns, we want to find the common directory part of the pattern
+    let base_dir =
+        if base_path.to_string_lossy().contains('*') || base_path.to_string_lossy().contains('?') {
+            // It's a glob pattern - find the directory part
+            let mut pattern_path = base_path.to_path_buf();
+            while pattern_path.file_name().is_some_and(|name| {
+                let name_str = name.to_string_lossy();
+                name_str.contains('*') || name_str.contains('?')
+            }) {
+                if !pattern_path.pop() {
+                    break;
+                }
+            }
+            pattern_path
+        } else {
+            // Not a glob pattern, use current directory
+            std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
+        };
+
     // If it's a single file (no glob expansion or single file result), process it directly
     if expanded_paths.len() == 1 && expanded_paths[0].is_file() {
-        return process_single_file(&expanded_paths[0], config, boost_map);
+        return process_single_file(&expanded_paths[0], &base_dir, config, boost_map);
     }
 
     // Iterate over expanded paths, handling files and directories
     let mut all_processed_files = Vec::new();
     for path in expanded_paths {
         if path.is_file() {
-            all_processed_files.extend(process_single_file(&path, config, boost_map)?);
+            all_processed_files.extend(process_single_file(&path, &base_dir, config, boost_map)?);
         } else if path.is_dir() {
             // For directories, use the original recursive logic
             all_processed_files.extend(process_files_parallel_internal(&path, config, boost_map)?);
