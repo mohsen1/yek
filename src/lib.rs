@@ -189,11 +189,19 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
 /// Parse a token limit string like "800k" or "1000" into a number
 pub fn parse_token_limit(limit: &str) -> anyhow::Result<usize> {
     if limit.to_lowercase().ends_with('k') {
-        limit[..limit.len() - 1]
-            .trim()
-            .parse::<usize>()
-            .map(|n| n * 1000)
-            .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))
+        // Use UTF-8 aware slicing to handle emojis and other multi-byte characters
+        let chars: Vec<char> = limit.chars().collect();
+        if chars.len() > 1 {
+            chars[..chars.len() - 1]
+                .iter()
+                .collect::<String>()
+                .trim()
+                .parse::<usize>()
+                .map(|n| n * 1000)
+                .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))
+        } else {
+            Err(anyhow!("tokens: Invalid token format: {}", limit))
+        }
     } else {
         limit
             .parse::<usize>()
