@@ -192,7 +192,9 @@ pub fn parse_token_limit(limit: &str) -> anyhow::Result<usize> {
         // Use UTF-8 aware slicing to handle emojis and other multi-byte characters
         let chars: Vec<char> = limit.chars().collect();
         if chars.len() > 1 {
-            chars[..chars.len() - 1].iter().collect::<String>()
+            chars[..chars.len() - 1]
+                .iter()
+                .collect::<String>()
                 .trim()
                 .parse::<usize>()
                 .map(|n| n * 1000)

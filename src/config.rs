@@ -304,7 +304,9 @@ impl YekConfig {
             // Use UTF-8 aware slicing to handle emojis and other multi-byte characters
             let chars: Vec<char> = self.tokens.chars().collect();
             if chars.len() > 1 {
-                let val = chars[..chars.len() - 1].iter().collect::<String>()
+                let val = chars[..chars.len() - 1]
+                    .iter()
+                    .collect::<String>()
                     .trim()
                     .parse::<usize>()
                     .map_err(|e| anyhow!("tokens: Invalid token size: {}", e))?;
