@@ -691,8 +691,17 @@ mod lib_tests {
         );
         let (output, files) = result.unwrap();
         assert_eq!(files.len(), 1);
-        assert_eq!(files[0].rel_path, file_name);
-        assert!(output.contains(&format!(">>>> {}\ncontent with emoji 😀", file_name)));
+        // With the fix, rel_path now contains the full path
+        let expected_full_path = temp_dir
+            .path()
+            .join(file_name)
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(files[0].rel_path, expected_full_path);
+        assert!(output.contains(&format!(
+            ">>>> {}\ncontent with emoji 😀",
+            expected_full_path
+        )));
     }
 
     #[test]
@@ -738,9 +747,14 @@ mod lib_tests {
         let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         let result = serialize_repo(&config).unwrap();
         let output = result.0;
-        // Check that FILE_PATH is not empty
+        // Check that FILE_PATH is not empty - with the fix, it now contains the full path
+        let expected_full_path = temp_dir
+            .path()
+            .join("test.txt")
+            .to_string_lossy()
+            .to_string();
         assert!(
-            output.contains(">>>> test.txt\ncontent"),
+            output.contains(&format!(">>>> {}\ncontent", expected_full_path)),
             "File path should not be missing in output"
         );
     }
