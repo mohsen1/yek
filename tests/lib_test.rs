@@ -673,4 +673,74 @@ mod lib_tests {
         assert!(parse_token_limit("-1").is_err());
         assert!(parse_token_limit("invalid").is_err());
     }
+
+    // Bug validation tests
+    #[test]
+    fn test_bug_119_cannot_handle_emojis() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let file_name = "file_with_emoji_😀.txt";
+        std::fs::write(temp_dir.path().join(file_name), "content with emoji 😀").unwrap();
+
+        let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        let result = serialize_repo(&config);
+        // If bug is present, this might fail
+        assert!(
+            result.is_ok(),
+            "serialize_repo should handle files with emojis in names"
+        );
+        let (output, files) = result.unwrap();
+        assert_eq!(files.len(), 1);
+        // The rel_path should be relative to the current directory
+        assert_eq!(files[0].rel_path, file_name);
+        assert!(output.contains(&format!(">>>> {}\ncontent with emoji 😀", file_name)));
+    }
+
+    #[test]
+    fn test_bug_125_file_paths_relativity_unreliable_with_globs() {
+        init_tracing();
+        let dir1 = tempdir().unwrap();
+        let dir2 = tempdir().unwrap();
+
+        std::fs::write(dir1.path().join("file.txt"), "content1").unwrap();
+        std::fs::write(dir2.path().join("file.txt"), "content2").unwrap();
+
+        // Use globs for multiple sources
+        let config = create_test_config(vec![
+            format!("{}/*.txt", dir1.path().to_string_lossy()),
+            format!("{}/*.txt", dir2.path().to_string_lossy()),
+        ]);
+
+        let result = serialize_repo(&config);
+        assert!(result.is_ok());
+        let (output, files) = result.unwrap();
+        // This test verifies that each file's rel_path is unique, which is the expected correct behavior.
+        // If the bug is present (rel_path is unreliable), this assertion will fail.
+        // The output should contain both file contents, and rel_paths should be unique.
+        assert!(output.contains("content1"));
+        assert!(output.contains("content2"));
+        // Assert that rel_path is unique for each file.
+        let rel_paths: std::collections::HashSet<_> = files.iter().map(|f| &f.rel_path).collect();
+        assert_eq!(
+            rel_paths.len(),
+            files.len(),
+            "rel_path should be unique for each file"
+        );
+    }
+
+    #[test]
+    fn test_bug_144_missing_file_paths_in_output() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+
+        let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        let result = serialize_repo(&config).unwrap();
+        let output = result.0;
+        // Check that FILE_PATH is not empty
+        assert!(
+            output.contains(">>>> test.txt\ncontent"),
+            "File path should not be missing in output"
+        );
+    }
 }
