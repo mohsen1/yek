@@ -54,7 +54,6 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 /// Main entrypoint for serialization, used by CLI and tests
 pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)> {
     // Validate input paths and warn about non-existent ones
-    let mut existing_paths = Vec::new();
     let mut non_existent_paths = Vec::new();
 
     for path_str in &config.input_paths {
