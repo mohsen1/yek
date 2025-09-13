@@ -179,8 +179,16 @@ mod tests {
         assert_eq!(result.len(), 2); // Should only match .txt files
 
         let paths: Vec<String> = result.iter().map(|f| f.rel_path.clone()).collect();
-        let test1_path = temp_dir.path().join("test1.txt").to_string_lossy().to_string();
-        let test2_path = temp_dir.path().join("test2.txt").to_string_lossy().to_string();
+        let test1_path = temp_dir
+            .path()
+            .join("test1.txt")
+            .to_string_lossy()
+            .to_string();
+        let test2_path = temp_dir
+            .path()
+            .join("test2.txt")
+            .to_string_lossy()
+            .to_string();
         assert!(paths.contains(&test1_path));
         assert!(paths.contains(&test2_path));
 

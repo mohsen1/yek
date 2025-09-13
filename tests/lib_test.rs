@@ -685,7 +685,10 @@ mod lib_tests {
         let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         let result = serialize_repo(&config);
         // If bug is present, this might fail
-        assert!(result.is_ok(), "serialize_repo should handle files with emojis in names");
+        assert!(
+            result.is_ok(),
+            "serialize_repo should handle files with emojis in names"
+        );
         let (output, files) = result.unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].rel_path, file_name);
@@ -719,7 +722,11 @@ mod lib_tests {
         // So this test passes but demonstrates the bug
         // To make it fail, assert that rel_path are unique
         let rel_paths: std::collections::HashSet<_> = files.iter().map(|f| &f.rel_path).collect();
-        assert_eq!(rel_paths.len(), files.len(), "rel_path should be unique for each file");
+        assert_eq!(
+            rel_paths.len(),
+            files.len(),
+            "rel_path should be unique for each file"
+        );
     }
 
     #[test]
@@ -732,6 +739,9 @@ mod lib_tests {
         let result = serialize_repo(&config).unwrap();
         let output = result.0;
         // Check that FILE_PATH is not empty
-        assert!(output.contains(">>>> test.txt\ncontent"), "File path should not be missing in output");
+        assert!(
+            output.contains(">>>> test.txt\ncontent"),
+            "File path should not be missing in output"
+        );
     }
 }
