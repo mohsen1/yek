@@ -120,6 +120,8 @@ pub const DEFAULT_IGNORE_PATTERNS: &[&str] = &[
     ".gitignore",
     "pnpm-lock.yaml",
     "yek.toml",
+    "yek.yaml",
+    "yek.json",
     "package-lock.json",
     "yarn.lock",
     "Cargo.lock",

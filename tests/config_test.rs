@@ -560,3 +560,85 @@ fn test_is_text_file_with_binary_content() {
         "Expected a binary file to be detected as binary"
     );
 }
+
+#[test]
+fn test_config_files_ignored_by_default() {
+    use yek::defaults::DEFAULT_IGNORE_PATTERNS;
+    use yek::serialize_repo;
+
+    // Create a temporary directory
+    let temp_dir = TempDir::new().expect("failed to create temp dir");
+
+    // Create some regular files and config files
+    fs::write(temp_dir.path().join("README.md"), "# Test Project").expect("failed to write README");
+    fs::write(temp_dir.path().join("main.rs"), "fn main() {}").expect("failed to write main.rs");
+
+    // Create yek config files that should be ignored by default
+    fs::write(temp_dir.path().join("yek.yaml"), "output_dir: \"./output\"")
+        .expect("failed to write yek.yaml");
+    fs::write(
+        temp_dir.path().join("yek.json"),
+        "{\"output_dir\": \"./output\"}",
+    )
+    .expect("failed to write yek.json");
+    fs::write(
+        temp_dir.path().join("yek.toml"),
+        "output_dir = \"./output\"",
+    )
+    .expect("failed to write yek.toml");
+
+    // Create a config that processes the temp directory with proper default ignore patterns
+    let mut config = YekConfig {
+        input_paths: vec![temp_dir.path().to_string_lossy().to_string()],
+        stream: true, // Stream mode for easier testing
+        ..YekConfig::default()
+    };
+
+    // Apply default ignore patterns (like the real config init does)
+    config.ignore_patterns = DEFAULT_IGNORE_PATTERNS
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
+
+    // Serialize the repository
+    let (output, files) = serialize_repo(&config).expect("failed to serialize repo");
+
+    // Check that the output does not contain any of the config files
+    assert!(
+        !output.contains("yek.yaml"),
+        "Output should not contain yek.yaml content"
+    );
+    assert!(
+        !output.contains("yek.json"),
+        "Output should not contain yek.json content"
+    );
+    assert!(
+        !output.contains("yek.toml"),
+        "Output should not contain yek.toml content"
+    );
+
+    // Check that config files are not in the processed files list
+    let file_paths: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
+    assert!(
+        !file_paths.iter().any(|&path| path.ends_with("yek.yaml")),
+        "yek.yaml should be ignored"
+    );
+    assert!(
+        !file_paths.iter().any(|&path| path.ends_with("yek.json")),
+        "yek.json should be ignored"
+    );
+    assert!(
+        !file_paths.iter().any(|&path| path.ends_with("yek.toml")),
+        "yek.toml should be ignored"
+    );
+
+    // Verify that regular files are still included
+    assert!(
+        file_paths.iter().any(|&path| path.ends_with("README.md")),
+        "README.md should be included"
+    );
+    assert!(
+        file_paths.iter().any(|&path| path.ends_with("main.rs")),
+        "main.rs should be included"
+    );
+}
