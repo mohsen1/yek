@@ -722,14 +722,12 @@ mod lib_tests {
         let result = serialize_repo(&config);
         assert!(result.is_ok());
         let (output, files) = result.unwrap();
-        // Both files have rel_path "file.txt", which is unreliable
-        // This test fails if the bug is present, as rel_path should be unique or correct
-        // But since it's unreliable, perhaps check that output contains both contents
+        // This test verifies that each file's rel_path is unique, which is the expected correct behavior.
+        // If the bug is present (rel_path is unreliable), this assertion will fail.
+        // The output should contain both file contents, and rel_paths should be unique.
         assert!(output.contains("content1"));
         assert!(output.contains("content2"));
-        // Ideally, rel_path should be different, but currently they are the same
-        // So this test passes but demonstrates the bug
-        // To make it fail, assert that rel_path are unique
+        // Assert that rel_path is unique for each file.
         let rel_paths: std::collections::HashSet<_> = files.iter().map(|f| &f.rel_path).collect();
         assert_eq!(
             rel_paths.len(),
