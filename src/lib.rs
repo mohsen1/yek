@@ -58,6 +58,7 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     // Validate input paths and warn about non-existent ones
     let mut existing_paths = Vec::new();
     let mut non_existent_paths = Vec::new();
+    let mut existing_paths = Vec::new();
 
     for path_str in &config.input_paths {
         let path = Path::new(path_str);
