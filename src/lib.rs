@@ -62,9 +62,7 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     for path_str in &config.input_paths {
         let path = Path::new(path_str);
         // Check if path exists as a file, directory, or could be a glob pattern
-        if path.exists() || path_str.contains('*') || path_str.contains('?') {
-            existing_paths.push(path_str.clone());
-        } else {
+        if !path.exists() && !path_str.contains('*') && !path_str.contains('?') {
             non_existent_paths.push(path_str.clone());
         }
     }
@@ -232,9 +230,8 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                     .output_template
                     .replace("FILE_PATH", &f.rel_path)
                     .replace("FILE_CONTENT", &f.content)
-                    // Handle both literal "\n" and escaped "\\n"
-                    .replace("\\\\\n", "\n") // First handle escaped newline
-                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
+                    // Replace literal "\\n" with newline for backward compatibility
+                    .replace("\\\\n", "\n")
             })
             .collect::<Vec<_>>()
             .join("\n")

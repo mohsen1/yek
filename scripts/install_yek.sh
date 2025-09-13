@@ -5,31 +5,88 @@ REPO_OWNER="bodo-run"
 REPO_NAME="yek"
 
 # Determine a sensible default install directory
-# We'll check for a directory in PATH that is writable.
-# If none is found, we fall back to "$HOME/.local/bin".
+# We'll check preferred directories first, then fall back to PATH entries,
+# avoiding package manager-specific directories when possible.
 fallback_dir="$HOME/.local/bin"
 
-# Split PATH on ":" into an array
-IFS=':' read -ra path_entries <<<"$PATH"
-install_candidates=("/usr/local/bin" "${path_entries[@]}")
+# Define preferred directories in order of preference
+preferred_dirs=(
+    "$HOME/.local/bin"
+    "/usr/local/bin"
+    "/opt/homebrew/bin"
+    "$HOME/bin"
+)
+
+# Package manager directories to avoid unless they're in preferred list
+package_manager_patterns=(
+    "*/\.rvm/*"
+    "*/\.nvm/*"
+    "*/\.pyenv/*"
+    "*/\.rbenv/*"
+    "*/\.cargo/*"
+    "*/node_modules/*"
+    "*/gems/*"
+    "*/conda/*"
+    "*/miniconda/*"
+    "*/anaconda/*"
+)
+
+# Function to check if a path matches package manager patterns
+is_package_manager_dir() {
+    local dir="$1"
+    for pattern in "${package_manager_patterns[@]}"; do
+        case "$dir" in
+            $pattern) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 install_dir=""
 
-for dir in "${install_candidates[@]}"; do
+# First, try preferred directories
+for dir in "${preferred_dirs[@]}"; do
     # Skip empty paths
     [ -z "$dir" ] && continue
-
-    # Check if directory is writable
+    
+    # Check if directory is writable (create if needed for ~/.local/bin)
+    if [ "$dir" = "$HOME/.local/bin" ]; then
+        mkdir -p "$dir" 2>/dev/null
+    fi
+    
     if [ -d "$dir" ] && [ -w "$dir" ]; then
         install_dir="$dir"
         break
     fi
 done
 
-# If we didn't find a writable dir in PATH, fallback to $HOME/.local/bin
+# If no preferred directory worked, check PATH entries (excluding package managers)
 if [ -z "$install_dir" ]; then
-    install_dir="$fallback_dir"
+    IFS=':' read -ra path_entries <<<"$PATH"
+    for dir in "${path_entries[@]}"; do
+        # Skip empty paths
+        [ -z "$dir" ] && continue
+        
+        # Skip package manager directories
+        if is_package_manager_dir "$dir"; then
+            continue
+        fi
+        
+        # Check if directory is writable
+        if [ -d "$dir" ] && [ -w "$dir" ]; then
+            install_dir="$dir"
+            break
+        fi
+    done
 fi
 
+# Final fallback to ~/.local/bin (create if needed)
+if [ -z "$install_dir" ]; then
+    install_dir="$fallback_dir"
+    mkdir -p "$install_dir" 2>/dev/null
+fi
+
+# Ensure the final install directory exists
 mkdir -p "$install_dir"
 
 echo "Selected install directory: $install_dir"

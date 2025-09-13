@@ -3,11 +3,39 @@ use normalize_path::NormalizePath;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 use yek::config::YekConfig;
 use yek::parallel::process_files_parallel;
+
+#[cfg(unix)]
+fn make_unreadable(path: &Path) -> std::io::Result<()> {
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o000);
+    fs::set_permissions(path, permissions)
+}
+
+#[cfg(not(unix))]
+fn make_unreadable(_path: &Path) -> std::io::Result<()> {
+    // On Windows, we can't easily make files unreadable in the same way
+    // Skip this test functionality on Windows
+    Ok(())
+}
+
+#[cfg(unix)]
+fn make_readable(path: &Path) -> std::io::Result<()> {
+    let mut permissions = fs::metadata(path)?.permissions();
+    permissions.set_mode(0o644);
+    fs::set_permissions(path, permissions)
+}
+
+#[cfg(not(unix))]
+fn make_readable(_path: &Path) -> std::io::Result<()> {
+    // On Windows, files are readable by default
+    Ok(())
+}
 
 #[test]
 fn test_normalize_path_unix_style() {
@@ -34,11 +62,7 @@ fn test_normalize_path_windows_style() {
     } else {
         "C:/Program Files/Yek".to_string()
     };
-    let stripped_path = if input.starts_with(base) {
-        input.strip_prefix(base).unwrap()
-    } else {
-        input
-    };
+    let stripped_path = input.strip_prefix(base).unwrap_or(input);
     // Normalize the stripped path, then replace backslashes with forward slashes
     let normalized = stripped_path
         .normalize()
@@ -91,26 +115,36 @@ fn test_process_files_parallel_file_read_error() {
     let file_path = temp_dir.path().join("unreadable.txt");
     fs::write(&file_path, "content").expect("failed to write file");
 
-    // Make the file unreadable
-    let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-    permissions.set_mode(0o000); // No permissions
-    fs::set_permissions(&file_path, permissions).unwrap();
+    // Make the file unreadable (Unix only)
+    if cfg!(unix) {
+        make_unreadable(&file_path).unwrap();
 
-    let config = YekConfig::extend_config_with_defaults(
-        vec![temp_dir.path().to_string_lossy().to_string()],
-        ".".to_string(),
-    );
-    let boosts: HashMap<String, i32> = HashMap::new();
-    let result = process_files_parallel(temp_dir.path(), &config, &boosts)
-        .expect("process_files_parallel failed");
+        let config = YekConfig::extend_config_with_defaults(
+            vec![temp_dir.path().to_string_lossy().to_string()],
+            ".".to_string(),
+        );
+        let boosts: HashMap<String, i32> = HashMap::new();
+        let result = process_files_parallel(temp_dir.path(), &config, &boosts)
+            .expect("process_files_parallel failed");
 
-    // The unreadable file should be skipped, so the result should be empty
-    assert_eq!(result.len(), 0);
+        // The unreadable file should be skipped, so the result should be empty
+        assert_eq!(result.len(), 0);
 
-    // Restore permissions so the directory can be cleaned up
-    let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-    permissions.set_mode(0o644); // Read permissions
-    fs::set_permissions(&file_path, permissions).unwrap();
+        // Restore permissions so the directory can be cleaned up
+        make_readable(&file_path).unwrap();
+    } else {
+        // On Windows, just test that the file is processed normally
+        let config = YekConfig::extend_config_with_defaults(
+            vec![temp_dir.path().to_string_lossy().to_string()],
+            ".".to_string(),
+        );
+        let boosts: HashMap<String, i32> = HashMap::new();
+        let result = process_files_parallel(temp_dir.path(), &config, &boosts)
+            .expect("process_files_parallel failed");
+
+        // The file should be processed normally on Windows
+        assert_eq!(result.len(), 1);
+    }
 }
 
 #[test]
@@ -119,22 +153,36 @@ fn test_process_files_parallel_walk_error() {
     let subdir = temp_dir.path().join("subdir");
     fs::create_dir(&subdir).expect("failed to create subdir");
 
-    // Make the subdir unreadable, causing walk error
-    let mut permissions = fs::metadata(&subdir).unwrap().permissions();
-    permissions.set_mode(0o000);
-    fs::set_permissions(&subdir, permissions).unwrap();
+    // Make the subdir unreadable, causing walk error (Unix only)
+    if cfg!(unix) {
+        make_unreadable(&subdir).unwrap();
 
-    let config = YekConfig::extend_config_with_defaults(
-        vec![temp_dir.path().to_string_lossy().to_string()],
-        ".".to_string(),
-    );
-    let boosts: HashMap<String, i32> = HashMap::new();
-    let result = process_files_parallel(temp_dir.path(), &config, &boosts);
+        let config = YekConfig::extend_config_with_defaults(
+            vec![temp_dir.path().to_string_lossy().to_string()],
+            ".".to_string(),
+        );
+        let boosts: HashMap<String, i32> = HashMap::new();
+        let result = process_files_parallel(temp_dir.path(), &config, &boosts);
 
-    // Walk errors are logged and skipped, not propagated as Err
-    assert!(result.is_ok()); // Walk errors are logged and skipped, not propagated as Err
-    let processed_files = result.unwrap();
-    assert_eq!(processed_files.len(), 0); // No files processed due to walk error
+        // Walk errors are logged and skipped, not propagated as Err
+        assert!(result.is_ok()); // Walk errors are logged and skipped, not propagated as Err
+        let processed_files = result.unwrap();
+        assert_eq!(processed_files.len(), 0); // No files processed due to walk error
+
+        // Restore permissions for cleanup
+        make_readable(&subdir).unwrap();
+    } else {
+        // On Windows, just test normal directory walking
+        let config = YekConfig::extend_config_with_defaults(
+            vec![temp_dir.path().to_string_lossy().to_string()],
+            ".".to_string(),
+        );
+        let boosts: HashMap<String, i32> = HashMap::new();
+        let result = process_files_parallel(temp_dir.path(), &config, &boosts);
+
+        // Should succeed on Windows
+        assert!(result.is_ok());
+    }
 }
 
 #[cfg(test)]
