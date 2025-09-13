@@ -743,4 +743,69 @@ mod lib_tests {
             "File path should not be missing in output"
         );
     }
+
+    #[test]
+    fn test_line_numbers_feature() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let content = "line 1\nline 2\nline 3";
+        std::fs::write(temp_dir.path().join("test.txt"), content).unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.line_numbers = true;
+        let result = serialize_repo(&config).unwrap();
+        let output = result.0;
+
+        // Check that line numbers are included
+        assert!(output.contains("  1 | line 1"));
+        assert!(output.contains("  2 | line 2"));
+        assert!(output.contains("  3 | line 3"));
+    }
+
+    #[test]
+    fn test_line_numbers_feature_json_output() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let content = "line 1\nline 2";
+        std::fs::write(temp_dir.path().join("test.txt"), content).unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.line_numbers = true;
+        config.json = true;
+        let result = serialize_repo(&config).unwrap();
+        let output = result.0;
+
+        // Check that line numbers are included in JSON content
+        assert!(output.contains(r#""content": "  1 | line 1\n  2 | line 2""#));
+    }
+
+    #[test]
+    fn test_line_numbers_feature_empty_file() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("empty.txt"), "").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.line_numbers = true;
+        let result = serialize_repo(&config).unwrap();
+        let output = result.0;
+
+        // Empty file should still have the file header
+        assert!(output.contains(">>>> empty.txt\n"));
+    }
+
+    #[test]
+    fn test_line_numbers_feature_single_line() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("single.txt"), "single line").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.line_numbers = true;
+        let result = serialize_repo(&config).unwrap();
+        let output = result.0;
+
+        // Single line should have line number 1
+        assert!(output.contains("  1 | single line"));
+    }
 }
