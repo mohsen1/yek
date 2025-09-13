@@ -42,8 +42,13 @@ fn main() -> Result<()> {
     // If not streaming => run checksum + repo serialization in parallel.
     if full_config.stream {
         let (output, files) = serialize_repo(&full_config)?;
-        // We print actual text to stdout:
-        println!("{}", output);
+        // If output_name provided, write to file, else print to stdout:
+        if let Some(output_name) = &full_config.output_name {
+            std::fs::write(output_name, output.as_bytes())?;
+            println!("{}", output_name);
+        } else {
+            println!("{}", output);
+        }
 
         if full_config.debug {
             debug!("{} files processed (streaming).", files.len());
@@ -60,16 +65,21 @@ fn main() -> Result<()> {
         let (output_string, files) = serialization_res?;
         let checksum = checksum_res;
 
-        // Now set the final output file with the computed checksum
-        let extension = if full_config.json { "json" } else { "txt" };
-        let output_dir = full_config.output_dir.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Output directory is required when not in streaming mode. This may indicate a configuration validation error.")
-        })?;
+        // Now set the final output file
+        let final_path = if let Some(output_name) = &full_config.output_name {
+            // Use provided output_name in current directory
+            output_name.clone()
+        } else {
+            let extension = if full_config.json { "json" } else { "txt" };
+            let output_dir = full_config.output_dir.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("Output directory is required when not in streaming mode. This may indicate a configuration validation error.")
+            })?;
 
-        let final_path = Path::new(output_dir)
-            .join(format!("yek-output-{}.{}", checksum, extension))
-            .to_string_lossy()
-            .to_string();
+            Path::new(output_dir)
+                .join(format!("yek-output-{}.{}", checksum, extension))
+                .to_string_lossy()
+                .to_string()
+        };
         full_config.output_file_full_path = Some(final_path.clone());
 
         // If debug, show stats
