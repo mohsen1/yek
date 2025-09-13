@@ -50,6 +50,10 @@ pub struct YekConfig {
     #[config_arg()]
     pub output_dir: Option<String>,
 
+    /// Output filename. If provided, write output to this file in current directory
+    #[config_arg(long = "output-name")]
+    pub output_name: Option<String>,
+
     /// Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
     #[config_arg(default_value = ">>>> FILE_PATH\nFILE_CONTENT")]
     pub output_template: String,
@@ -107,6 +111,7 @@ impl Default for YekConfig {
             json: false,
             debug: false,
             output_dir: None,
+            output_name: None,
             output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
             ignore_patterns: Vec::new(),
             unignore_patterns: Vec::new(),
