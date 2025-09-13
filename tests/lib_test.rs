@@ -693,10 +693,7 @@ mod lib_tests {
         assert_eq!(files.len(), 1);
         // The rel_path should be relative to the current directory
         assert_eq!(files[0].rel_path, file_name);
-        assert!(output.contains(&format!(
-            ">>>> {}\ncontent with emoji 😀",
-            file_name
-        )));
+        assert!(output.contains(&format!(">>>> {}\ncontent with emoji 😀", file_name)));
     }
 
     #[test]
