@@ -36,12 +36,6 @@ fn process_single_file(
         gitignore_builder.add_line(None, pattern)?;
     }
 
-    // If there is a .gitignore in this folder, add it last so its "!" lines override prior patterns
-    let gitignore_file = file_parent.join(".gitignore");
-    if gitignore_file.exists() {
-        gitignore_builder.add(&gitignore_file);
-    }
-
     let gitignore = gitignore_builder.build()?;
     if gitignore.matched(file_path, false).is_ignore() {
         debug!("Skipping ignored file: {rel_path}");
