@@ -58,7 +58,7 @@ mod lib_tests {
             score: 100,
         }];
         config.binary_extensions = vec!["bin".to_string()];
-        config.output_template = ">>>> FILE_PATH\nFILE_CONTENT".to_string();
+        config.output_template = Some(">>>> FILE_PATH\nFILE_CONTENT".to_string());
         config
     }
 
@@ -253,7 +253,7 @@ mod lib_tests {
 
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         config.output_template =
-            "Custom template:\nPath: FILE_PATH\nContent: FILE_CONTENT".to_string();
+            Some("Custom template:\nPath: FILE_PATH\nContent: FILE_CONTENT".to_string());
         let result = serialize_repo(&config).unwrap();
         let output_string = result.0;
         assert!(output_string.contains("Custom template:"));
@@ -308,7 +308,7 @@ mod lib_tests {
         std::fs::write(temp_dir.path().join(file_path), file_content).unwrap();
 
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
-        config.output_template = "Path: FILE_PATH\nContent:\nFILE_CONTENT".to_string();
+        config.output_template = Some("Path: FILE_PATH\nContent:\nFILE_CONTENT".to_string());
         let result = serialize_repo(&config).unwrap();
         let output_string = result.0;
 
@@ -341,14 +341,14 @@ mod lib_tests {
         std::fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
 
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
-        config.output_template = "Path: FILE_PATH\\nContent: FILE_CONTENT".to_string(); // Using literal "\\n"
+        config.output_template = Some("Path: FILE_PATH\\nContent: FILE_CONTENT".to_string()); // Using literal "\\n"
         let result = serialize_repo(&config).unwrap();
         let output_string = result.0;
         assert!(output_string.contains("Path: test.txt\\nContent: test content")); // Should not replace "\\n" literally
 
         let mut config_replace =
             create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
-        config_replace.output_template = "Path: FILE_PATH\\\\nContent: FILE_CONTENT".to_string(); // Using literal "\\\\n" to represent escaped backslash n
+        config_replace.output_template = Some("Path: FILE_PATH\\\\nContent: FILE_CONTENT".to_string()); // Using literal "\\\\n" to represent escaped backslash n
         let result_replace = serialize_repo(&config_replace).unwrap();
         let output_string_replace = result_replace.0;
         assert!(output_string_replace.contains("Path: test.txt\nContent: test content"));
@@ -559,7 +559,7 @@ mod lib_tests {
 
         // Test custom template
         config.json = false;
-        config.output_template = "==FILE_PATH==\n---\nFILE_CONTENT\n====".to_string();
+        config.output_template = Some("==FILE_PATH==\n---\nFILE_CONTENT\n====".to_string());
         let output_custom = yek::concat_files(&files, &config).unwrap();
         assert!(output_custom.contains("==src/main.rs==\n---\nfn main() {}\n===="));
         assert!(output_custom.contains("==README.md==\n---\n# Yek\n===="));
@@ -627,7 +627,7 @@ mod lib_tests {
     #[test]
     fn test_token_counting_with_template() {
         let config = YekConfig {
-            output_template: "File: FILE_PATH\nContent:\nFILE_CONTENT".to_string(),
+            output_template: Some("File: FILE_PATH\nContent:\nFILE_CONTENT".to_string()),
             ..Default::default()
         };
         let files = vec![ProcessedFile {
@@ -666,7 +666,7 @@ mod lib_tests {
             token_mode: true,
             tokens: "10".to_string(), // Set a very low token limit
             // Include filename in template so we can verify which files are included
-            output_template: ">>>> FILE_PATH\nFILE_CONTENT".to_string(),
+            output_template: Some(">>>> FILE_PATH\nFILE_CONTENT".to_string()),
             ..Default::default()
         };
         let files = vec![

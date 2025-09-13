@@ -193,6 +193,8 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             } else {
                 config
                     .output_template
+                    .as_ref()
+                    .expect("output_template should be set")
                     .replace("FILE_PATH", &file.rel_path)
                     .replace("FILE_CONTENT", &file.content)
             };
@@ -229,6 +231,8 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .map(|f| {
                 config
                     .output_template
+                    .as_ref()
+                    .expect("output_template should be set")
                     .replace("FILE_PATH", &f.rel_path)
                     .replace("FILE_CONTENT", &f.content)
                     // Replace literal "\\n" with newline for backward compatibility
