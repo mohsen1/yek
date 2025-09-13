@@ -2,12 +2,16 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::sync::Mutex;
 use tempfile::TempDir;
 use yek::defaults::{BINARY_FILE_EXTENSIONS, DEFAULT_IGNORE_PATTERNS, DEFAULT_OUTPUT_TEMPLATE};
 
 use yek::config::YekConfig;
 use yek::is_text_file;
 use yek::priority::PriorityRule;
+
+// Mutex to synchronize tests that change the current directory
+static CONFIG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_validate_config_valid() {
@@ -684,6 +688,8 @@ fn test_config_files_ignored_by_default() {
 
 #[test]
 fn test_output_template_from_toml_config() {
+    let _guard = CONFIG_TEST_MUTEX.lock().unwrap();
+
     // Create a unique temp directory and a yek.toml file
     let temp_dir = TempDir::new().expect("failed to create temp dir");
     let config_path = temp_dir.path().join("yek.toml");
@@ -719,6 +725,8 @@ fn test_output_template_from_toml_config() {
 
 #[test]
 fn test_output_template_from_yaml_config() {
+    let _guard = CONFIG_TEST_MUTEX.lock().unwrap();
+
     // Create a unique temp directory and a yek.yaml file
     let temp_dir = TempDir::new().expect("failed to create temp dir");
     let config_path = temp_dir.path().join("yek.yaml");
@@ -754,6 +762,8 @@ fn test_output_template_from_yaml_config() {
 
 #[test]
 fn test_output_template_from_json_config() {
+    let _guard = CONFIG_TEST_MUTEX.lock().unwrap();
+
     // Create a unique temp directory and a yek.json file
     let temp_dir = TempDir::new().expect("failed to create temp dir");
     let config_path = temp_dir.path().join("yek.json");
