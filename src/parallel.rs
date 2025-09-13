@@ -97,24 +97,8 @@ pub fn process_files_parallel(
     }
 
     // Determine the base directory for relative path calculation
-    // For glob patterns, we want to find the common directory part of the pattern
-    let base_dir =
-        if base_path.to_string_lossy().contains('*') || base_path.to_string_lossy().contains('?') {
-            // It's a glob pattern - find the directory part
-            let mut pattern_path = base_path.to_path_buf();
-            while pattern_path.file_name().is_some_and(|name| {
-                let name_str = name.to_string_lossy();
-                name_str.contains('*') || name_str.contains('?')
-            }) {
-                if !pattern_path.pop() {
-                    break;
-                }
-            }
-            pattern_path
-        } else {
-            // Not a glob pattern, use current directory
-            std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
-        };
+    // Use current directory as base to ensure unique relative paths across different inputs
+    let base_dir = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
 
     // If it's a single file (no glob expansion or single file result), process it directly
     if expanded_paths.len() == 1 && expanded_paths[0].is_file() {

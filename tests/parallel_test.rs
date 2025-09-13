@@ -154,7 +154,7 @@ mod tests {
 
         let result = process_files_parallel(&PathBuf::from(&glob_pattern), &config, &boost_map)?;
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].rel_path, "test.txt");
+        assert_eq!(result[0].rel_path, file_path.to_string_lossy().to_string());
 
         Ok(())
     }
@@ -179,8 +179,10 @@ mod tests {
         assert_eq!(result.len(), 2); // Should only match .txt files
 
         let paths: Vec<String> = result.iter().map(|f| f.rel_path.clone()).collect();
-        assert!(paths.contains(&"test1.txt".to_string()));
-        assert!(paths.contains(&"test2.txt".to_string()));
+        let test1_path = temp_dir.path().join("test1.txt").to_string_lossy().to_string();
+        let test2_path = temp_dir.path().join("test2.txt").to_string_lossy().to_string();
+        assert!(paths.contains(&test1_path));
+        assert!(paths.contains(&test2_path));
 
         Ok(())
     }
@@ -219,8 +221,10 @@ mod tests {
         assert_eq!(result.len(), 2); // Should match both .rs files
 
         let paths: Vec<String> = result.iter().map(|f| f.rel_path.clone()).collect();
-        assert!(paths.contains(&"root.rs".to_string()));
-        assert!(paths.contains(&"nested/nested.rs".to_string())); // Updated expectation
+        let root_path = root_file.to_string_lossy().to_string();
+        let nested_path = nested_file.to_string_lossy().to_string();
+        assert!(paths.contains(&root_path));
+        assert!(paths.contains(&nested_path));
 
         Ok(())
     }
