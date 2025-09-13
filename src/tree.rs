@@ -130,7 +130,10 @@ fn add_path_to_tree_with_type(root: &mut TreeNode, path: &Path, final_is_file: b
                 None => {
                     // Create new entry
                     current.children.insert(
+                        current.children.insert(
                         name.clone(),
+                        TreeNode::new_with_name(name.clone(), final_is_file),
+                    );
                         TreeNode::new_with_name(name.clone(), final_is_file),
                     );
                 }
