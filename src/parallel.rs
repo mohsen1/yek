@@ -94,8 +94,16 @@ pub fn process_files_parallel(
     }
 
     // Determine the base directory for relative path calculation
-    // Use current directory as base to ensure unique relative paths across different inputs
-    let base_dir = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+    let base_dir = if path_str.contains('*') || path_str.contains('?') {
+        // For glob patterns, use current directory to ensure unique paths across different sources
+        std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
+    } else if base_path.is_file() {
+        // For single files, use the parent directory
+        base_path.parent().unwrap_or(Path::new(".")).to_path_buf()
+    } else {
+        // For directories, use the directory itself
+        base_path.to_path_buf()
+    };
 
     // If it's a single file (no glob expansion or single file result), process it directly
     if expanded_paths.len() == 1 && expanded_paths[0].is_file() {
