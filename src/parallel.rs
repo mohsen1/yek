@@ -41,9 +41,6 @@ fn process_single_file(
     if gitignore_file.exists() {
         gitignore_builder.add(&gitignore_file);
     }
-    if gitignore_file.exists() {
-        gitignore_builder.add(&gitignore_file);
-    }
 
     let gitignore = gitignore_builder.build()?;
     if gitignore.matched(file_path, false).is_ignore() {
