@@ -53,6 +53,27 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 
 /// Main entrypoint for serialization, used by CLI and tests
 pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)> {
+    // Validate input paths and warn about non-existent ones
+    let mut existing_paths = Vec::new();
+    let mut non_existent_paths = Vec::new();
+
+    for path_str in &config.input_paths {
+        let path = Path::new(path_str);
+        // Check if path exists as a file, directory, or could be a glob pattern
+        if path.exists() || path_str.contains('*') || path_str.contains('?') {
+            existing_paths.push(path_str.clone());
+        } else {
+            non_existent_paths.push(path_str.clone());
+        }
+    }
+
+    // If we have non-existent paths, warn the user
+    if !non_existent_paths.is_empty() {
+        for path in &non_existent_paths {
+            eprintln!("Warning: Path '{}' does not exist", path);
+        }
+    }
+
     // Gather commit times from each input path that is a directory
     let combined_commit_times = config
         .input_paths
@@ -96,6 +117,11 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
             .cmp(&b.priority)
             .then_with(|| a.rel_path.cmp(&b.rel_path))
     });
+
+    // If no files were processed and we had non-existent paths, provide additional context
+    if files.is_empty() && !non_existent_paths.is_empty() {
+        eprintln!("Warning: No files were processed. All specified paths were non-existent or contained no valid files.");
+    }
 
     // Build the final output string
     let output_string = concat_files(&files, config)?;

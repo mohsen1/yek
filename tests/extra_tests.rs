@@ -80,6 +80,26 @@ mod extra_tests {
         );
     }
 
+    // Test that warnings are displayed for non-existent paths by capturing stderr.
+    #[test]
+    fn test_warning_for_nonexistent_paths() {
+        use std::process::{Command, Stdio};
+
+        // Run yek with a non-existent path and capture stderr
+        let output = Command::new("./target/debug/yek")
+            .arg("definitely_nonexistent_path_12345")
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .output()
+            .expect("Failed to execute yek");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Should contain both warnings
+        assert!(stderr.contains("Warning: Path 'definitely_nonexistent_path_12345' does not exist"));
+        assert!(stderr.contains("Warning: No files were processed. All specified paths were non-existent or contained no valid files."));
+    }
+
     // Test process_files_parallel with an empty directory.
     #[test]
     fn test_process_files_parallel_empty_directory() {
