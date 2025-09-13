@@ -348,7 +348,8 @@ mod lib_tests {
 
         let mut config_replace =
             create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
-        config_replace.output_template = Some("Path: FILE_PATH\\\\nContent: FILE_CONTENT".to_string()); // Using literal "\\\\n" to represent escaped backslash n
+        config_replace.output_template =
+            Some("Path: FILE_PATH\\\\nContent: FILE_CONTENT".to_string()); // Using literal "\\\\n" to represent escaped backslash n
         let result_replace = serialize_repo(&config_replace).unwrap();
         let output_string_replace = result_replace.0;
         assert!(output_string_replace.contains("Path: test.txt\nContent: test content"));

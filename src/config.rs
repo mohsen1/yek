@@ -343,10 +343,11 @@ impl YekConfig {
 
     /// Validate the final config.
     pub fn validate(&self) -> Result<()> {
-        let template = self.output_template.as_ref().ok_or_else(|| {
-            anyhow!("output_template: must be provided")
-        })?;
-        
+        let template = self
+            .output_template
+            .as_ref()
+            .ok_or_else(|| anyhow!("output_template: must be provided"))?;
+
         if !template.contains("FILE_PATH") || !template.contains("FILE_CONTENT") {
             return Err(anyhow!(
                 "output_template: must contain FILE_PATH and FILE_CONTENT"
