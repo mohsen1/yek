@@ -59,9 +59,7 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     for path_str in &config.input_paths {
         let path = Path::new(path_str);
         // Check if path exists as a file, directory, or could be a glob pattern
-        if path.exists() || path_str.contains('*') || path_str.contains('?') {
-            existing_paths.push(path_str.clone());
-        } else {
+        if !path.exists() && !path_str.contains('*') && !path_str.contains('?') {
             non_existent_paths.push(path_str.clone());
         }
     }
