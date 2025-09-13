@@ -46,6 +46,10 @@ pub struct YekConfig {
     #[config_arg()]
     pub debug: bool,
 
+    /// Include line numbers in output
+    #[config_arg(long = "line-numbers")]
+    pub line_numbers: bool,
+
     /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
     #[config_arg()]
     pub output_dir: Option<String>,
@@ -98,6 +102,7 @@ impl Default for YekConfig {
             tokens: String::new(),
             json: false,
             debug: false,
+            line_numbers: false,
             output_dir: None,
             output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
             ignore_patterns: Vec::new(),
