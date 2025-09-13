@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
-use std::io::IsTerminal;
+use std::io::{self, BufRead, BufReader, IsTerminal};
 use std::{fs, path::Path, str::FromStr, time::UNIX_EPOCH};
 
 use crate::{
@@ -126,9 +126,24 @@ impl YekConfig {
             ..Default::default()
         }
     }
-}
 
-impl YekConfig {
+    /// Read input paths from stdin, filtering out empty lines and trimming whitespace
+    fn read_input_paths_from_stdin(&self) -> Result<Vec<String>> {
+        let stdin = io::stdin();
+        let reader = BufReader::new(stdin.lock());
+        let mut paths = Vec::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                paths.push(trimmed.to_string());
+            }
+        }
+
+        Ok(paths)
+    }
+
     /// Ensure output directory exists and is valid. Returns the resolved output directory path.
     pub fn ensure_output_dir(&self) -> Result<String> {
         if self.stream {
@@ -173,9 +188,28 @@ impl YekConfig {
 
         cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
 
-        // default input dirs to current dir if none:
+        // Check if we should read input paths from stdin
         if cfg.input_paths.is_empty() {
-            cfg.input_paths.push(".".to_string());
+            if !std::io::stdin().is_terminal() {
+                // Read file paths from stdin (one per line)
+                match cfg.read_input_paths_from_stdin() {
+                    Ok(stdin_paths) => {
+                        if !stdin_paths.is_empty() {
+                            cfg.input_paths = stdin_paths;
+                        } else {
+                            // stdin was empty, default to current dir
+                            cfg.input_paths.push(".".to_string());
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to read from stdin: {}", e);
+                        cfg.input_paths.push(".".to_string());
+                    }
+                }
+            } else {
+                // No stdin input, default to current dir
+                cfg.input_paths.push(".".to_string());
+            }
         }
 
         // Extend binary extensions with the built-in list:
