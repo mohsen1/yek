@@ -323,12 +323,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       yes: ${{ steps.check.outputs.yes }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - run: |
           # get current cargo version from Cargo.toml using cargo CLI tool
           # then use `cargo info` to see if it's already released
           cargo_version=$(cargo pkgid | cut -d# -f2)
+          echo "version=v$cargo_version" >> $GITHUB_OUTPUT
           if cargo info "yek@$cargo_version"; then
             echo "yek@$cargo_version is already released"
             echo "yes=false" >> $GITHUB_OUTPUT
@@ -344,7 +346,7 @@ jobs:
 
   release:
     name: Release
-    needs: [test, lint, build]
+    needs: [test, lint, build, should-release]
     runs-on: ubuntu-latest
     if: ${{ needs.should-release.outputs.yes }} == 'true' && github.ref == 'refs/heads/main'
     steps:
@@ -368,11 +370,11 @@ jobs:
         with:
           files: dist/build-*/yek-*
           body_path: CHANGES.md
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.should-release.outputs.version }}
 
   publish:
     name: Publish to crates.io
-    needs: [test, lint, build]
+    needs: [test, lint, build, should-release]
     runs-on: ubuntu-latest
     if: ${{ needs.should-release.outputs.yes }} == 'true' && github.ref == 'refs/heads/main'
     steps:
@@ -383,8 +385,9 @@ jobs:
 
       - name: Publish
         run: |
-          if cargo search --color=never yek | grep -q ${{ github.ref_name }}; then
-            echo "yek@${{ github.ref_name }} already published"
+          cargo_version=$(echo "${{ needs.should-release.outputs.version }}" | sed 's/^v//')
+          if cargo search --color=never yek | grep -q "$cargo_version"; then
+            echo "yek@$cargo_version already published"
             exit 0
           fi
           cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
