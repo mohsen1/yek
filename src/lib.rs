@@ -17,10 +17,12 @@ pub mod config;
 pub mod defaults;
 pub mod parallel;
 pub mod priority;
+pub mod tree;
 
 use config::YekConfig;
 use parallel::{process_files_parallel, ProcessedFile};
 use priority::compute_recentness_boost;
+use tree::generate_tree;
 
 // Add a static BPE encoder for reuse
 static TOKENIZER: OnceLock<CoreBPE> = OnceLock::new();
@@ -54,7 +56,9 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 /// Main entrypoint for serialization, used by CLI and tests
 pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)> {
     // Validate input paths and warn about non-existent ones
+    let mut existing_paths = Vec::new();
     let mut non_existent_paths = Vec::new();
+    let mut existing_paths = Vec::new();
 
     for path_str in &config.input_paths {
         let path = Path::new(path_str);
@@ -72,8 +76,7 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     }
 
     // Gather commit times from each input path that is a directory
-    let combined_commit_times = config
-        .input_paths
+    let combined_commit_times = existing_paths
         .par_iter()
         .filter_map(|path_str| {
             let repo_path = Path::new(path_str);
@@ -94,8 +97,7 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
         compute_recentness_boost(&combined_commit_times, config.git_boost_max.unwrap_or(100));
 
     // Process files in parallel for each input path
-    let merged_files = config
-        .input_paths
+    let merged_files = existing_paths
         .par_iter()
         .map(|path_str| {
             let path = Path::new(path_str);
@@ -132,6 +134,22 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 }
 
 pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Result<String> {
+    // Generate tree header if requested
+    let tree_header = if config.tree_header || config.tree_only {
+        let file_paths: Vec<std::path::PathBuf> = files
+            .iter()
+            .map(|f| std::path::PathBuf::from(&f.rel_path))
+            .collect();
+        generate_tree(&file_paths)
+    } else {
+        String::new()
+    };
+
+    // If tree_only is requested, return just the tree
+    if config.tree_only {
+        return Ok(tree_header);
+    }
+
     let mut accumulated = 0_usize;
     let cap = if config.token_mode {
         parse_token_limit(&config.tokens)?
@@ -140,6 +158,19 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .map_err(|e| anyhow!("max_size: Invalid size format: {}", e))?
             .as_u64() as usize
     };
+
+    // Account for tree header size in capacity calculations
+    let tree_header_size = if config.tree_header {
+        if config.token_mode {
+            count_tokens(&tree_header)
+        } else {
+            tree_header.len()
+        }
+    } else {
+        0
+    };
+
+    accumulated += tree_header_size;
 
     // Sort by priority (asc) and file_index (asc)
     let mut sorted_files: Vec<_> = files.iter().collect();
@@ -163,8 +194,13 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             } else {
                 config
                     .output_template
+                    .as_ref()
+                    .expect("output_template should be set")
                     .replace("FILE_PATH", &file.rel_path)
                     .replace("FILE_CONTENT", &content)
+                    // Handle both literal "\n" and escaped "\\n"
+                    .replace("\\\\\n", "\n") // First handle escaped newline
+                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
             };
             count_tokens(&formatted)
         } else {
@@ -180,9 +216,9 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
         }
     }
 
-    if config.json {
+    let main_content = if config.json {
         // JSON array of objects
-        Ok(serde_json::to_string_pretty(
+        serde_json::to_string_pretty(
             &files_to_include
                 .iter()
                 .map(|f| {
@@ -193,23 +229,42 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                     })
                 })
                 .collect::<Vec<_>>(),
-        )?)
+        )?
     } else {
         // Use the user-defined template
-        Ok(files_to_include
+        files_to_include
             .iter()
             .map(|f| {
                 let content = format_content_with_line_numbers(&f.content, config.line_numbers);
                 config
                     .output_template
+                    .as_ref()
+                    .expect("output_template should be set")
                     .replace("FILE_PATH", &f.rel_path)
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/copilot/fix-160
                     .replace("FILE_CONTENT", &content)
                     // Handle both literal "\n" and escaped "\\n"
                     .replace("\\\\\n", "\n") // First handle escaped newline
                     .replace("\\\\n", "\n") // Then handle escaped \n sequence
+=======
+                    .replace("FILE_CONTENT", &content)
+                    // Handle both literal "\n" and escaped "\\n"
+                    .replace("\\\\\n", "\n") // First handle escaped newline
+                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
+>>>>>>> e798c5f (Add line numbers feature with --line-numbers CLI option)
             })
             .collect::<Vec<_>>()
-            .join("\n"))
+            .join("\n")
+    };
+
+    // Combine tree header with main content
+    if config.tree_header {
+        Ok(format!("{}{}", tree_header, main_content))
+    } else {
+        Ok(main_content)
     }
 }
 

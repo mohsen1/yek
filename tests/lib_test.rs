@@ -2,6 +2,7 @@
 mod lib_tests {
     use std::fs;
     use std::io::Write;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
 
@@ -11,6 +12,33 @@ mod lib_tests {
         concat_files, config::YekConfig, count_tokens, is_text_file, parallel::ProcessedFile,
         parse_token_limit, priority::PriorityRule, serialize_repo,
     };
+
+    #[cfg(unix)]
+    fn make_unreadable(path: &std::path::Path) -> std::io::Result<()> {
+        let mut permissions = fs::metadata(path)?.permissions();
+        permissions.set_mode(0o000);
+        fs::set_permissions(path, permissions)
+    }
+
+    #[cfg(not(unix))]
+    fn make_unreadable(_path: &std::path::Path) -> std::io::Result<()> {
+        // On Windows, we can't easily make files unreadable in the same way
+        // Skip this test functionality on Windows
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn make_readable(path: &std::path::Path) -> std::io::Result<()> {
+        let mut permissions = fs::metadata(path)?.permissions();
+        permissions.set_mode(0o644);
+        fs::set_permissions(path, permissions)
+    }
+
+    #[cfg(not(unix))]
+    fn make_readable(_path: &std::path::Path) -> std::io::Result<()> {
+        // On Windows, files are readable by default
+        Ok(())
+    }
 
     // Initialize tracing subscriber for tests
     fn init_tracing() {
@@ -30,7 +58,7 @@ mod lib_tests {
             score: 100,
         }];
         config.binary_extensions = vec!["bin".to_string()];
-        config.output_template = ">>>> FILE_PATH\nFILE_CONTENT".to_string();
+        config.output_template = Some(">>>> FILE_PATH\nFILE_CONTENT".to_string());
         config
     }
 
@@ -225,7 +253,7 @@ mod lib_tests {
 
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         config.output_template =
-            "Custom template:\nPath: FILE_PATH\nContent: FILE_CONTENT".to_string();
+            Some("Custom template:\nPath: FILE_PATH\nContent: FILE_CONTENT".to_string());
         let result = serialize_repo(&config).unwrap();
         let output_string = result.0;
         assert!(output_string.contains("Custom template:"));
@@ -280,7 +308,7 @@ mod lib_tests {
         std::fs::write(temp_dir.path().join(file_path), file_content).unwrap();
 
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
-        config.output_template = "Path: FILE_PATH\nContent:\nFILE_CONTENT".to_string();
+        config.output_template = Some("Path: FILE_PATH\nContent:\nFILE_CONTENT".to_string());
         let result = serialize_repo(&config).unwrap();
         let output_string = result.0;
 
@@ -313,14 +341,15 @@ mod lib_tests {
         std::fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
 
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
-        config.output_template = "Path: FILE_PATH\\nContent: FILE_CONTENT".to_string(); // Using literal "\\n"
+        config.output_template = Some("Path: FILE_PATH\\nContent: FILE_CONTENT".to_string()); // Using literal "\\n"
         let result = serialize_repo(&config).unwrap();
         let output_string = result.0;
         assert!(output_string.contains("Path: test.txt\\nContent: test content")); // Should not replace "\\n" literally
 
         let mut config_replace =
             create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
-        config_replace.output_template = "Path: FILE_PATH\\\\nContent: FILE_CONTENT".to_string(); // Using literal "\\\\n" to represent escaped backslash n
+        config_replace.output_template =
+            Some("Path: FILE_PATH\\\\nContent: FILE_CONTENT".to_string()); // Using literal "\\\\n" to represent escaped backslash n
         let result_replace = serialize_repo(&config_replace).unwrap();
         let output_string_replace = result_replace.0;
         assert!(output_string_replace.contains("Path: test.txt\nContent: test content"));
@@ -363,23 +392,25 @@ mod lib_tests {
         std::fs::write(&file_path, "test content").unwrap();
         let config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
 
-        // Make the file unreadable
-        let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-        // Set permissions to 000 (no read, no write, no execute)
-        permissions.set_mode(0o000);
-        let _ = fs::set_permissions(&file_path, permissions);
+        if cfg!(unix) {
+            // Make the file unreadable (Unix only)
+            make_unreadable(&file_path).unwrap();
 
-        let result = serialize_repo(&config);
-        // In case of read error, it should still return Ok but skip the file
-        assert!(result.is_ok());
-        let output = result.unwrap();
-        assert_eq!(output.1.len(), 0); // No files processed due to read error
+            let result = serialize_repo(&config);
+            // In case of read error, it should still return Ok but skip the file
+            assert!(result.is_ok());
+            let output = result.unwrap();
+            assert_eq!(output.1.len(), 0); // No files processed due to read error
 
-        // Restore permissions so temp dir can be deleted
-        let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-        // Set back to readable
-        permissions.set_mode(0o644);
-        fs::set_permissions(&file_path, permissions).unwrap();
+            // Restore permissions so temp dir can be deleted
+            make_readable(&file_path).unwrap();
+        } else {
+            // On Windows, just test normal processing
+            let result = serialize_repo(&config);
+            assert!(result.is_ok());
+            let output = result.unwrap();
+            assert_eq!(output.1.len(), 1); // File should be processed normally
+        }
     }
 
     #[test]
@@ -402,23 +433,23 @@ mod lib_tests {
         let file_path = temp_dir.path().join("unreadable.txt");
         fs::write(&file_path, "test content").unwrap();
 
-        // Make the file unreadable
-        let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-        // Set permissions to 000 (no read, no write, no execute)
-        permissions.set_mode(0o000);
-        let _ = fs::set_permissions(&file_path, permissions);
+        if cfg!(unix) {
+            // Make the file unreadable (Unix only)
+            make_unreadable(&file_path).unwrap();
 
-        let result = is_text_file(&file_path, &[]);
-        assert!(
-            result.is_err(),
-            "is_text_file should return Err for unreadable file"
-        );
+            let result = is_text_file(&file_path, &[]);
+            assert!(
+                result.is_err(),
+                "is_text_file should return Err for unreadable file"
+            );
 
-        // Restore permissions so temp dir can be deleted
-        let mut permissions = fs::metadata(&file_path).unwrap().permissions();
-        // Set back to readable
-        permissions.set_mode(0o644);
-        fs::set_permissions(&file_path, permissions).unwrap();
+            // Restore permissions so temp dir can be deleted
+            make_readable(&file_path).unwrap();
+        } else {
+            // On Windows, just test that the function works normally
+            let result = is_text_file(&file_path, &[]);
+            assert!(result.is_ok(), "is_text_file should succeed on Windows");
+        }
     }
 
     #[test]
@@ -529,7 +560,7 @@ mod lib_tests {
 
         // Test custom template
         config.json = false;
-        config.output_template = "==FILE_PATH==\n---\nFILE_CONTENT\n====".to_string();
+        config.output_template = Some("==FILE_PATH==\n---\nFILE_CONTENT\n====".to_string());
         let output_custom = yek::concat_files(&files, &config).unwrap();
         assert!(output_custom.contains("==src/main.rs==\n---\nfn main() {}\n===="));
         assert!(output_custom.contains("==README.md==\n---\n# Yek\n===="));
@@ -597,7 +628,7 @@ mod lib_tests {
     #[test]
     fn test_token_counting_with_template() {
         let config = YekConfig {
-            output_template: "File: FILE_PATH\nContent:\nFILE_CONTENT".to_string(),
+            output_template: Some("File: FILE_PATH\nContent:\nFILE_CONTENT".to_string()),
             ..Default::default()
         };
         let files = vec![ProcessedFile {
@@ -636,7 +667,7 @@ mod lib_tests {
             token_mode: true,
             tokens: "10".to_string(), // Set a very low token limit
             // Include filename in template so we can verify which files are included
-            output_template: ">>>> FILE_PATH\nFILE_CONTENT".to_string(),
+            output_template: Some(">>>> FILE_PATH\nFILE_CONTENT".to_string()),
             ..Default::default()
         };
         let files = vec![

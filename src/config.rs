@@ -54,9 +54,13 @@ pub struct YekConfig {
     #[config_arg()]
     pub output_dir: Option<String>,
 
+    /// Output filename. If provided, write output to this file in current directory
+    #[config_arg(long = "output-name")]
+    pub output_name: Option<String>,
+
     /// Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
-    #[config_arg(default_value = ">>>> FILE_PATH\nFILE_CONTENT")]
-    pub output_template: String,
+    #[config_arg()]
+    pub output_template: Option<String>,
 
     /// Ignore patterns
     #[config_arg(long = "ignore-patterns", multi_value_behavior = "extend")]
@@ -77,6 +81,14 @@ pub struct YekConfig {
     /// Maximum additional boost from Git commit times (0..1000)
     #[config_arg(accept_from = "config_only")]
     pub git_boost_max: Option<i32>,
+
+    /// Include directory tree header in output (incompatible with JSON output)
+    #[config_arg(long = "tree-header", short = 't')]
+    pub tree_header: bool,
+
+    /// Show only the directory tree (no file contents, incompatible with JSON output)
+    #[config_arg(long = "tree-only")]
+    pub tree_only: bool,
 
     /// True if we should stream output to stdout (computed)
     pub stream: bool,
@@ -104,7 +116,12 @@ impl Default for YekConfig {
             debug: false,
             line_numbers: false,
             output_dir: None,
+<<<<<<< HEAD
+            output_name: None,
             output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
+=======
+            output_template: Some(DEFAULT_OUTPUT_TEMPLATE.to_string()),
+>>>>>>> f1b8e9c (Fix output_template config file bug by using Option type)
             ignore_patterns: Vec::new(),
             unignore_patterns: Vec::new(),
             priority_rules: Vec::new(),
@@ -115,6 +132,8 @@ impl Default for YekConfig {
             git_boost_max: Some(100),
 
             // computed fields
+            tree_header: false,
+            tree_only: false,
             stream: false,
             token_mode: false,
             output_file_full_path: None,
@@ -192,6 +211,11 @@ impl YekConfig {
         let force_tty = std::env::var("FORCE_TTY").is_ok();
 
         cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
+
+        // Handle default for output_template if not provided
+        if cfg.output_template.is_none() {
+            cfg.output_template = Some(DEFAULT_OUTPUT_TEMPLATE.to_string());
+        }
 
         // Check if we should read input paths from stdin
         if cfg.input_paths.is_empty() {
@@ -324,9 +348,12 @@ impl YekConfig {
 
     /// Validate the final config.
     pub fn validate(&self) -> Result<()> {
-        if !self.output_template.contains("FILE_PATH")
-            || !self.output_template.contains("FILE_CONTENT")
-        {
+        let template = self
+            .output_template
+            .as_ref()
+            .ok_or_else(|| anyhow!("output_template: must be provided"))?;
+
+        if !template.contains("FILE_PATH") || !template.contains("FILE_CONTENT") {
             return Err(anyhow!(
                 "output_template: must contain FILE_PATH and FILE_CONTENT"
             ));
@@ -388,6 +415,20 @@ impl YekConfig {
             glob::Pattern::new(&rule.pattern).map_err(|e| {
                 anyhow!("priority_rules: Invalid pattern '{}': {}", rule.pattern, e)
             })?;
+        }
+
+        // Validate tree options are mutually exclusive
+        if self.tree_header && self.tree_only {
+            return Err(anyhow!("tree_header and tree_only cannot both be enabled"));
+        }
+
+        // Validate JSON output is not used with tree modes
+        if self.json && self.tree_header {
+            return Err(anyhow!("JSON output not supported with tree header mode"));
+        }
+
+        if self.json && self.tree_only {
+            return Err(anyhow!("JSON output not supported in tree-only mode"));
         }
 
         Ok(())
