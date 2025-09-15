@@ -46,7 +46,7 @@ assert_cmd = "2.0"
 chrono = "0.4"
 predicates = "3.0"
 tempfile = "3.19"
-criterion = "0.5"
+criterion = "0.7"
 rand = "0.8"
 grcov = "0.10.5"
 
