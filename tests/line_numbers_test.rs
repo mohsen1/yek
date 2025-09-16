@@ -18,10 +18,13 @@ mod line_numbers_tests {
 
         let (output, _) = serialize_repo(&config).unwrap();
 
-        // Should not contain line numbers
+        // Should not contain line numbers (check both old and new formats)
         assert!(!output.contains("  1 |"));
+        assert!(!output.contains("1 |"));
         assert!(!output.contains("  2 |"));
+        assert!(!output.contains("2 |"));
         assert!(!output.contains("  3 |"));
+        assert!(!output.contains("3 |"));
         assert!(output.contains("line 1"));
         assert!(output.contains("line 2"));
         assert!(output.contains("line 3"));
@@ -39,10 +42,10 @@ mod line_numbers_tests {
 
         let (output, _) = serialize_repo(&config).unwrap();
 
-        // Should contain line numbers
-        assert!(output.contains("  1 | line 1"));
-        assert!(output.contains("  2 | line 2"));
-        assert!(output.contains("  3 | line 3"));
+        // Should contain line numbers (1-character width for 3 lines)
+        assert!(output.contains("1 | line 1"));
+        assert!(output.contains("2 | line 2"));
+        assert!(output.contains("3 | line 3"));
     }
 
     #[test]
@@ -58,14 +61,14 @@ mod line_numbers_tests {
 
         let (output, _) = serialize_repo(&config).unwrap();
 
-        // Should be valid JSON with line numbers
+        // Should be valid JSON with line numbers (1-character width for 2 lines)
         let json: serde_json::Value = serde_json::from_str(&output).unwrap();
         let files = json.as_array().unwrap();
         let first_file = &files[0];
         let content = first_file["content"].as_str().unwrap();
 
-        assert!(content.contains("  1 | line 1"));
-        assert!(content.contains("  2 | line 2"));
+        assert!(content.contains("1 | line 1"));
+        assert!(content.contains("2 | line 2"));
     }
 
     #[test]
@@ -80,8 +83,8 @@ mod line_numbers_tests {
 
         let (output, _) = serialize_repo(&config).unwrap();
 
-        assert!(output.contains("  1 | single line"));
-        assert!(!output.contains("  2 |"));
+        assert!(output.contains("1 | single line"));
+        assert!(!output.contains("2 |"));
     }
 
     #[test]
@@ -97,7 +100,7 @@ mod line_numbers_tests {
         let (output, _) = serialize_repo(&config).unwrap();
 
         // Empty file should not have any line numbers
-        assert!(!output.contains("  1 |"));
+        assert!(!output.contains("1 |"));
     }
 
     #[test]
@@ -116,12 +119,12 @@ mod line_numbers_tests {
 
         let (output, _) = serialize_repo(&config).unwrap();
 
-        // Check single-digit line numbers are formatted correctly
-        assert!(output.contains("  1 | line 1"));
-        assert!(output.contains("  9 | line 9"));
+        // Check single-digit line numbers are formatted correctly (2-character width for 15 lines)
+        assert!(output.contains(" 1 | line 1"));
+        assert!(output.contains(" 9 | line 9"));
         // Check double-digit line numbers are formatted correctly
-        assert!(output.contains(" 10 | line 10"));
-        assert!(output.contains(" 15 | line 15"));
+        assert!(output.contains("10 | line 10"));
+        assert!(output.contains("15 | line 15"));
     }
 
     #[test]
@@ -137,9 +140,9 @@ mod line_numbers_tests {
 
         let (output, _) = serialize_repo(&config).unwrap();
 
-        // Should contain custom template with line numbers
+        // Should contain custom template with line numbers (1-character width for 2 lines)
         assert!(output.contains("=== test.txt ==="));
-        assert!(output.contains("  1 | line 1"));
-        assert!(output.contains("  2 | line 2"));
+        assert!(output.contains("1 | line 1"));
+        assert!(output.contains("2 | line 2"));
     }
 }

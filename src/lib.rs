@@ -264,10 +264,20 @@ fn format_content_with_line_numbers(content: &str, include_line_numbers: bool) -
         return content.to_string();
     }
 
-    content
-        .lines()
+    let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
+
+    // Calculate the width needed for the largest line number
+    let width = if total_lines == 0 {
+        1
+    } else {
+        total_lines.to_string().len()
+    };
+
+    lines
+        .iter()
         .enumerate()
-        .map(|(i, line)| format!("{:3} | {}", i + 1, line))
+        .map(|(i, line)| format!("{:width$} | {}", i + 1, line, width = width))
         .collect::<Vec<_>>()
         .join("\n")
 }
