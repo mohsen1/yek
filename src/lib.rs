@@ -56,9 +56,7 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 /// Main entrypoint for serialization, used by CLI and tests
 pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)> {
     // Validate input paths and warn about non-existent ones
-    let mut existing_paths = Vec::new();
     let mut non_existent_paths = Vec::new();
-    let mut existing_paths = Vec::new();
 
     for path_str in &config.input_paths {
         let path = Path::new(path_str);
@@ -76,7 +74,8 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     }
 
     // Gather commit times from each input path that is a directory
-    let combined_commit_times = existing_paths
+    let combined_commit_times = config
+        .input_paths
         .par_iter()
         .filter_map(|path_str| {
             let repo_path = Path::new(path_str);
@@ -97,7 +96,8 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
         compute_recentness_boost(&combined_commit_times, config.git_boost_max.unwrap_or(100));
 
     // Process files in parallel for each input path
-    let merged_files = existing_paths
+    let merged_files = config
+        .input_paths
         .par_iter()
         .map(|path_str| {
             let path = Path::new(path_str);
@@ -241,20 +241,10 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
                     .as_ref()
                     .expect("output_template should be set")
                     .replace("FILE_PATH", &f.rel_path)
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> origin/copilot/fix-160
                     .replace("FILE_CONTENT", &content)
                     // Handle both literal "\n" and escaped "\\n"
                     .replace("\\\\\n", "\n") // First handle escaped newline
                     .replace("\\\\n", "\n") // Then handle escaped \n sequence
-=======
-                    .replace("FILE_CONTENT", &content)
-                    // Handle both literal "\n" and escaped "\\n"
-                    .replace("\\\\\n", "\n") // First handle escaped newline
-                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
->>>>>>> e798c5f (Add line numbers feature with --line-numbers CLI option)
             })
             .collect::<Vec<_>>()
             .join("\n")

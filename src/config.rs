@@ -116,12 +116,8 @@ impl Default for YekConfig {
             debug: false,
             line_numbers: false,
             output_dir: None,
-<<<<<<< HEAD
             output_name: None,
-            output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
-=======
             output_template: Some(DEFAULT_OUTPUT_TEMPLATE.to_string()),
->>>>>>> f1b8e9c (Fix output_template config file bug by using Option type)
             ignore_patterns: Vec::new(),
             unignore_patterns: Vec::new(),
             priority_rules: Vec::new(),

@@ -133,7 +133,7 @@ mod line_numbers_tests {
         let mut config = YekConfig::default();
         config.input_paths = vec![temp_dir.path().to_string_lossy().to_string()];
         config.line_numbers = true;
-        config.output_template = "=== FILE_PATH ===\nFILE_CONTENT".to_string();
+        config.output_template = Some("=== FILE_PATH ===\nFILE_CONTENT".to_string());
 
         let (output, _) = serialize_repo(&config).unwrap();
 
