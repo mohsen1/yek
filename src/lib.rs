@@ -267,11 +267,11 @@ fn format_content_with_line_numbers(content: &str, include_line_numbers: bool) -
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
 
-    // Calculate the width needed for the largest line number
+    // Calculate the width needed for the largest line number, with minimum width of 3
     let width = if total_lines == 0 {
-        1
+        3
     } else {
-        total_lines.to_string().len()
+        std::cmp::max(3, total_lines.to_string().len())
     };
 
     lines

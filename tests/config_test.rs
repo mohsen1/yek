@@ -688,7 +688,7 @@ fn test_config_files_ignored_by_default() {
 
 #[test]
 fn test_output_template_from_toml_config() {
-    let _guard = CONFIG_TEST_MUTEX.lock().unwrap();
+    let _guard = CONFIG_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     // Create a unique temp directory and a yek.toml file
     let temp_dir = TempDir::new().expect("failed to create temp dir");
@@ -725,7 +725,7 @@ fn test_output_template_from_toml_config() {
 
 #[test]
 fn test_output_template_from_yaml_config() {
-    let _guard = CONFIG_TEST_MUTEX.lock().unwrap();
+    let _guard = CONFIG_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     // Create a unique temp directory and a yek.yaml file
     let temp_dir = TempDir::new().expect("failed to create temp dir");
@@ -762,7 +762,7 @@ fn test_output_template_from_yaml_config() {
 
 #[test]
 fn test_output_template_from_json_config() {
-    let _guard = CONFIG_TEST_MUTEX.lock().unwrap();
+    let _guard = CONFIG_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     // Create a unique temp directory and a yek.json file
     let temp_dir = TempDir::new().expect("failed to create temp dir");
@@ -799,6 +799,8 @@ fn test_output_template_from_json_config() {
 
 #[test]
 fn test_output_template_defaults_when_no_config() {
+    let _guard = CONFIG_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
     // Create a unique temp directory with no config file
     let temp_dir = TempDir::new().expect("failed to create temp dir");
     let old_dir = std::env::current_dir().expect("failed to get current dir");
