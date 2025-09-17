@@ -174,6 +174,21 @@ fn test_main_non_streaming_mode() {
 fn test_main_with_token_mode() {
     use tempfile::tempdir;
     use std::fs;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+
+    let mut cmd = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .arg(temp_dir.path())
+        .arg("--tokens")
+        .arg("1000")
+        .arg("--stream")
+        .assert();
+
+    cmd.success();
+}
+
 #[test]
 fn test_main_with_force_tty() {
     use tempfile::tempdir;
