@@ -535,7 +535,13 @@ mod priority_tests {
                     break; // Remove just one directory
                 }
             }
+}
 
+        let times = get_recent_commit_times_git2(repo_path, 100);
+        // Should handle corruption gracefully (return None or partial results)
+        // The function should not panic
+        // We don't assert the exact result since corruption handling may vary
+    }
         let times = get_recent_commit_times_git2(repo_path, 100);
         // Should handle corruption gracefully (return None or partial results)
         // The function should not panic
