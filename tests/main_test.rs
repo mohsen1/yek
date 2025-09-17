@@ -21,6 +21,8 @@ fn test_main_version_output() {
         .arg("--version")
         .assert()
         .success();
+}
+
 #[test]
 fn test_main_with_directory_input() {
     use tempfile::tempdir;
