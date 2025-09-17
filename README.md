@@ -270,60 +270,6 @@ output_name: yek-output.txt
 output_template: "FILE_PATH\n\nFILE_CONTENT"
 ```
 
-### TOML Configuration Example
-
-```toml
-# yek.toml
-ignore_patterns = ["ai-prompts/**", "__generated__/**"]
-git_boost_max = 50
-max_size = "128K"
-json = false
-debug = false
-line_numbers = false
-output_dir = "/tmp/yek"
-output_name = "yek-output.txt"
-output_template = "FILE_PATH\n\nFILE_CONTENT"
-
-[[priority_rules]]
-score = 100
-pattern = "^src/lib/"
-
-[[priority_rules]]
-score = 90
-pattern = "^src/"
-
-[binary_extensions]
-extensions = [".blend", ".fbx", ".max", ".psd"]
-```
-
-### JSON Configuration Example
-
-```json
-{
-  "ignore_patterns": ["ai-prompts/**", "__generated__/**"],
-  "git_boost_max": 50,
-  "max_size": "128K",
-  "json": false,
-  "debug": false,
-  "line_numbers": false,
-  "output_dir": "/tmp/yek",
-  "output_name": "yek-output.txt",
-  "output_template": "FILE_PATH\\n\\nFILE_CONTENT",
-  "priority_rules": [
-    {"score": 100, "pattern": "^src/lib/"},
-    {"score": 90, "pattern": "^src/"}
-  ],
-  "binary_extensions": [".blend", ".fbx", ".max", ".psd"]
-}
-```
-
-All configuration keys are optional. By default:
-
-- No extra ignore patterns, only the ones from `.gitignore` are used.
-- All files have equal priority (score: 1)
-- Git-based priority boost maximum is 100
-- Common binary file extensions are ignored (.jpg, .png, .exe, etc. - see source for full list)
-
 ## Performance
 
 `yek` is fast. It's written in Rust and does many things in parallel to speed up processing.
