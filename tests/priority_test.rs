@@ -609,4 +609,5 @@ mod priority_tests {
         assert!(!times.is_empty());
     }
 }
-}
+
+        }
