@@ -297,4 +297,105 @@ mod tests {
 
         Ok(())
     }
+    #[test]
+    fn test_process_files_parallel_single_file() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let file_path = temp_dir.path().join("single.txt");
+        fs::write(&file_path, "single file content").expect("failed to write file");
+
+        let config = YekConfig::extend_config_with_defaults(
+            vec![file_path.to_string_lossy().to_string()],
+            ".".to_string(),
+        );
+        let boosts: HashMap<String, i32> = HashMap::new();
+
+        let result = process_files_parallel(&file_path, &config, &boosts)
+            .expect("process_files_parallel failed");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].rel_path, "single.txt");
+        assert_eq!(result[0].content, "single file content");
+    }
+
+    #[test]
+    fn test_process_files_parallel_glob_pattern() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+
+        // Create files matching a pattern
+        fs::write(temp_dir.path().join("file1.rs"), "content1").expect("failed to write file1");
+        fs::write(temp_dir.path().join("file2.rs"), "content2").expect("failed to write file2");
+        fs::write(temp_dir.path().join("file.md"), "markdown").expect("failed to write md file");
+
+        let glob_pattern = temp_dir.path().join("*.rs").to_string_lossy().to_string();
+        let config = YekConfig::default();
+        let boosts: HashMap<String, i32> = HashMap::new();
+
+        let result = process_files_parallel(Path::new(&glob_pattern), &config, &boosts)
+            .expect("process_files_parallel failed");
+
+        assert_eq!(result.len(), 2);
+        let rel_paths: Vec<&str> = result.iter().map(|f| f.rel_path.as_str()).collect();
+        assert!(rel_paths.iter().any(|&p| p.ends_with("file1.rs")));
+        assert!(rel_paths.iter().any(|&p| p.ends_with("file2.rs")));
+    }
+
+    #[test]
+    fn test_process_files_parallel_with_gitignore() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+
+        // Create files
+        fs::write(temp_dir.path().join("included.txt"), "included").expect("failed to write included");
+        fs::write(temp_dir.path().join("ignored.txt"), "ignored").expect("failed to write ignored");
+
+        // Create .gitignore
+        fs::write(temp_dir.path().join(".gitignore"), "*.txt\n").expect("failed to write gitignore");
+
+        let config = YekConfig::extend_config_with_defaults(
+            vec![temp_dir.path().to_string_lossy().to_string()],
+            ".".to_string(),
+        );
+        let boosts: HashMap<String, i32> = HashMap::new();
+
+        let result = process_files_parallel(temp_dir.path(), &config, &boosts)
+            .expect("process_files_parallel failed");
+
+        // Files should be ignored by .gitignore
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_process_files_parallel_binary_file() {
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let binary_path = temp_dir.path().join("binary.bin");
+        fs::write(&binary_path, [0u8, 1, 2, 3]).expect("failed to write binary file");
+
+        let config = YekConfig::extend_config_with_defaults(
+            vec![temp_dir.path().to_string_lossy().to_string()],
+            ".".to_string(),
+        );
+        let boosts: HashMap<String, i32> = HashMap::new();
+
+        let result = process_files_parallel(temp_dir.path(), &config, &boosts)
+            .expect("process_files_parallel failed");
+
+        // Binary file should be skipped
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_normalize_path_edge_cases() {
+        use yek::parallel::normalize_path;
+
+        let base = Path::new("/base");
+        let path = Path::new("/base/sub/file.txt");
+        assert_eq!(normalize_path(path, base), "sub/file.txt");
+
+        // Path not under base
+        let path = Path::new("/other/file.txt");
+        assert_eq!(normalize_path(path, base), "/other/file.txt");
+
+        // Empty path
+        let path = Path::new("");
+        assert_eq!(normalize_path(path, base), "");
+    }
 }

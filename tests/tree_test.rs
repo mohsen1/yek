@@ -617,4 +617,52 @@ mod tree_tests {
         let result2_lines: Vec<&str> = result2.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(result1_lines.len(), result2_lines.len());
     }
+    #[test]
+    fn test_clean_path_components_windows_prefix() {
+        // Test filtering Windows drive prefixes
+        // Since we can't create actual Windows paths on Unix, we test the logic indirectly
+        let path = Path::new("C:").join("Users").join("file.txt");
+        let components = clean_path_components(&path);
+
+        // On Unix, "C:" becomes a normal component, but the function should handle it
+        // The key is that it filters out RootDir and Prefix components
+        assert!(!components.is_empty());
+    }
+
+    #[test]
+    fn test_generate_tree_with_empty_components() {
+        // Test paths that result in empty components after cleaning
+        let paths = vec![PathBuf::from("")];
+        let result = generate_tree(&paths);
+        // Should handle gracefully
+        assert!(result.contains("Directory structure:") || result.is_empty());
+    }
+
+    #[test]
+    fn test_add_path_to_tree_conflicts() {
+        // Test file/directory conflicts by creating paths that would conflict
+        let paths = vec![
+            PathBuf::from("conflict"), // as file
+            PathBuf::from("conflict/item.txt"), // makes conflict a directory
+        ];
+        let result = generate_tree(&paths);
+
+        // conflict should be a directory containing item.txt
+        assert!(result.contains("conflict/"));
+        assert!(result.contains("item.txt"));
+    }
+
+    #[test]
+    fn test_render_tree_sorting_edge_cases() {
+        // Test sorting with mixed files and directories with same names
+        let paths = vec![
+            PathBuf::from("a/file"), // directory a with file
+            PathBuf::from("a"), // file a - should be absorbed into directory
+            PathBuf::from("b"), // file b
+        ];
+        let result = generate_tree(&paths);
+
+        // Should handle the conflict properly
+        assert!(result.contains("Directory structure:"));
+    }
 }

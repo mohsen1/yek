@@ -839,4 +839,121 @@ mod lib_tests {
         // Single line should have line number 1
         assert!(output.contains("  1 | single line"));
     }
+    #[test]
+    fn test_serialize_repo_with_nonexistent_paths() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let config = create_test_config(vec![
+            temp_dir.path().join("nonexistent1").to_string_lossy().to_string(),
+            temp_dir.path().join("nonexistent2").to_string_lossy().to_string(),
+        ]);
+
+        let result = serialize_repo(&config);
+        // Should succeed but with warnings
+        assert!(result.is_ok());
+        let (output, files) = result.unwrap();
+        assert!(files.is_empty()); // No files processed
+        assert_eq!(output, ""); // Empty output
+    }
+
+    #[test]
+    fn test_serialize_repo_with_mixed_existent_nonexistent() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("existent.txt"), "content").unwrap();
+
+        let config = create_test_config(vec![
+            temp_dir.path().join("existent.txt").to_string_lossy().to_string(),
+            temp_dir.path().join("nonexistent.txt").to_string_lossy().to_string(),
+        ]);
+
+        let result = serialize_repo(&config);
+        assert!(result.is_ok());
+        let (output, files) = result.unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(output.contains("content"));
+    }
+
+    #[test]
+    fn test_parse_token_limit_edge_cases() {
+        // Test with very large numbers
+        assert_eq!(parse_token_limit("999999k").unwrap(), 999999000);
+
+        // Test with zero (parse_token_limit allows 0, validation happens elsewhere)
+        assert_eq!(parse_token_limit("0").unwrap(), 0);
+        assert_eq!(parse_token_limit("0k").unwrap(), 0); // 0k = 0 * 1000 = 0
+
+        // Test with invalid format
+        assert!(parse_token_limit("k").is_err());
+        assert!(parse_token_limit("123k456").is_err());
+    }
+
+
+    #[test]
+    fn test_concat_files_with_token_limit_exceeded() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.token_mode = true;
+        config.tokens = "5".to_string(); // Very low token limit
+
+        let files = vec![
+            ProcessedFile {
+                priority: 100,
+                file_index: 0,
+                rel_path: "long.txt".to_string(),
+                content: "This is a very long piece of content that should exceed the token limit.".to_string(),
+            },
+            ProcessedFile {
+                priority: 50,
+                file_index: 1,
+                rel_path: "short.txt".to_string(),
+                content: "Short".to_string(),
+            },
+        ];
+
+        let result = concat_files(&files, &config);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // Should include only the short file or part of the long one
+        assert!(output.contains("Short") || output.len() < 100);
+    }
+
+    #[test]
+    fn test_serialize_repo_with_debug_logging() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.debug = true; // Enable debug logging
+
+        let result = serialize_repo(&config);
+        assert!(result.is_ok());
+        // The function should work with debug enabled
+    }
+
+    #[test]
+    fn test_concat_files_with_tree_header_and_token_mode() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.tree_header = true;
+        config.token_mode = true;
+        config.tokens = "1000".to_string();
+
+        let files = vec![ProcessedFile {
+            priority: 100,
+            file_index: 0,
+            rel_path: "test.txt".to_string(),
+            content: "content".to_string(),
+        }];
+
+        let result = concat_files(&files, &config);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // Should include tree header and content
+        assert!(output.contains("test.txt"));
+        assert!(output.contains("content"));
+    }
 }
