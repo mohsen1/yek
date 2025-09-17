@@ -6,6 +6,8 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  release:
+    types: [published]
 
 env:
   CARGO_TERM_COLOR: always
@@ -365,18 +367,18 @@ jobs:
         env:
           OUTPUT: CHANGES.md
 
-      - name: Create Release
+      - name: Create Draft Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/build-*/yek-*
           body_path: CHANGES.md
           tag_name: ${{ needs.should-release.outputs.version }}
+          draft: true
 
   publish:
     name: Publish to crates.io
-    needs: [test, lint, build, should-release]
     runs-on: ubuntu-latest
-    if: ${{ needs.should-release.outputs.yes }} == 'true' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'release' && github.event.action == 'published'
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -385,7 +387,7 @@ jobs:
 
       - name: Publish
         run: |
-          cargo_version=$(echo "${{ needs.should-release.outputs.version }}" | sed 's/^v//')
+          cargo_version=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
           if cargo search --color=never yek | grep -q "$cargo_version"; then
             echo "yek@$cargo_version already published"
             exit 0
