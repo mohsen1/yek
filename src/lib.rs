@@ -56,7 +56,6 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
 /// Main entrypoint for serialization, used by CLI and tests
 pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)> {
     // Validate input paths and warn about non-existent ones
-    let mut existing_paths = Vec::new();
     let mut non_existent_paths = Vec::new();
 
     for path_str in &config.input_paths {
@@ -75,7 +74,8 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
     }
 
     // Gather commit times from each input path that is a directory
-    let combined_commit_times = existing_paths
+    let combined_commit_times = config
+        .input_paths
         .par_iter()
         .filter_map(|path_str| {
             let repo_path = Path::new(path_str);
@@ -96,7 +96,8 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
         compute_recentness_boost(&combined_commit_times, config.git_boost_max.unwrap_or(100));
 
     // Process files in parallel for each input path
-    let merged_files = existing_paths
+    let merged_files = config
+        .input_paths
         .par_iter()
         .map(|path_str| {
             let path = Path::new(path_str);
@@ -183,21 +184,28 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
     for file in sorted_files {
         let content_size = if config.token_mode {
             // Format the file content with template first, then count tokens
+            let content = format_content_with_line_numbers(&file.content, config.line_numbers);
             let formatted = if config.json {
                 serde_json::to_string(&serde_json::json!({
                     "filename": &file.rel_path,
-                    "content": &file.content,
+                    "content": content,
                 }))
                 .map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?
             } else {
                 config
                     .output_template
+                    .as_ref()
+                    .expect("output_template should be set")
                     .replace("FILE_PATH", &file.rel_path)
-                    .replace("FILE_CONTENT", &file.content)
+                    .replace("FILE_CONTENT", &content)
+                    // Handle both literal "\n" and escaped "\\n"
+                    .replace("\\\\\n", "\n") // First handle escaped newline
+                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
             };
             count_tokens(&formatted)
         } else {
-            file.content.len()
+            let content = format_content_with_line_numbers(&file.content, config.line_numbers);
+            content.len()
         };
 
         if accumulated + content_size <= cap {
@@ -214,9 +222,10 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             &files_to_include
                 .iter()
                 .map(|f| {
+                    let content = format_content_with_line_numbers(&f.content, config.line_numbers);
                     serde_json::json!({
                         "filename": &f.rel_path,
-                        "content": &f.content,
+                        "content": content,
                     })
                 })
                 .collect::<Vec<_>>(),
@@ -226,12 +235,16 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
         files_to_include
             .iter()
             .map(|f| {
+                let content = format_content_with_line_numbers(&f.content, config.line_numbers);
                 config
                     .output_template
+                    .as_ref()
+                    .expect("output_template should be set")
                     .replace("FILE_PATH", &f.rel_path)
-                    .replace("FILE_CONTENT", &f.content)
-                    // Replace literal "\\n" with newline for backward compatibility
-                    .replace("\\\\n", "\n")
+                    .replace("FILE_CONTENT", &content)
+                    // Handle both literal "\n" and escaped "\\n"
+                    .replace("\\\\\n", "\n") // First handle escaped newline
+                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -243,6 +256,30 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
     } else {
         Ok(main_content)
     }
+}
+
+/// Format file content with line numbers if requested
+fn format_content_with_line_numbers(content: &str, include_line_numbers: bool) -> String {
+    if !include_line_numbers {
+        return content.to_string();
+    }
+
+    let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
+
+    // Calculate the width needed for the largest line number, with minimum width of 3
+    let width = if total_lines == 0 {
+        3
+    } else {
+        std::cmp::max(3, total_lines.to_string().len())
+    };
+
+    lines
+        .iter()
+        .enumerate()
+        .map(|(i, line)| format!("{:width$} | {}", i + 1, line, width = width))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Parse a token limit string like "800k" or "1000" into a number

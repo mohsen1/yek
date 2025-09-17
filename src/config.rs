@@ -46,6 +46,10 @@ pub struct YekConfig {
     #[config_arg()]
     pub debug: bool,
 
+    /// Include line numbers in output
+    #[config_arg(long = "line-numbers")]
+    pub line_numbers: bool,
+
     /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
     #[config_arg()]
     pub output_dir: Option<String>,
@@ -55,8 +59,8 @@ pub struct YekConfig {
     pub output_name: Option<String>,
 
     /// Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
-    #[config_arg(default_value = ">>>> FILE_PATH\nFILE_CONTENT")]
-    pub output_template: String,
+    #[config_arg()]
+    pub output_template: Option<String>,
 
     /// Ignore patterns
     #[config_arg(long = "ignore-patterns", multi_value_behavior = "extend")]
@@ -110,9 +114,10 @@ impl Default for YekConfig {
             tokens: String::new(),
             json: false,
             debug: false,
+            line_numbers: false,
             output_dir: None,
             output_name: None,
-            output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
+            output_template: Some(DEFAULT_OUTPUT_TEMPLATE.to_string()),
             ignore_patterns: Vec::new(),
             unignore_patterns: Vec::new(),
             priority_rules: Vec::new(),
@@ -202,6 +207,11 @@ impl YekConfig {
         let force_tty = std::env::var("FORCE_TTY").is_ok();
 
         cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
+
+        // Handle default for output_template if not provided
+        if cfg.output_template.is_none() {
+            cfg.output_template = Some(DEFAULT_OUTPUT_TEMPLATE.to_string());
+        }
 
         // Check if we should read input paths from stdin
         if cfg.input_paths.is_empty() {
@@ -334,9 +344,12 @@ impl YekConfig {
 
     /// Validate the final config.
     pub fn validate(&self) -> Result<()> {
-        if !self.output_template.contains("FILE_PATH")
-            || !self.output_template.contains("FILE_CONTENT")
-        {
+        let template = self
+            .output_template
+            .as_ref()
+            .ok_or_else(|| anyhow!("output_template: must be provided"))?;
+
+        if !template.contains("FILE_PATH") || !template.contains("FILE_CONTENT") {
             return Err(anyhow!(
                 "output_template: must contain FILE_PATH and FILE_CONTENT"
             ));
