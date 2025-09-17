@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
   release:
@@ -350,7 +349,7 @@ jobs:
     name: Release
     needs: [test, lint, build, should-release]
     runs-on: ubuntu-latest
-    if: ${{ needs.should-release.outputs.yes }} == 'true' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'release' && github.event.action == 'published'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -359,7 +358,7 @@ jobs:
           pattern: build-*
 
       - name: Generate release notes
-        uses: orhun/git-cliff-action@v2
+        uses: orhun/git-cliff-action@v4
         id: git-cliff
         with:
           config: cliff.toml
@@ -367,13 +366,13 @@ jobs:
         env:
           OUTPUT: CHANGES.md
 
-      - name: Create Draft Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/build-*/yek-*
           body_path: CHANGES.md
-          tag_name: ${{ needs.should-release.outputs.version }}
-          draft: true
+          tag_name: ${{ github.event.release.tag_name }}
+          draft: false
 
   publish:
     name: Publish to crates.io
@@ -388,7 +387,7 @@ jobs:
       - name: Publish
         run: |
           cargo_version=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
-          if cargo search --color=never yek | grep -q "$cargo_version"; then
+          if cargo info "yek@$cargo_version" 2>/dev/null; then
             echo "yek@$cargo_version already published"
             exit 0
           fi
