@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.1] - 2025-09-17
+[0.22.1]: https://github.com/bodo-run/yek/compare/v0.21.0...v0.22.1
+### Bug Fixes
+
+- Fix `Windows` installation script
+- Improve token parsing to handle multi-byte characters and emojis
+
+### Features
+
+- Add --output-name option to specify output filename
+
+### Miscellaneous Tasks
+
+- Bump serde from 1.0.217 to 1.0.218
+- Bump serde_json from 1.0.138 to 1.0.139
+- Bump bytesize from 1.3.2 to 2.0.0
+- Bump anyhow from 1.0.95 to 1.0.96
+- Bump clap from 4.5.30 to 4.5.31
+- Bump serde from 1.0.218 to 1.0.219
+- Bump config from 0.15.8 to 0.15.11
+- Bump anyhow from 1.0.96 to 1.0.97
+- Bump chrono from 0.4.39 to 0.4.40
+- Bump serde_json from 1.0.139 to 1.0.140
+- Bump bytesize from 2.0.0 to 2.0.1
+- Bump grcov from 0.8.20 to 0.8.24
+- Bump time from 0.3.37 to 0.3.41
+- Bump tempfile from 3.17.1 to 3.19.1
+
+### Ci
+
+- Add version-based release check
+
 ## [0.21.0] - 2025-02-23
 [0.21.0]: https://github.com/bodo-run/yek/compare/v0.20.0...v0.21.0
 ### Bug Fixes
@@ -28,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Run release and publish jobs on main branch
 - Only run release and publish on tag pushes
 - Trigger release on tag merge to main
+
+### Release
+
+- V0.21.0
 
 ## [0.20.0] - 2025-02-22
 [0.20.0]: https://github.com/bodo-run/yek/compare/v0.19.0...v0.20.0
