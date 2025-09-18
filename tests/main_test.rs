@@ -143,6 +143,7 @@ fn test_main_with_debug_flag() {
 
     cmd.success();
 }
+
 #[test]
 fn test_main_non_streaming_mode() {
     use std::fs;
