@@ -292,10 +292,10 @@ fn test_main_streaming_mode_with_debug() {
         .assert();
 
     cmd.success();
-    
+
     // Check that output file was created
     assert!(std::path::Path::new("output.txt").exists());
-    
+
     // Clean up
     std::fs::remove_file("output.txt").ok();
 }
@@ -306,7 +306,7 @@ fn test_main_checksum_error_handling() {
     use tempfile::tempdir;
 
     let temp_dir = tempdir().unwrap();
-    
+
     // Create a directory that will be used for checksum calculation
     fs::create_dir(temp_dir.path().join("subdir")).unwrap();
     fs::write(temp_dir.path().join("subdir").join("file.txt"), "content").unwrap();
@@ -331,7 +331,7 @@ fn test_main_file_write_failure_recovery() {
 
     // Try to write to a path that might fail (e.g., very long path)
     let output_name = "a".repeat(255) + ".txt"; // Very long filename
-    
+
     let cmd = Command::cargo_bin("yek")
         .expect("Binary 'yek' not found")
         .arg(temp_dir.path())

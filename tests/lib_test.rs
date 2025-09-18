@@ -978,18 +978,18 @@ mod lib_tests {
     fn test_template_processing_with_special_escaping() {
         init_tracing();
         let temp_dir = tempdir().unwrap();
-        
+
         // Create file with content that needs escaping
         let content = "Line with \"quotes\" and \\backslash\\ and $special {chars}";
         fs::write(temp_dir.path().join("special.txt"), content).unwrap();
-        
+
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         config.output_template = Some("=== FILE_PATH ===\n{{FILE_CONTENT}}".to_string());
-        
+
         let result = serialize_repo(&config);
         assert!(result.is_ok());
         let (output, _) = result.unwrap();
-        
+
         // Template should handle special characters
         assert!(output.contains("=== special.txt ==="));
         assert!(output.contains("{{Line with \"quotes\""));
@@ -999,18 +999,18 @@ mod lib_tests {
     fn test_json_output_with_special_characters() {
         init_tracing();
         let temp_dir = tempdir().unwrap();
-        
+
         // Create file with JSON special characters
         let content = r#"{"key": "value with \"quotes\" and \n newline"}"#;
         fs::write(temp_dir.path().join("data.json"), content).unwrap();
-        
+
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         config.json = true;
-        
+
         let result = serialize_repo(&config);
         assert!(result.is_ok());
         let (output, _) = result.unwrap();
-        
+
         // JSON output should properly escape nested JSON
         assert!(output.contains(r#""filename": "data.json""#));
         // Content should be properly escaped
@@ -1021,35 +1021,40 @@ mod lib_tests {
     fn test_token_limit_overflow_handling() {
         init_tracing();
         let temp_dir = tempdir().unwrap();
-        
+
         // Create multiple files that exceed token limit
         for i in 0..10 {
-            let content = format!("This is file {} with some content that will contribute to token count", i);
+            let content = format!(
+                "This is file {} with some content that will contribute to token count",
+                i
+            );
             fs::write(temp_dir.path().join(format!("file{}.txt", i)), content).unwrap();
         }
-        
+
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         config.token_mode = true;
         config.tokens = "50".to_string(); // Very low limit
-        
+
         let result = concat_files(
             &vec![
                 ProcessedFile {
                     priority: 0,
                     file_index: 0,
                     rel_path: "file0.txt".to_string(),
-                    content: "This is file 0 with some content that will contribute to token count".to_string(),
+                    content: "This is file 0 with some content that will contribute to token count"
+                        .to_string(),
                 },
                 ProcessedFile {
                     priority: 0,
                     file_index: 1,
                     rel_path: "file1.txt".to_string(),
-                    content: "This is file 1 with some content that will contribute to token count".to_string(),
+                    content: "This is file 1 with some content that will contribute to token count"
+                        .to_string(),
                 },
             ],
             &config,
         );
-        
+
         assert!(result.is_ok());
         let output = result.unwrap();
         // Should include at least one file but not all due to token limit
@@ -1059,17 +1064,17 @@ mod lib_tests {
 
     #[test]
     fn test_tree_rendering_with_unicode_paths() {
-        use yek::tree::generate_tree;
         use std::path::PathBuf;
-        
+        use yek::tree::generate_tree;
+
         let paths = vec![
             PathBuf::from("文档/说明.txt"),
             PathBuf::from("código/main.rs"),
             PathBuf::from("файлы/данные.json"),
         ];
-        
+
         let result = generate_tree(&paths);
-        
+
         // Should handle Unicode paths correctly
         assert!(result.contains("文档/"));
         assert!(result.contains("说明.txt"));
@@ -1081,13 +1086,13 @@ mod lib_tests {
 
     #[test]
     fn test_tree_rendering_empty_prefix() {
-        use yek::tree::generate_tree;
         use std::path::PathBuf;
-        
+        use yek::tree::generate_tree;
+
         // Test with single root file (empty prefix case)
         let paths = vec![PathBuf::from("single.txt")];
         let result = generate_tree(&paths);
-        
+
         assert!(result.contains("Directory structure:"));
         assert!(result.contains("└── single.txt"));
         // Should not have any prefix before the root item
@@ -1102,18 +1107,18 @@ mod lib_tests {
 
     #[test]
     fn test_tree_rendering_root_only_paths() {
-        use yek::tree::generate_tree;
         use std::path::PathBuf;
-        
+        use yek::tree::generate_tree;
+
         // Test with only root-level files (no nested directories)
         let paths = vec![
             PathBuf::from("a.txt"),
             PathBuf::from("b.txt"),
             PathBuf::from("c.txt"),
         ];
-        
+
         let result = generate_tree(&paths);
-        
+
         assert!(result.contains("├── a.txt"));
         assert!(result.contains("├── b.txt"));
         assert!(result.contains("└── c.txt")); // Last item uses └──

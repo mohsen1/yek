@@ -550,7 +550,7 @@ fn test_get_recent_commit_times_git_with_corrupted_head() {
     use std::fs;
     use tempfile::tempdir;
     use yek::priority::get_recent_commit_times_git2;
-    
+
     let dir = tempdir().unwrap();
     let repo_path = dir.path();
 
@@ -575,7 +575,7 @@ fn test_get_recent_commit_times_git_with_invalid_repo_structure() {
     use std::fs;
     use tempfile::tempdir;
     use yek::priority::get_recent_commit_times_git2;
-    
+
     let dir = tempdir().unwrap();
     let repo_path = dir.path();
 
@@ -593,7 +593,7 @@ fn test_get_recent_commit_times_git_with_detached_head() {
     use std::fs;
     use tempfile::tempdir;
     use yek::priority::get_recent_commit_times_git2;
-    
+
     let dir = tempdir().unwrap();
     let repo_path = dir.path();
 
@@ -655,7 +655,7 @@ fn test_get_recent_commit_times_git_with_shallow_clone() {
     use std::fs;
     use tempfile::tempdir;
     use yek::priority::get_recent_commit_times_git2;
-    
+
     let dir = tempdir().unwrap();
     let repo_path = dir.path();
 
@@ -707,7 +707,7 @@ fn test_get_recent_commit_times_git_with_submodules() {
     use std::fs;
     use tempfile::tempdir;
     use yek::priority::get_recent_commit_times_git2;
-    
+
     let dir = tempdir().unwrap();
     let repo_path = dir.path();
 
