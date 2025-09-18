@@ -642,7 +642,7 @@ mod tree_tests {
     fn test_add_path_to_tree_conflicts() {
         // Test file/directory conflicts by creating paths that would conflict
         let paths = vec![
-            PathBuf::from("conflict"), // as file
+            PathBuf::from("conflict"),          // as file
             PathBuf::from("conflict/item.txt"), // makes conflict a directory
         ];
         let result = generate_tree(&paths);
@@ -657,8 +657,8 @@ mod tree_tests {
         // Test sorting with mixed files and directories with same names
         let paths = vec![
             PathBuf::from("a/file"), // directory a with file
-            PathBuf::from("a"), // file a - should be absorbed into directory
-            PathBuf::from("b"), // file b
+            PathBuf::from("a"),      // file a - should be absorbed into directory
+            PathBuf::from("b"),      // file b
         ];
         let result = generate_tree(&paths);
 

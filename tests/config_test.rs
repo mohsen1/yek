@@ -828,16 +828,15 @@ fn test_output_template_defaults_when_no_config() {
 }
 #[test]
 fn test_read_input_paths_from_stdin() {
-    use std::io::Write;
     use std::process::{Command, Stdio};
 
     // Test with empty stdin
-    let mut child = Command::new("echo")
+    let child = Command::new("echo")
         .arg("")
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
-    let output = child.wait_with_output().unwrap();
+    let _output = child.wait_with_output().unwrap();
     // This is hard to test directly since it reads from stdin
     // Instead, we can test the logic indirectly through init_config
 }
@@ -871,7 +870,10 @@ fn test_validate_config_with_tree_options() {
     config.json = true;
     let result = config.validate();
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("JSON output not supported with tree header mode"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("JSON output not supported with tree header mode"));
 }
 
 #[test]
@@ -881,7 +883,10 @@ fn test_validate_config_with_tree_only() {
     config.json = true;
     let result = config.validate();
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("JSON output not supported in tree-only mode"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("JSON output not supported in tree-only mode"));
 }
 
 #[test]
@@ -894,8 +899,8 @@ fn test_get_checksum_with_nonexistent_files() {
 
 #[test]
 fn test_get_checksum_with_mixed_paths() {
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     let temp_dir = tempdir().unwrap();
     let file_path = temp_dir.path().join("test.txt");
@@ -953,9 +958,15 @@ fn test_init_config_ignore_patterns_merge() {
     config.ignore_patterns = ignore;
 
     // Apply unignore
-    config.ignore_patterns
-        .extend(config.unignore_patterns.iter().map(|pat| format!("!{}", pat)));
+    config.ignore_patterns.extend(
+        config
+            .unignore_patterns
+            .iter()
+            .map(|pat| format!("!{}", pat)),
+    );
 
-    assert!(config.ignore_patterns.contains(&"custom_ignore".to_string()));
+    assert!(config
+        .ignore_patterns
+        .contains(&"custom_ignore".to_string()));
     assert!(config.ignore_patterns.contains(&"!important".to_string()));
 }

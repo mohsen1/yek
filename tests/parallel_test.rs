@@ -344,11 +344,13 @@ mod tests {
         let temp_dir = tempdir().expect("failed to create temp dir");
 
         // Create files
-        fs::write(temp_dir.path().join("included.txt"), "included").expect("failed to write included");
+        fs::write(temp_dir.path().join("included.txt"), "included")
+            .expect("failed to write included");
         fs::write(temp_dir.path().join("ignored.txt"), "ignored").expect("failed to write ignored");
 
         // Create .gitignore
-        fs::write(temp_dir.path().join(".gitignore"), "*.txt\n").expect("failed to write gitignore");
+        fs::write(temp_dir.path().join(".gitignore"), "*.txt\n")
+            .expect("failed to write gitignore");
 
         let config = YekConfig::extend_config_with_defaults(
             vec![temp_dir.path().to_string_lossy().to_string()],

@@ -844,8 +844,16 @@ mod lib_tests {
         init_tracing();
         let temp_dir = tempdir().unwrap();
         let config = create_test_config(vec![
-            temp_dir.path().join("nonexistent1").to_string_lossy().to_string(),
-            temp_dir.path().join("nonexistent2").to_string_lossy().to_string(),
+            temp_dir
+                .path()
+                .join("nonexistent1")
+                .to_string_lossy()
+                .to_string(),
+            temp_dir
+                .path()
+                .join("nonexistent2")
+                .to_string_lossy()
+                .to_string(),
         ]);
 
         let result = serialize_repo(&config);
@@ -863,8 +871,16 @@ mod lib_tests {
         std::fs::write(temp_dir.path().join("existent.txt"), "content").unwrap();
 
         let config = create_test_config(vec![
-            temp_dir.path().join("existent.txt").to_string_lossy().to_string(),
-            temp_dir.path().join("nonexistent.txt").to_string_lossy().to_string(),
+            temp_dir
+                .path()
+                .join("existent.txt")
+                .to_string_lossy()
+                .to_string(),
+            temp_dir
+                .path()
+                .join("nonexistent.txt")
+                .to_string_lossy()
+                .to_string(),
         ]);
 
         let result = serialize_repo(&config);
@@ -888,7 +904,6 @@ mod lib_tests {
         assert!(parse_token_limit("123k456").is_err());
     }
 
-
     #[test]
     fn test_concat_files_with_token_limit_exceeded() {
         init_tracing();
@@ -902,7 +917,8 @@ mod lib_tests {
                 priority: 100,
                 file_index: 0,
                 rel_path: "long.txt".to_string(),
-                content: "This is a very long piece of content that should exceed the token limit.".to_string(),
+                content: "This is a very long piece of content that should exceed the token limit."
+                    .to_string(),
             },
             ProcessedFile {
                 priority: 50,

@@ -536,5 +536,9 @@ mod priority_tests {
                 }
             }
         }
+        let _times = get_recent_commit_times_git2(repo_path, 100);
+        // Should handle corruption gracefully (return None or partial results)
+        // The function should not panic
+        // We don't assert the exact result since corruption handling may vary
+    }
 }
-
