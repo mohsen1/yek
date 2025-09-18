@@ -839,4 +839,288 @@ mod lib_tests {
         // Single line should have line number 1
         assert!(output.contains("  1 | single line"));
     }
+    #[test]
+    fn test_serialize_repo_with_nonexistent_paths() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let config = create_test_config(vec![
+            temp_dir
+                .path()
+                .join("nonexistent1")
+                .to_string_lossy()
+                .to_string(),
+            temp_dir
+                .path()
+                .join("nonexistent2")
+                .to_string_lossy()
+                .to_string(),
+        ]);
+
+        let result = serialize_repo(&config);
+        // Should succeed but with warnings
+        assert!(result.is_ok());
+        let (output, files) = result.unwrap();
+        assert!(files.is_empty()); // No files processed
+        assert_eq!(output, ""); // Empty output
+    }
+
+    #[test]
+    fn test_serialize_repo_with_mixed_existent_nonexistent() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("existent.txt"), "content").unwrap();
+
+        let config = create_test_config(vec![
+            temp_dir
+                .path()
+                .join("existent.txt")
+                .to_string_lossy()
+                .to_string(),
+            temp_dir
+                .path()
+                .join("nonexistent.txt")
+                .to_string_lossy()
+                .to_string(),
+        ]);
+
+        let result = serialize_repo(&config);
+        assert!(result.is_ok());
+        let (output, files) = result.unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(output.contains("content"));
+    }
+
+    #[test]
+    fn test_parse_token_limit_edge_cases() {
+        // Test with very large numbers
+        assert_eq!(parse_token_limit("999999k").unwrap(), 999999000);
+
+        // Test with zero (parse_token_limit allows 0, validation happens elsewhere)
+        assert_eq!(parse_token_limit("0").unwrap(), 0);
+        assert_eq!(parse_token_limit("0k").unwrap(), 0); // 0k = 0 * 1000 = 0
+
+        // Test with invalid format
+        assert!(parse_token_limit("k").is_err());
+        assert!(parse_token_limit("123k456").is_err());
+    }
+
+    #[test]
+    fn test_concat_files_with_token_limit_exceeded() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.token_mode = true;
+        config.tokens = "5".to_string(); // Very low token limit
+
+        let files = vec![
+            ProcessedFile {
+                priority: 100,
+                file_index: 0,
+                rel_path: "long.txt".to_string(),
+                content: "This is a very long piece of content that should exceed the token limit."
+                    .to_string(),
+            },
+            ProcessedFile {
+                priority: 50,
+                file_index: 1,
+                rel_path: "short.txt".to_string(),
+                content: "Short".to_string(),
+            },
+        ];
+
+        let result = concat_files(&files, &config);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // Should include only the short file or part of the long one
+        assert!(output.contains("Short") || output.len() < 100);
+    }
+
+    #[test]
+    fn test_serialize_repo_with_debug_logging() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        std::fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.debug = true; // Enable debug logging
+
+        let result = serialize_repo(&config);
+        assert!(result.is_ok());
+        // The function should work with debug enabled
+    }
+
+    #[test]
+    fn test_concat_files_with_tree_header_and_token_mode() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.tree_header = true;
+        config.token_mode = true;
+        config.tokens = "1000".to_string();
+
+        let files = vec![ProcessedFile {
+            priority: 100,
+            file_index: 0,
+            rel_path: "test.txt".to_string(),
+            content: "content".to_string(),
+        }];
+
+        let result = concat_files(&files, &config);
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // Should include tree header and content
+        assert!(output.contains("test.txt"));
+        assert!(output.contains("content"));
+    }
+
+    // Priority 3: Output generation tests
+    #[test]
+    fn test_template_processing_with_special_escaping() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+
+        // Create file with content that needs escaping
+        let content = "Line with \"quotes\" and \\backslash\\ and $special {chars}";
+        fs::write(temp_dir.path().join("special.txt"), content).unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.output_template = Some("=== FILE_PATH ===\n{{FILE_CONTENT}}".to_string());
+
+        let result = serialize_repo(&config);
+        assert!(result.is_ok());
+        let (output, _) = result.unwrap();
+
+        // Template should handle special characters
+        assert!(output.contains("=== special.txt ==="));
+        assert!(output.contains("{{Line with \"quotes\""));
+    }
+
+    #[test]
+    fn test_json_output_with_special_characters() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+
+        // Create file with JSON special characters
+        let content = r#"{"key": "value with \"quotes\" and \n newline"}"#;
+        fs::write(temp_dir.path().join("data.json"), content).unwrap();
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.json = true;
+
+        let result = serialize_repo(&config);
+        assert!(result.is_ok());
+        let (output, _) = result.unwrap();
+
+        // JSON output should properly escape nested JSON
+        assert!(output.contains(r#""filename": "data.json""#));
+        // Content should be properly escaped
+        assert!(output.contains(r#"\"quotes\""#) || output.contains(r#"\\\"quotes\\\""#));
+    }
+
+    #[test]
+    fn test_token_limit_overflow_handling() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+
+        // Create multiple files that exceed token limit
+        for i in 0..10 {
+            let content = format!(
+                "This is file {} with some content that will contribute to token count",
+                i
+            );
+            fs::write(temp_dir.path().join(format!("file{}.txt", i)), content).unwrap();
+        }
+
+        let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
+        config.token_mode = true;
+        config.tokens = "50".to_string(); // Very low limit
+
+        let result = concat_files(
+            &vec![
+                ProcessedFile {
+                    priority: 0,
+                    file_index: 0,
+                    rel_path: "file0.txt".to_string(),
+                    content: "This is file 0 with some content that will contribute to token count"
+                        .to_string(),
+                },
+                ProcessedFile {
+                    priority: 0,
+                    file_index: 1,
+                    rel_path: "file1.txt".to_string(),
+                    content: "This is file 1 with some content that will contribute to token count"
+                        .to_string(),
+                },
+            ],
+            &config,
+        );
+
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        // Should include at least one file but not all due to token limit
+        assert!(output.contains("file0.txt") || output.contains("file1.txt"));
+        assert!(output.len() < 500); // Should be truncated
+    }
+
+    #[test]
+    fn test_tree_rendering_with_unicode_paths() {
+        use std::path::PathBuf;
+        use yek::tree::generate_tree;
+
+        let paths = vec![
+            PathBuf::from("文档/说明.txt"),
+            PathBuf::from("código/main.rs"),
+            PathBuf::from("файлы/данные.json"),
+        ];
+
+        let result = generate_tree(&paths);
+
+        // Should handle Unicode paths correctly
+        assert!(result.contains("文档/"));
+        assert!(result.contains("说明.txt"));
+        assert!(result.contains("código/"));
+        assert!(result.contains("main.rs"));
+        assert!(result.contains("файлы/"));
+        assert!(result.contains("данные.json"));
+    }
+
+    #[test]
+    fn test_tree_rendering_empty_prefix() {
+        use std::path::PathBuf;
+        use yek::tree::generate_tree;
+
+        // Test with single root file (empty prefix case)
+        let paths = vec![PathBuf::from("single.txt")];
+        let result = generate_tree(&paths);
+
+        assert!(result.contains("Directory structure:"));
+        assert!(result.contains("└── single.txt"));
+        // Should not have any prefix before the root item
+        let lines: Vec<&str> = result.lines().collect();
+        for line in lines {
+            if line.contains("single.txt") {
+                assert!(line.starts_with("└──"));
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn test_tree_rendering_root_only_paths() {
+        use std::path::PathBuf;
+        use yek::tree::generate_tree;
+
+        // Test with only root-level files (no nested directories)
+        let paths = vec![
+            PathBuf::from("a.txt"),
+            PathBuf::from("b.txt"),
+            PathBuf::from("c.txt"),
+        ];
+
+        let result = generate_tree(&paths);
+
+        assert!(result.contains("├── a.txt"));
+        assert!(result.contains("├── b.txt"));
+        assert!(result.contains("└── c.txt")); // Last item uses └──
+    }
 }

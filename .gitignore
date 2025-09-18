@@ -10,3 +10,4 @@ dist/
 /*.txt
 *.backup
 coverage/
+*.html
