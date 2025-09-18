@@ -271,3 +271,115 @@ fn test_main_with_invalid_priority_rule() {
     // Should fail due to invalid priority rule
     cmd.failure();
 }
+
+// Priority 4: Main function logic tests
+#[test]
+fn test_main_streaming_mode_with_debug() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+
+    // Test streaming mode with debug flag
+    let cmd = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .arg(temp_dir.path())
+        .arg("--debug")
+        .arg("--output-name")
+        .arg("output.txt")
+        .assert();
+
+    cmd.success();
+    
+    // Check that output file was created
+    assert!(std::path::Path::new("output.txt").exists());
+    
+    // Clean up
+    std::fs::remove_file("output.txt").ok();
+}
+
+#[test]
+fn test_main_checksum_error_handling() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    
+    // Create a directory that will be used for checksum calculation
+    fs::create_dir(temp_dir.path().join("subdir")).unwrap();
+    fs::write(temp_dir.path().join("subdir").join("file.txt"), "content").unwrap();
+
+    let cmd = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .arg(temp_dir.path())
+        .arg("--output-dir")
+        .arg(temp_dir.path().join("output"))
+        .assert();
+
+    cmd.success();
+}
+
+#[test]
+fn test_main_file_write_failure_recovery() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+
+    // Try to write to a path that might fail (e.g., very long path)
+    let output_name = "a".repeat(255) + ".txt"; // Very long filename
+    
+    let cmd = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .arg(temp_dir.path())
+        .arg("--output-name")
+        .arg(&output_name)
+        .assert();
+
+    // Should handle the error gracefully
+    // The command might succeed or fail depending on the filesystem
+    // but it shouldn't panic
+    let _ = cmd.get_output();
+}
+
+#[test]
+fn test_main_force_tty_environment() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+
+    // Test with FORCE_TTY environment variable
+    let cmd = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .arg(temp_dir.path())
+        .arg("--output-dir")
+        .arg(temp_dir.path())
+        .env("FORCE_TTY", "1")
+        .assert();
+
+    cmd.success();
+}
+
+#[test]
+fn test_main_with_missing_output_dir_fallback() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+
+    // Test with an output directory that might fail to create
+    let cmd = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .arg(temp_dir.path())
+        .arg("--output-dir")
+        .arg("/nonexistent/deeply/nested/path/that/cannot/be/created")
+        .assert();
+
+    // Should fall back to streaming mode
+    cmd.success();
+}

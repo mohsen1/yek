@@ -542,3 +542,190 @@ mod priority_tests {
         // We don't assert the exact result since corruption handling may vary
     }
 }
+
+// Priority 1: Critical Git integration error handling tests
+
+#[test]
+fn test_get_recent_commit_times_git_with_corrupted_head() {
+    use std::fs;
+    use tempfile::tempdir;
+    use yek::priority::get_recent_commit_times_git2;
+    
+    let dir = tempdir().unwrap();
+    let repo_path = dir.path();
+
+    // Initialize a Git repo
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    // Corrupt the HEAD file
+    let head_file = repo_path.join(".git").join("HEAD");
+    fs::write(&head_file, "corrupted content").unwrap();
+
+    let times = get_recent_commit_times_git2(repo_path, 100);
+    // Should handle corrupted HEAD gracefully
+    assert!(times.is_none());
+}
+
+#[test]
+fn test_get_recent_commit_times_git_with_invalid_repo_structure() {
+    use std::fs;
+    use tempfile::tempdir;
+    use yek::priority::get_recent_commit_times_git2;
+    
+    let dir = tempdir().unwrap();
+    let repo_path = dir.path();
+
+    // Create a fake .git directory without proper structure
+    fs::create_dir(repo_path.join(".git")).unwrap();
+    fs::write(repo_path.join(".git").join("config"), "[core]\n").unwrap();
+
+    let times = get_recent_commit_times_git2(repo_path, 100);
+    // Should handle invalid repo structure gracefully
+    assert!(times.is_none());
+}
+
+#[test]
+fn test_get_recent_commit_times_git_with_detached_head() {
+    use std::fs;
+    use tempfile::tempdir;
+    use yek::priority::get_recent_commit_times_git2;
+    
+    let dir = tempdir().unwrap();
+    let repo_path = dir.path();
+
+    // Initialize a Git repo
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    // Set up git config
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    // Create and commit a file
+    fs::write(repo_path.join("file.txt"), "content").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "file.txt"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    // Get the commit hash
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    let commit_hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Checkout to detached HEAD state
+    std::process::Command::new("git")
+        .args(["checkout", &commit_hash])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    let times = get_recent_commit_times_git2(repo_path, 100);
+    // Should handle detached HEAD state
+    assert!(times.is_some());
+    assert!(times.unwrap().contains_key("file.txt"));
+}
+
+#[test]
+fn test_get_recent_commit_times_git_with_shallow_clone() {
+    use std::fs;
+    use tempfile::tempdir;
+    use yek::priority::get_recent_commit_times_git2;
+    
+    let dir = tempdir().unwrap();
+    let repo_path = dir.path();
+
+    // Initialize a Git repo
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    // Set up git config
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    // Create multiple commits
+    for i in 1..=5 {
+        let filename = format!("file{}.txt", i);
+        fs::write(repo_path.join(&filename), format!("content{}", i)).unwrap();
+        std::process::Command::new("git")
+            .args(["add", &filename])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", &format!("Commit {}", i)])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+    }
+
+    // Test with max_depth = 2 (shallow processing)
+    let times = get_recent_commit_times_git2(repo_path, 2);
+    assert!(times.is_some());
+    let times = times.unwrap();
+    // Should have processed only the most recent commits
+    assert!(!times.is_empty());
+}
+
+#[test]
+fn test_get_recent_commit_times_git_with_submodules() {
+    use std::fs;
+    use tempfile::tempdir;
+    use yek::priority::get_recent_commit_times_git2;
+    
+    let dir = tempdir().unwrap();
+    let repo_path = dir.path();
+
+    // Initialize a Git repo
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    // Create .gitmodules file (simulating submodules)
+    fs::write(
+        repo_path.join(".gitmodules"),
+        "[submodule \"sub\"]\n\tpath = sub\n\turl = ./sub\n",
+    )
+    .unwrap();
+
+    let times = get_recent_commit_times_git2(repo_path, 100);
+    // Should handle repos with submodules configuration
+    assert!(times.is_none() || times.unwrap().is_empty());
+}

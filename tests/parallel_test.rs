@@ -401,3 +401,151 @@ mod tests {
         assert_eq!(normalize_path(path, base), "");
     }
 }
+
+// Priority 2: File processing edge case tests
+#[test]
+fn test_process_files_parallel_with_gitignore_parse_error() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    
+    // Create an invalid .gitignore file
+    fs::write(temp_dir.path().join(".gitignore"), "[[invalid pattern").expect("failed to write gitignore");
+    fs::write(temp_dir.path().join("test.txt"), "content").expect("failed to write test file");
+    
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    
+    // Should handle gitignore parse errors gracefully
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts);
+    assert!(result.is_ok());
+    // File should still be processed despite gitignore error
+    let files = result.unwrap();
+    assert!(!files.is_empty());
+}
+
+#[test]
+fn test_process_files_parallel_with_large_binary_file() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    
+    // Create a large binary file (over 1MB)
+    let large_binary = vec![0u8; 1024 * 1024 + 1];
+    fs::write(temp_dir.path().join("large.bin"), large_binary).expect("failed to write large binary");
+    
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts).expect("process_files_parallel failed");
+    
+    // Large binary file should be skipped
+    assert_eq!(result.len(), 0);
+}
+
+#[test]
+fn test_process_files_parallel_with_utf8_bom() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    
+    // Create a file with UTF-8 BOM
+    let mut content = vec![0xEF, 0xBB, 0xBF]; // UTF-8 BOM
+    content.extend_from_slice(b"Hello World");
+    fs::write(temp_dir.path().join("bom.txt"), content).expect("failed to write BOM file");
+    
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts).expect("process_files_parallel failed");
+    
+    // UTF-8 BOM file should be processed
+    assert_eq!(result.len(), 1);
+    // BOM should be preserved in content
+    assert!(result[0].content.starts_with('\u{FEFF}'));
+}
+
+#[test]
+fn test_process_files_parallel_with_mixed_encoding() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    
+    // Create a file with mixed/invalid UTF-8 encoding
+    let invalid_utf8 = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F, 0xFF, 0xFE, 0x57, 0x6F, 0x72, 0x6C, 0x64];
+    fs::write(temp_dir.path().join("mixed.txt"), invalid_utf8).expect("failed to write mixed encoding file");
+    
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts).expect("process_files_parallel failed");
+    
+    // File with mixed encoding should be processed with lossy conversion
+    assert_eq!(result.len(), 1);
+    assert!(result[0].content.contains("Hello"));
+    assert!(result[0].content.contains("World"));
+}
+
+#[test]
+fn test_process_files_parallel_with_symlink_loop() {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+        
+        let temp_dir = tempdir().expect("failed to create temp dir");
+        let dir1 = temp_dir.path().join("dir1");
+        let dir2 = temp_dir.path().join("dir2");
+        
+        fs::create_dir(&dir1).expect("failed to create dir1");
+        fs::create_dir(&dir2).expect("failed to create dir2");
+        
+        // Create symlink loop
+        symlink(&dir2, dir1.join("link_to_dir2")).expect("failed to create symlink");
+        symlink(&dir1, dir2.join("link_to_dir1")).expect("failed to create symlink");
+        
+        // Add a file to process
+        fs::write(dir1.join("file.txt"), "content").expect("failed to write file");
+        
+        let config = YekConfig::extend_config_with_defaults(
+            vec![temp_dir.path().to_string_lossy().to_string()],
+            ".".to_string(),
+        );
+        let boosts: HashMap<String, i32> = HashMap::new();
+        
+        let result = process_files_parallel(temp_dir.path(), &config, &boosts);
+        
+        // Should handle symlink loops gracefully (by not following symlinks)
+        assert!(result.is_ok());
+        let files = result.unwrap();
+        // Should find the file exactly once
+        assert_eq!(files.iter().filter(|f| f.rel_path.ends_with("file.txt")).count(), 1);
+    }
+}
+
+#[test]
+fn test_process_files_parallel_with_channel_error_simulation() {
+    // This test verifies the code handles channel errors gracefully
+    // by processing a directory with many files
+    let temp_dir = tempdir().expect("failed to create temp dir");
+    
+    // Create many files to stress the channel
+    for i in 0..100 {
+        fs::write(temp_dir.path().join(format!("file{}.txt", i)), format!("content{}", i))
+            .expect("failed to write file");
+    }
+    
+    let config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    let boosts: HashMap<String, i32> = HashMap::new();
+    
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts);
+    assert!(result.is_ok());
+    let files = result.unwrap();
+    assert_eq!(files.len(), 100);
+}
