@@ -4,6 +4,7 @@ mod extra_tests {
     use std::fs;
     use std::io::Write;
 
+    use assert_cmd::Command;
     use tempfile::tempdir;
     use yek::{
         concat_files,
@@ -83,13 +84,10 @@ mod extra_tests {
     // Test that warnings are displayed for non-existent paths by capturing stderr.
     #[test]
     fn test_warning_for_nonexistent_paths() {
-        use std::process::{Command, Stdio};
-
         // Run yek with a non-existent path and capture stderr
-        let output = Command::new("./target/debug/yek")
+        let output = Command::cargo_bin("yek")
+            .expect("Failed to find yek binary")
             .arg("definitely_nonexistent_path_12345")
-            .stderr(Stdio::piped())
-            .stdout(Stdio::piped())
             .output()
             .expect("Failed to execute yek");
 
