@@ -275,6 +275,10 @@ impl YekConfig {
         // By default, we start with no final output_file_full_path:
         cfg.output_file_full_path = None;
 
+        // Workaround for clap-config-file boolean field limitation
+        // Manually read boolean fields from config file if they weren't set via CLI
+        cfg.load_boolean_config_fields();
+
         // 3) Validate
         if let Err(e) = cfg.validate() {
             eprintln!("Error: {}", e);
@@ -282,6 +286,63 @@ impl YekConfig {
         }
 
         cfg
+    }
+
+    /// Workaround for clap-config-file boolean field limitation
+    /// Manually read boolean fields from config file if they weren't set via CLI
+    fn load_boolean_config_fields(&mut self) {
+        // Check which boolean fields were explicitly set via CLI
+        let args: Vec<String> = std::env::args().collect();
+        let tree_header_from_cli = args.iter().any(|arg| arg == "--tree-header" || arg == "-t");
+        let tree_only_from_cli = args.iter().any(|arg| arg == "--tree-only");
+        let json_from_cli = args.iter().any(|arg| arg == "--json");
+
+        // For mutually exclusive fields, only load config if NEITHER is set via CLI
+        let any_tree_flag_from_cli = tree_header_from_cli || tree_only_from_cli;
+
+        // Load config file values for boolean fields not set via CLI
+        if let Ok(config_values) = self.read_config_file() {
+            if !any_tree_flag_from_cli {
+                if let Ok(value) = config_values.get::<bool>("tree_header") {
+                    self.tree_header = value;
+                }
+                if let Ok(value) = config_values.get::<bool>("tree_only") {
+                    self.tree_only = value;
+                }
+            }
+            if !json_from_cli {
+                if let Ok(value) = config_values.get::<bool>("json") {
+                    self.json = value;
+                }
+            }
+        }
+    }
+
+    /// Read config file manually and return the values
+    fn read_config_file(&self) -> Result<config::Config> {
+        let mut settings = config::Config::builder();
+
+        // Look for config files in the current directory
+        let config_files = ["yek.yaml", "yek.toml", "yek.json"];
+        let mut found_config = false;
+
+        for config_file in &config_files {
+            if Path::new(config_file).exists() {
+                settings = settings.add_source(config::File::with_name(
+                    &config_file[..config_file.len() - 5],
+                ));
+                found_config = true;
+                break;
+            }
+        }
+
+        if !found_config {
+            return Err(anyhow!("No config file found"));
+        }
+
+        settings
+            .build()
+            .map_err(|e| anyhow!("Failed to read config: {}", e))
     }
 
     /// Compute a quick checksum for the input paths (files and directories).
