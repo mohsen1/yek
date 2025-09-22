@@ -35,7 +35,7 @@ serde_json = "1.0.140"
 serde_yaml = "0.9.34"
 sha2 = "0.10"
 time = "0.3"
-toml = "0.8"
+toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2.4"
