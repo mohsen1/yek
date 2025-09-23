@@ -291,7 +291,7 @@ impl YekConfig {
     /// Workaround for clap-config-file boolean field limitation
     /// Manually read boolean fields from config file if they weren't set via CLI
     fn load_boolean_config_fields(&mut self) {
-        // Check which boolean fields were explicitly set via CLI
+        // Safer argument parsing - check if CLI flags were used
         let args: Vec<String> = std::env::args().collect();
         let tree_header_from_cli = args.iter().any(|arg| arg == "--tree-header" || arg == "-t");
         let tree_only_from_cli = args.iter().any(|arg| arg == "--tree-only");
@@ -328,9 +328,20 @@ impl YekConfig {
 
         for config_file in &config_files {
             if Path::new(config_file).exists() {
-                settings = settings.add_source(config::File::with_name(
-                    &config_file[..config_file.len() - 5],
-                ));
+                // Safe string manipulation - strip extension properly
+                let config_name = if let Some(name_without_ext) = config_file.strip_suffix(".yaml")
+                {
+                    name_without_ext
+                } else if let Some(name_without_ext) = config_file.strip_suffix(".toml") {
+                    name_without_ext
+                } else if let Some(name_without_ext) = config_file.strip_suffix(".json") {
+                    name_without_ext
+                } else {
+                    // Fallback for unexpected extensions - this should not happen given our hardcoded list
+                    continue;
+                };
+
+                settings = settings.add_source(config::File::with_name(config_name));
                 found_config = true;
                 break;
             }
