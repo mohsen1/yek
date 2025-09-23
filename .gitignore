@@ -1,4 +1,5 @@
 target/
+lcov.info
 *.log
 *.tmp
 *.tar.gz
