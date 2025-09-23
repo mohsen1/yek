@@ -39,7 +39,7 @@ pub struct YekConfig {
     pub tokens: String,
 
     /// Enable JSON output
-    #[config_arg()]
+    #[config_arg(accept_from = "cli_and_config")]
     pub json: bool,
 
     /// Enable debug output
@@ -47,7 +47,7 @@ pub struct YekConfig {
     pub debug: bool,
 
     /// Include line numbers in output
-    #[config_arg(long = "line-numbers")]
+    #[config_arg(long = "line-numbers", accept_from = "cli_and_config")]
     pub line_numbers: bool,
 
     /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
