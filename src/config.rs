@@ -39,15 +39,15 @@ pub struct YekConfig {
     pub tokens: String,
 
     /// Enable JSON output
-    #[config_arg(accept_from = "cli_and_config")]
+    #[config_arg()]
     pub json: bool,
 
     /// Enable debug output
-    #[config_arg(accept_from = "cli_and_config")]
+    #[config_arg()]
     pub debug: bool,
 
     /// Include line numbers in output
-    #[config_arg(long = "line-numbers", accept_from = "cli_and_config")]
+    #[config_arg(long = "line-numbers")]
     pub line_numbers: bool,
 
     /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
@@ -83,11 +83,11 @@ pub struct YekConfig {
     pub git_boost_max: Option<i32>,
 
     /// Include directory tree header in output (incompatible with JSON output)
-    #[config_arg(long = "tree-header", short = 't', accept_from = "cli_and_config")]
+    #[config_arg(long = "tree-header", short = 't')]
     pub tree_header: bool,
 
     /// Show only the directory tree (no file contents, incompatible with JSON output)
-    #[config_arg(long = "tree-only", accept_from = "cli_and_config")]
+    #[config_arg(long = "tree-only")]
     pub tree_only: bool,
 
     /// True if we should stream output to stdout (computed)
