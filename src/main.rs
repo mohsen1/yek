@@ -44,8 +44,18 @@ fn main() -> Result<()> {
         let (output, files) = serialize_repo(&full_config)?;
         // If output_name provided, write to file, else print to stdout:
         if let Some(output_name) = &full_config.output_name {
-            std::fs::write(output_name, output.as_bytes())?;
-            println!("{}", output_name);
+            let final_output_path = if let Some(output_dir) = &full_config.output_dir {
+                // Both output_dir and output_name provided - combine them
+                Path::new(output_dir)
+                    .join(output_name)
+                    .to_string_lossy()
+                    .to_string()
+            } else {
+                // Only output_name provided - use it directly
+                output_name.clone()
+            };
+            std::fs::write(&final_output_path, output.as_bytes())?;
+            println!("{}", final_output_path);
         } else {
             println!("{}", output);
         }
@@ -67,8 +77,16 @@ fn main() -> Result<()> {
 
         // Now set the final output file
         let final_path = if let Some(output_name) = &full_config.output_name {
-            // Use provided output_name in current directory
-            output_name.clone()
+            if let Some(output_dir) = &full_config.output_dir {
+                // Both output_dir and output_name provided - combine them
+                Path::new(output_dir)
+                    .join(output_name)
+                    .to_string_lossy()
+                    .to_string()
+            } else {
+                // Only output_name provided - use it directly
+                output_name.clone()
+            }
         } else {
             let extension = if full_config.json { "json" } else { "txt" };
             let output_dir = full_config.output_dir.as_ref().ok_or_else(|| {
