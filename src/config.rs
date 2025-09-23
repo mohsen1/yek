@@ -83,11 +83,11 @@ pub struct YekConfig {
     pub git_boost_max: Option<i32>,
 
     /// Include directory tree header in output (incompatible with JSON output)
-    #[config_arg(long = "tree-header", short = 't')]
+    #[config_arg(long = "tree-header", short = 't', accept_from = "cli_and_config")]
     pub tree_header: bool,
 
     /// Show only the directory tree (no file contents, incompatible with JSON output)
-    #[config_arg(long = "tree-only")]
+    #[config_arg(long = "tree-only", accept_from = "cli_and_config")]
     pub tree_only: bool,
 
     /// True if we should stream output to stdout (computed)
