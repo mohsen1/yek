@@ -289,7 +289,7 @@ fn test_main_streaming_mode_with_debug() {
         .arg("--debug")
         .arg("--output-name")
         .arg("output.txt")
-        .arg("--no-config")  // Prevent default output_dir assignment
+        .arg("--no-config") // Prevent default output_dir assignment
         .assert();
 
     cmd.success();
