@@ -289,6 +289,7 @@ fn test_main_streaming_mode_with_debug() {
         .arg("--debug")
         .arg("--output-name")
         .arg("output.txt")
+        .arg("--no-config")
         .assert();
 
     cmd.success();

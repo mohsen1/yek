@@ -102,6 +102,9 @@ pub struct YekConfig {
     /// Maximum depth to search for Git commit times
     #[config_arg(accept_from = "config_only", default_value = "100")]
     pub max_git_depth: i32,
+
+    /// True if output_dir was explicitly set by user (computed)
+    pub output_dir_explicitly_set: bool,
 }
 
 /// Provide defaults so tests or other callers can create a baseline YekConfig easily.
@@ -134,6 +137,7 @@ impl Default for YekConfig {
             token_mode: false,
             output_file_full_path: None,
             max_git_depth: 100,
+            output_dir_explicitly_set: false,
         }
     }
 }
@@ -205,6 +209,9 @@ impl YekConfig {
         // 2) compute derived fields:
         cfg.token_mode = !cfg.tokens.is_empty();
         let force_tty = std::env::var("FORCE_TTY").is_ok();
+
+        // Track if output_dir was explicitly set before auto-generation
+        cfg.output_dir_explicitly_set = cfg.output_dir.is_some();
 
         cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
 

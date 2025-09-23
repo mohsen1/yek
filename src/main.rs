@@ -44,8 +44,27 @@ fn main() -> Result<()> {
         let (output, files) = serialize_repo(&full_config)?;
         // If output_name provided, write to file, else print to stdout:
         if let Some(output_name) = &full_config.output_name {
-            std::fs::write(output_name, output.as_bytes())?;
-            println!("{}", output_name);
+            // Combine output_dir and output_name only if both were explicitly set by user
+            let final_path = if full_config.output_dir_explicitly_set {
+                if let Some(output_dir) = &full_config.output_dir {
+                    Path::new(output_dir)
+                        .join(output_name)
+                        .to_string_lossy()
+                        .to_string()
+                } else {
+                    output_name.clone()
+                }
+            } else {
+                output_name.clone()
+            };
+
+            // Ensure parent directory exists
+            if let Some(parent) = Path::new(&final_path).parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+
+            std::fs::write(&final_path, output.as_bytes())?;
+            println!("{}", final_path);
         } else {
             println!("{}", output);
         }
@@ -67,8 +86,21 @@ fn main() -> Result<()> {
 
         // Now set the final output file
         let final_path = if let Some(output_name) = &full_config.output_name {
-            // Use provided output_name in current directory
-            output_name.clone()
+            // Combine output_dir and output_name only if both were explicitly set by user
+            if full_config.output_dir_explicitly_set {
+                if let Some(output_dir) = &full_config.output_dir {
+                    Path::new(output_dir)
+                        .join(output_name)
+                        .to_string_lossy()
+                        .to_string()
+                } else {
+                    // This shouldn't happen, but fallback to current directory
+                    output_name.clone()
+                }
+            } else {
+                // Use provided output_name in current directory
+                output_name.clone()
+            }
         } else {
             let extension = if full_config.json { "json" } else { "txt" };
             let output_dir = full_config.output_dir.as_ref().ok_or_else(|| {
