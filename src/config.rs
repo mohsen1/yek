@@ -43,7 +43,7 @@ pub struct YekConfig {
     pub json: bool,
 
     /// Enable debug output
-    #[config_arg()]
+    #[config_arg(accept_from = "cli_and_config")]
     pub debug: bool,
 
     /// Include line numbers in output
