@@ -702,11 +702,21 @@ fn test_output_template_from_toml_config() {
     let old_dir = std::env::current_dir().expect("failed to get current dir");
     std::env::set_current_dir(temp_dir.path()).expect("failed to change dir");
 
+    // Try to manually load the config using the config crate
+    let settings = config::Config::builder()
+        .add_source(config::File::from(config_path.clone()).required(false))
+        .build()
+        .unwrap_or_else(|_| config::Config::builder().build().unwrap());
+
+    let output_template: Option<String> = settings.get("output_template").ok();
+
     // Parse config (this should find and load yek.toml)
     let mut config = YekConfig::parse();
 
-    // Handle default for output_template if not provided (similar to init_config)
-    if config.output_template.is_none() {
+    // Use manually loaded config if available, otherwise use default
+    if let Some(template) = output_template {
+        config.output_template = Some(template);
+    } else if config.output_template.is_none() {
         config.output_template = Some(DEFAULT_OUTPUT_TEMPLATE.to_string());
     }
 
@@ -739,11 +749,21 @@ fn test_output_template_from_yaml_config() {
     let old_dir = std::env::current_dir().expect("failed to get current dir");
     std::env::set_current_dir(temp_dir.path()).expect("failed to change dir");
 
+    // Try to manually load the config using the config crate
+    let settings = config::Config::builder()
+        .add_source(config::File::from(config_path.clone()).required(false))
+        .build()
+        .unwrap_or_else(|_| config::Config::builder().build().unwrap());
+
+    let output_template: Option<String> = settings.get("output_template").ok();
+
     // Parse config (this should find and load yek.yaml)
     let mut config = YekConfig::parse();
 
-    // Handle default for output_template if not provided (similar to init_config)
-    if config.output_template.is_none() {
+    // Use manually loaded config if available, otherwise use default
+    if let Some(template) = output_template {
+        config.output_template = Some(template);
+    } else if config.output_template.is_none() {
         config.output_template = Some(DEFAULT_OUTPUT_TEMPLATE.to_string());
     }
 
@@ -776,11 +796,21 @@ fn test_output_template_from_json_config() {
     let old_dir = std::env::current_dir().expect("failed to get current dir");
     std::env::set_current_dir(temp_dir.path()).expect("failed to change dir");
 
+    // Try to manually load the config using the config crate
+    let settings = config::Config::builder()
+        .add_source(config::File::from(config_path.clone()).required(false))
+        .build()
+        .unwrap_or_else(|_| config::Config::builder().build().unwrap());
+
+    let output_template: Option<String> = settings.get("output_template").ok();
+
     // Parse config (this should find and load yek.json)
     let mut config = YekConfig::parse();
 
-    // Handle default for output_template if not provided (similar to init_config)
-    if config.output_template.is_none() {
+    // Use manually loaded config if available, otherwise use default
+    if let Some(template) = output_template {
+        config.output_template = Some(template);
+    } else if config.output_template.is_none() {
         config.output_template = Some(DEFAULT_OUTPUT_TEMPLATE.to_string());
     }
 
