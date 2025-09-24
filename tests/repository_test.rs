@@ -167,7 +167,8 @@ mod repository_tests {
         let content = "Hello, world!";
         std::fs::write(&file_path, content).unwrap();
 
-        let result = yek::repository::convenience::read_file_content_safe(&file_path, &RealFileSystem);
+        let result =
+            yek::repository::convenience::read_file_content_safe(&file_path, &RealFileSystem);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), content);
     }
@@ -179,7 +180,8 @@ mod repository_tests {
         let content = vec![0xFF, 0xFE, 0xFD]; // Invalid UTF-8
         std::fs::write(&file_path, &content).unwrap();
 
-        let result = yek::repository::convenience::read_file_content_safe(&file_path, &RealFileSystem);
+        let result =
+            yek::repository::convenience::read_file_content_safe(&file_path, &RealFileSystem);
         assert!(result.is_err());
     }
 

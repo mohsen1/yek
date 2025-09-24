@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-use yek::error::{ErrorContext, ErrorReporter, YekError, safe_ops};
 use tempfile::TempDir;
+use yek::error::{safe_ops, ErrorContext, ErrorReporter, YekError};
 
 #[cfg(test)]
 mod error_tests {
@@ -37,7 +37,9 @@ mod error_tests {
             reason: "Invalid format".to_string(),
         };
         let display = format!("{}", error);
-        assert!(display.contains("Configuration error for field 'max_size' with value 'invalid': Invalid format"));
+        assert!(display.contains(
+            "Configuration error for field 'max_size' with value 'invalid': Invalid format"
+        ));
     }
 
     #[test]
@@ -48,7 +50,9 @@ mod error_tests {
             reason: "Invalid encoding".to_string(),
         };
         let display = format!("{}", error);
-        assert!(display.contains("Processing error in stage 'tokenization' for file 'test.txt': Invalid encoding"));
+        assert!(display.contains(
+            "Processing error in stage 'tokenization' for file 'test.txt': Invalid encoding"
+        ));
     }
 
     #[test]
@@ -70,7 +74,9 @@ mod error_tests {
             available: Some(500),
         };
         let display = format!("{}", error);
-        assert!(display.contains("Memory error during 'file reading' - requested: 1000 bytes, available: 500 bytes"));
+        assert!(display.contains(
+            "Memory error during 'file reading' - requested: 1000 bytes, available: 500 bytes"
+        ));
     }
 
     #[test]
@@ -92,7 +98,9 @@ mod error_tests {
             attempted_by: "user_input".to_string(),
         };
         let display = format!("{}", error);
-        assert!(display.contains("Security violation 'Path traversal' for path '../outside' attempted by: user_input"));
+        assert!(display.contains(
+            "Security violation 'Path traversal' for path '../outside' attempted by: user_input"
+        ));
     }
 
     #[test]
@@ -114,7 +122,9 @@ mod error_tests {
             reason: "Encoding error".to_string(),
         };
         let display = format!("{}", error);
-        assert!(display.contains("Tokenization error for text content (size: 1024): Encoding error"));
+        assert!(
+            display.contains("Tokenization error for text content (size: 1024): Encoding error")
+        );
     }
 
     #[test]
@@ -140,15 +150,13 @@ mod error_tests {
 
     #[test]
     fn test_error_context_with_file() {
-        let context = ErrorContext::new("test")
-            .with_file("/test/file.txt");
+        let context = ErrorContext::new("test").with_file("/test/file.txt");
         assert_eq!(context.file, Some(PathBuf::from("/test/file.txt")));
     }
 
     #[test]
     fn test_error_context_with_location() {
-        let context = ErrorContext::new("test")
-            .with_location(10, 5);
+        let context = ErrorContext::new("test").with_location(10, 5);
         assert_eq!(context.line, Some(10));
         assert_eq!(context.column, Some(5));
     }
@@ -159,8 +167,14 @@ mod error_tests {
             .with_info("key1", "value1")
             .with_info("key2", "value2");
         assert_eq!(context.additional_info.len(), 2);
-        assert_eq!(context.additional_info[0], ("key1".to_string(), "value1".to_string()));
-        assert_eq!(context.additional_info[1], ("key2".to_string(), "value2".to_string()));
+        assert_eq!(
+            context.additional_info[0],
+            ("key1".to_string(), "value1".to_string())
+        );
+        assert_eq!(
+            context.additional_info[1],
+            ("key2".to_string(), "value2".to_string())
+        );
     }
 
     #[test]
@@ -199,7 +213,10 @@ mod error_tests {
             reason: "Must be a number".to_string(),
         };
         let message = ErrorReporter::user_friendly_message(&error);
-        assert_eq!(message, "Configuration issue with 'timeout': Must be a number");
+        assert_eq!(
+            message,
+            "Configuration issue with 'timeout': Must be a number"
+        );
     }
 
     #[test]
@@ -210,7 +227,10 @@ mod error_tests {
             reason: "Syntax error".to_string(),
         };
         let message = ErrorReporter::user_friendly_message(&error);
-        assert_eq!(message, "Processing failed in 'compilation' stage for 'main.rs': Syntax error");
+        assert_eq!(
+            message,
+            "Processing failed in 'compilation' stage for 'main.rs': Syntax error"
+        );
     }
 
     #[test]
@@ -221,7 +241,10 @@ mod error_tests {
             available: None,
         };
         let message = ErrorReporter::user_friendly_message(&error);
-        assert_eq!(message, "Insufficient memory for 'buffer allocation' (requested: 1000000 bytes)");
+        assert_eq!(
+            message,
+            "Insufficient memory for 'buffer allocation' (requested: 1000000 bytes)"
+        );
     }
 
     #[test]
@@ -232,7 +255,10 @@ mod error_tests {
             attempted_by: "input".to_string(),
         };
         let message = ErrorReporter::user_friendly_message(&error);
-        assert_eq!(message, "Security violation 'Directory traversal' for path '../../etc'");
+        assert_eq!(
+            message,
+            "Security violation 'Directory traversal' for path '../../etc'"
+        );
     }
 
     #[test]
@@ -243,7 +269,10 @@ mod error_tests {
             constraint: "must be valid email format".to_string(),
         };
         let message = ErrorReporter::user_friendly_message(&error);
-        assert_eq!(message, "Validation failed for 'email': violates 'must be valid email format'");
+        assert_eq!(
+            message,
+            "Validation failed for 'email': violates 'must be valid email format'"
+        );
     }
 
     #[test]
@@ -254,7 +283,10 @@ mod error_tests {
             reason: "Unsupported format".to_string(),
         };
         let message = ErrorReporter::user_friendly_message(&error);
-        assert_eq!(message, "Failed to process binary content (2048): Unsupported format");
+        assert_eq!(
+            message,
+            "Failed to process binary content (2048): Unsupported format"
+        );
     }
 
     #[test]
@@ -265,7 +297,10 @@ mod error_tests {
             suggestion: "Use 'help' to see available commands".to_string(),
         };
         let message = ErrorReporter::user_friendly_message(&error);
-        assert_eq!(message, "Invalid command: Use 'help' to see available commands");
+        assert_eq!(
+            message,
+            "Invalid command: Use 'help' to see available commands"
+        );
     }
 
     #[test]
@@ -276,8 +311,8 @@ mod error_tests {
 
         let result = safe_ops::safe_read_file(&nonexistent_path, &context, None);
         assert!(result.is_err());
-        let (error, _) = *result.unwrap_err();
-        match error {
+        let err = result.unwrap_err();
+        match &err.error {
             YekError::FileSystem { operation, .. } => assert_eq!(operation, "read"),
             _ => panic!("Expected FileSystem error"),
         }
@@ -290,8 +325,8 @@ mod error_tests {
 
         let result = safe_ops::safe_read_file(temp_dir.path(), &context, None);
         assert!(result.is_err());
-        let (error, _) = *result.unwrap_err();
-        match error {
+        let err = result.unwrap_err();
+        match &err.error {
             YekError::FileSystem { operation, .. } => assert_eq!(operation, "read"),
             _ => panic!("Expected FileSystem error"),
         }
@@ -318,12 +353,16 @@ mod error_tests {
 
         let result = safe_ops::safe_read_file(&file_path, &context, Some(10));
         assert!(result.is_err());
-        let (error, _) = *result.unwrap_err();
-        match error {
-            YekError::Memory { operation, requested, available } => {
+        let err = result.unwrap_err();
+        match &err.error {
+            YekError::Memory {
+                operation,
+                requested,
+                available,
+            } => {
                 assert_eq!(operation, "file reading");
-                assert_eq!(requested, 13);
-                assert_eq!(available, Some(10));
+                assert_eq!(*requested, 13);
+                assert_eq!(*available, Some(10));
             }
             _ => panic!("Expected Memory error"),
         }
@@ -382,8 +421,8 @@ mod error_tests {
 
         let result = safe_ops::safe_validate_path(&canonical_traversal, &canonical_base, &context);
         assert!(result.is_err());
-        let (error, _) = *result.unwrap_err();
-        match error {
+        let err = result.unwrap_err();
+        match &err.error {
             YekError::Security { violation, .. } => assert_eq!(violation, "Path traversal attempt"),
             _ => panic!("Expected Security error"),
         }

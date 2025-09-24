@@ -58,7 +58,8 @@ mod models_tests {
 
     #[test]
     fn test_processed_file_get_formatted_content_with_line_numbers() {
-        let mut file = ProcessedFile::new("test.txt".to_string(), "Hello\nworld".to_string(), 10, 0);
+        let mut file =
+            ProcessedFile::new("test.txt".to_string(), "Hello\nworld".to_string(), 10, 0);
         file.formatted_content = Some("1 | Hello\n2 | world".to_string());
 
         let content = file.get_formatted_content(true);
@@ -84,7 +85,8 @@ mod models_tests {
 
     #[test]
     fn test_processed_file_get_size_with_line_numbers() {
-        let mut file = ProcessedFile::new("test.txt".to_string(), "Hello\nworld".to_string(), 10, 0);
+        let mut file =
+            ProcessedFile::new("test.txt".to_string(), "Hello\nworld".to_string(), 10, 0);
         file.formatted_content = Some("1 | Hello\n2 | world".to_string());
 
         let size = file.get_size(false, true);
@@ -96,7 +98,7 @@ mod models_tests {
         let file = ProcessedFile::new("test.txt".to_string(), "Hello world".to_string(), 10, 0);
 
         assert!(!file.exceeds_limit(20, false, false)); // 11 < 20
-        assert!(file.exceeds_limit(5, false, false));   // 11 > 5
+        assert!(file.exceeds_limit(5, false, false)); // 11 > 5
     }
 
     #[test]
@@ -105,7 +107,7 @@ mod models_tests {
         file.token_count.set(10).unwrap();
 
         assert!(!file.exceeds_limit(15, true, false)); // 10 < 15
-        assert!(file.exceeds_limit(5, true, false));   // 10 > 5
+        assert!(file.exceeds_limit(5, true, false)); // 10 > 5
     }
 
     #[test]

@@ -1,8 +1,11 @@
 use std::path::PathBuf;
-use yek::models::{InputConfig, OutputConfig, ProcessedFile, ProcessingConfig, RepositoryInfo};
-use yek::pipeline::{ContentFilteringStage, FileDiscoveryStage, OutputFormattingStage, ProcessingContext, ProcessingPipeline, ProcessingPipelineBuilder, ProcessingStage};
-use yek::repository::RealFileSystem;
 use std::sync::Arc;
+use yek::models::{InputConfig, OutputConfig, ProcessedFile, ProcessingConfig, RepositoryInfo};
+use yek::pipeline::{
+    ContentFilteringStage, FileDiscoveryStage, OutputFormattingStage, ProcessingContext,
+    ProcessingPipeline, ProcessingPipelineBuilder, ProcessingStage,
+};
+use yek::repository::RealFileSystem;
 
 #[cfg(test)]
 mod pipeline_tests {
