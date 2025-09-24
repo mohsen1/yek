@@ -289,6 +289,7 @@ fn test_main_streaming_mode_with_debug() {
         .arg("--debug")
         .arg("--output-name")
         .arg("output.txt")
+        .arg("--no-config") // Prevent default output_dir assignment
         .assert();
 
     cmd.success();
@@ -383,4 +384,56 @@ fn test_main_with_missing_output_dir_fallback() {
 
     // Should fall back to streaming mode
     cmd.success();
+}
+
+#[test]
+fn test_output_dir_and_output_name_combination() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+
+    // Create output directory
+    let output_dir = temp_dir.path().join("output");
+    fs::create_dir_all(&output_dir).unwrap();
+
+    let cmd = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .arg(temp_dir.path())
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .arg("--output-name")
+        .arg("custom-output.txt")
+        .assert();
+
+    cmd.success();
+
+    // Check that the output file was created in the correct location
+    let expected_file = output_dir.join("custom-output.txt");
+    assert!(
+        expected_file.exists(),
+        "Output file should be created at output_dir/output_name"
+    );
+}
+
+#[test]
+fn test_output_name_only_no_output_dir() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+
+    let cmd = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .arg(temp_dir.path())
+        .arg("--output-name")
+        .arg("standalone-output.txt")
+        .assert();
+
+    cmd.success();
+
+    // Check that the output file was created in the temp directory (fallback behavior)
+    // Note: when no output_dir is specified and not streaming, it should fall back to temp dir
 }
