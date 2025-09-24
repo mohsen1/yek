@@ -432,6 +432,7 @@ pub mod safe_ops {
     use std::sync::{Arc, Mutex};
 
     /// Safely read a file with comprehensive error handling
+    #[allow(clippy::result_large_err)]
     pub fn safe_read_file(
         path: &Path,
         context: &ErrorContext,
@@ -491,6 +492,7 @@ pub mod safe_ops {
     }
 
     /// Safely validate UTF-8 content with fallback
+    #[allow(clippy::result_large_err)]
     pub fn safe_validate_utf8(bytes: &[u8], _context: &ErrorContext) -> YekResult<String> {
         match String::from_utf8(bytes.to_vec()) {
             Ok(content) => Ok(content),
@@ -507,6 +509,7 @@ pub mod safe_ops {
     }
 
     /// Safely check path traversal attempts
+    #[allow(clippy::result_large_err)]
     pub fn safe_validate_path(
         input_path: &Path,
         base_path: &Path,
@@ -542,6 +545,7 @@ pub mod safe_ops {
     }
 
     /// Safely handle mutex operations with poison error recovery
+    #[allow(clippy::result_large_err)]
     pub fn safe_mutex_access<T, F, R>(
         mutex: &Arc<Mutex<T>>,
         operation: F,

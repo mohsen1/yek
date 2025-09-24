@@ -282,6 +282,7 @@ impl RepositoryFactory {
     }
 
     /// Get cached git operations for a repository
+    #[allow(clippy::arc_with_non_send_sync)]
     fn get_git_operations(&self, repo_path: &Path) -> Result<Option<Arc<dyn GitOperations>>> {
         // Try to get from cache first
         if let Some(cached) = self

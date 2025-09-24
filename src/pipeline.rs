@@ -361,8 +361,8 @@ impl FileDiscoveryStage {
 
     fn should_ignore_file(&self, path: &Path, context: &ProcessingContext) -> bool {
         // eprintln!("DEBUG: should_ignore_file called for: {}", path.display());
-        let path_str = path.to_string_lossy();
-        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+        let _path_str = path.to_string_lossy();
+        let _file_name = path.file_name().unwrap_or_default().to_string_lossy();
         // eprintln!("DEBUG: path_str: {}, file_name: {}", path_str, file_name);
 
         // First check binary extensions - these always take precedence

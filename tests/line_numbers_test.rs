@@ -3,6 +3,7 @@ use tempfile::tempdir;
 use yek::{config::YekConfig, serialize_repo};
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod line_numbers_tests {
     use super::*;
 

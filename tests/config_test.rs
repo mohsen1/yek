@@ -872,6 +872,7 @@ fn test_read_input_paths_from_stdin() {
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)]
 fn test_init_config_with_stdin_input() {
     // This is tricky to test directly. We could use a different approach.
     // For now, let's test the logic that handles empty input paths
@@ -894,6 +895,7 @@ fn test_ensure_output_dir_permission_denied() {
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)]
 fn test_validate_config_with_tree_options() {
     let mut config = YekConfig::default();
     config.tree_header = true;
@@ -907,6 +909,7 @@ fn test_validate_config_with_tree_options() {
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)]
 fn test_validate_config_with_tree_only() {
     let mut config = YekConfig::default();
     config.tree_only = true;
@@ -929,6 +932,8 @@ fn test_get_checksum_with_nonexistent_files() {
 
 #[test]
 fn test_get_checksum_with_mixed_paths() {
+    #![allow(clippy::field_reassign_with_default)]
+    
     use std::fs;
     use tempfile::tempdir;
 
@@ -950,6 +955,7 @@ fn test_get_checksum_with_mixed_paths() {
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)]
 fn test_init_config_binary_extensions_merge() {
     // Test that binary extensions are properly merged
     let mut config = YekConfig::default();
@@ -974,6 +980,7 @@ fn test_init_config_binary_extensions_merge() {
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)]
 fn test_init_config_ignore_patterns_merge() {
     let mut config = YekConfig::default();
     config.ignore_patterns = vec!["custom_ignore".to_string()];

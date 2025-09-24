@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Represents a processed file with its metadata and content
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessedFile {
     /// Priority score for file ordering
     pub priority: i32,
@@ -15,9 +15,23 @@ pub struct ProcessedFile {
     /// File size in bytes
     pub size_bytes: usize,
     /// Token count (computed lazily with caching)
-    pub token_count: Option<usize>,
+    pub token_count: std::sync::RwLock<Option<usize>>,
     /// Cached formatted content (for line numbers)
     pub formatted_content: Option<String>,
+}
+
+impl Clone for ProcessedFile {
+    fn clone(&self) -> Self {
+        Self {
+            priority: self.priority,
+            file_index: self.file_index,
+            rel_path: self.rel_path.clone(),
+            content: self.content.clone(),
+            size_bytes: self.size_bytes,
+            token_count: std::sync::RwLock::new(*self.token_count.read().unwrap()),
+            formatted_content: self.formatted_content.clone(),
+        }
+    }
 }
 
 impl ProcessedFile {
@@ -30,20 +44,20 @@ impl ProcessedFile {
             rel_path,
             content,
             size_bytes,
-            token_count: None,
+            token_count: std::sync::RwLock::new(None),
             formatted_content: None,
         }
     }
 
     /// Get token count, computing it lazily if not already computed
     pub fn get_token_count(&self) -> usize {
-        if let Some(count) = self.token_count {
+        let mut token_count_guard = self.token_count.write().unwrap();
+        if let Some(count) = *token_count_guard {
             count
         } else {
-            // Note: This is a limitation - we can't cache token count without mutability
-            // For now, we'll compute it on-demand without caching
-            // In a future version, we could use interior mutability (Mutex/RwLock) for caching
-            self.compute_token_count()
+            let count = self.compute_token_count();
+            *token_count_guard = Some(count);
+            count
         }
     }
 
@@ -70,6 +84,7 @@ impl ProcessedFile {
     }
 
     /// Format content with line numbers
+    #[allow(dead_code)]
     fn format_content_with_line_numbers(&self) -> String {
         if self.content.is_empty() {
             return String::new();
@@ -126,7 +141,7 @@ impl ProcessedFile {
 
     /// Clear caches to free memory
     pub fn clear_caches(&mut self) {
-        self.token_count = None;
+        *self.token_count.write().unwrap() = None;
         self.formatted_content = None;
     }
 }
@@ -304,7 +319,7 @@ impl ProcessingStats {
     pub fn add_file(&mut self, file: &ProcessedFile, was_cached: bool) {
         self.files_processed += 1;
         self.bytes_processed += file.size_bytes;
-        if let Some(token_count) = file.token_count {
+        if let Some(token_count) = *file.token_count.read().unwrap() {
             self.tokens_processed += token_count;
         }
         if was_cached {
