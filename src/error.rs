@@ -251,8 +251,27 @@ impl Default for ErrorContext {
     }
 }
 
+/// Error type that combines the main error and its context
+#[derive(Debug)]
+pub struct YekErrorWithContext {
+    pub error: YekError,
+    pub context: ErrorContext,
+}
+
+impl std::fmt::Display for YekErrorWithContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} (context: {:?})", self.error, self.context)
+    }
+}
+
+impl std::error::Error for YekErrorWithContext {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.error.source()
+    }
+}
+
 /// Enhanced result type with context
-pub type YekResult<T> = std::result::Result<T, Box<(YekError, ErrorContext)>>;
+pub type YekResult<T> = std::result::Result<T, Box<YekErrorWithContext>>;
 
 /// Error reporting utilities
 pub struct ErrorReporter;
