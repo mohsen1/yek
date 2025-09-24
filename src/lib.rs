@@ -27,6 +27,71 @@ use tree::generate_tree;
 // Add a static BPE encoder for reuse
 static TOKENIZER: OnceLock<CoreBPE> = OnceLock::new();
 
+/// A helper struct to cache formatted content and size calculations
+/// This enables lazy evaluation of expensive operations like token counting
+#[derive(Debug)]
+struct FileContentCache {
+    file: ProcessedFile,
+    formatted_content: Option<String>,
+    size_cache: Option<usize>,
+}
+
+impl FileContentCache {
+    fn new(file: ProcessedFile) -> Self {
+        Self {
+            file,
+            formatted_content: None,
+            size_cache: None,
+        }
+    }
+
+    /// Get the formatted content, computing it lazily
+    fn get_formatted_content(&mut self, config: &YekConfig) -> &str {
+        if self.formatted_content.is_none() {
+            let content = format_content_with_line_numbers(&self.file.content, config.line_numbers);
+            let formatted = if config.json {
+                serde_json::to_string(&serde_json::json!({
+                    "filename": &self.file.rel_path,
+                    "content": content,
+                }))
+                .unwrap_or_else(|_| format!("{{\"filename\":\"{}\",\"content\":\"{}\"}}", 
+                    self.file.rel_path, content.replace('"', "\\\"")))
+            } else {
+                config
+                    .output_template
+                    .as_ref()
+                    .expect("output_template should be set")
+                    .replace("FILE_PATH", &self.file.rel_path)
+                    .replace("FILE_CONTENT", &content)
+                    // Handle both literal "\n" and escaped "\\n"
+                    .replace("\\\\\n", "\n") // First handle escaped newline
+                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
+            };
+            self.formatted_content = Some(formatted);
+        }
+        self.formatted_content.as_ref().unwrap()
+    }
+
+    /// Get the size (tokens or bytes), computing it lazily
+    fn get_size(&mut self, config: &YekConfig) -> usize {
+        if self.size_cache.is_none() {
+            let formatted_content = self.get_formatted_content(config);
+            let size = if config.token_mode {
+                count_tokens(formatted_content)
+            } else {
+                formatted_content.len()
+            };
+            self.size_cache = Some(size);
+        }
+        self.size_cache.unwrap()
+    }
+
+    /// Get a reference to the underlying file
+    fn file(&self) -> &ProcessedFile {
+        &self.file
+    }
+}
+
 fn get_tokenizer() -> &'static CoreBPE {
     TOKENIZER.get_or_init(|| {
         tiktoken_rs::get_bpe_from_model("gpt-3.5-turbo").expect("Failed to load tokenizer")
@@ -110,7 +175,7 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 
     let mut files = merged_files;
 
-    // Sort final (priority asc, then file_index asc)
+    // Sort final (priority asc, then file_index asc) for consistency in returned files
     files.par_sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
@@ -172,90 +237,66 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
 
     accumulated += tree_header_size;
 
-    // Sort by priority (asc) and file_index (asc)
-    let mut sorted_files: Vec<_> = files.iter().collect();
-    sorted_files.sort_by(|a, b| {
-        a.priority
-            .cmp(&b.priority)
-            .then_with(|| a.rel_path.cmp(&b.rel_path))
-    });
+    // Convert to cached files - no need to sort since serialize_repo already sorted them
+    let cached_files: Vec<FileContentCache> = files
+        .iter()
+        .map(|f| FileContentCache::new(f.clone()))
+        .collect();
 
     let mut files_to_include = Vec::new();
-    for file in sorted_files {
-        let content_size = if config.token_mode {
-            // Format the file content with template first, then count tokens
-            let content = format_content_with_line_numbers(&file.content, config.line_numbers);
-            let formatted = if config.json {
-                serde_json::to_string(&serde_json::json!({
-                    "filename": &file.rel_path,
-                    "content": content,
-                }))
-                .map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?
-            } else {
-                config
-                    .output_template
-                    .as_ref()
-                    .expect("output_template should be set")
-                    .replace("FILE_PATH", &file.rel_path)
-                    .replace("FILE_CONTENT", &content)
-                    // Handle both literal "\n" and escaped "\\n"
-                    .replace("\\\\\n", "\n") // First handle escaped newline
-                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
-            };
-            count_tokens(&formatted)
-        } else {
-            let content = format_content_with_line_numbers(&file.content, config.line_numbers);
-            content.len()
-        };
+    for mut cached_file in cached_files {
+        let content_size = cached_file.get_size(config);
 
         if accumulated + content_size <= cap {
             accumulated += content_size;
-            files_to_include.push(file);
+            files_to_include.push(cached_file);
         } else {
             break;
         }
     }
 
+    // Build the final output using pre-computed formatted content
     let main_content = if config.json {
-        // JSON array of objects
-        serde_json::to_string_pretty(
-            &files_to_include
-                .iter()
-                .map(|f| {
-                    let content = format_content_with_line_numbers(&f.content, config.line_numbers);
-                    serde_json::json!({
-                        "filename": &f.rel_path,
-                        "content": content,
-                    })
-                })
-                .collect::<Vec<_>>(),
-        )?
-    } else {
-        // Use the user-defined template
-        files_to_include
+        // For JSON, we need to collect the individual JSON objects into an array
+        let json_objects: Vec<serde_json::Value> = files_to_include
             .iter()
-            .map(|f| {
-                let content = format_content_with_line_numbers(&f.content, config.line_numbers);
-                config
-                    .output_template
-                    .as_ref()
-                    .expect("output_template should be set")
-                    .replace("FILE_PATH", &f.rel_path)
-                    .replace("FILE_CONTENT", &content)
-                    // Handle both literal "\n" and escaped "\\n"
-                    .replace("\\\\\n", "\n") // First handle escaped newline
-                    .replace("\\\\n", "\n") // Then handle escaped \n sequence
+            .map(|cached_file| {
+                let content = format_content_with_line_numbers(&cached_file.file().content, config.line_numbers);
+                serde_json::json!({
+                    "filename": &cached_file.file().rel_path,
+                    "content": content,
+                })
             })
-            .collect::<Vec<_>>()
-            .join("\n")
+            .collect();
+        serde_json::to_string_pretty(&json_objects)?
+    } else {
+        // Pre-allocate capacity to reduce reallocations
+        let estimated_size = files_to_include.iter().map(|f| f.size_cache.unwrap_or(1000)).sum::<usize>();
+        let mut result = String::with_capacity(estimated_size);
+        
+        for (i, cached_file) in files_to_include.iter_mut().enumerate() {
+            if i > 0 {
+                result.push('\n');
+            }
+            result.push_str(cached_file.get_formatted_content(config));
+        }
+        result
     };
 
-    // Combine tree header with main content
-    if config.tree_header {
-        Ok(format!("{}{}", tree_header, main_content))
+    // Combine tree header and main content
+    let final_output = if config.tree_header {
+        let total_capacity = tree_header.len() + main_content.len() + 1;
+        let mut result = String::with_capacity(total_capacity);
+        result.push_str(&tree_header);
+        if !main_content.is_empty() {
+            result.push_str(&main_content);
+        }
+        result
     } else {
-        Ok(main_content)
-    }
+        main_content
+    };
+
+    Ok(final_output)
 }
 
 /// Format file content with line numbers if requested
