@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use yek::models::{InputConfig, OutputConfig, ProcessedFile, ProcessingConfig, RepositoryInfo};
-use yek::pipeline::{ProcessingContext, ProcessingPipeline, ProcessingPipelineBuilder};
+use yek::pipeline::{ContentFilteringStage, FileDiscoveryStage, OutputFormattingStage, ProcessingContext, ProcessingPipeline, ProcessingPipelineBuilder, ProcessingStage};
 use yek::repository::RealFileSystem;
 use std::sync::Arc;
 
@@ -37,7 +37,7 @@ mod pipeline_tests {
     #[test]
     fn test_processing_pipeline_new() {
         let context = create_test_context();
-        let pipeline = ProcessingPipeline::new(context);
+        let _pipeline = ProcessingPipeline::new(context);
         // Should not panic
     }
 
@@ -54,14 +54,51 @@ mod pipeline_tests {
     #[test]
     fn test_processing_pipeline_builder_new() {
         let context = create_test_context();
-        let builder = ProcessingPipelineBuilder::new(context);
+        let _builder = ProcessingPipelineBuilder::new(context);
         // Should not panic
     }
 
     #[test]
     fn test_processing_pipeline_builder_build() {
         let context = create_test_context();
-        let pipeline = ProcessingPipelineBuilder::new(context).build();
+        let _pipeline = ProcessingPipelineBuilder::new(context).build();
         // Should not panic
+    }
+
+    #[test]
+    fn test_file_discovery_stage_process() {
+        let stage = FileDiscoveryStage::new();
+        let context = create_test_context();
+        let files = stage.process(vec![], &context).unwrap();
+        // Should return files or empty vec, depending on input paths
+        // Since input_paths is empty, should return empty
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_content_filtering_stage_process() {
+        let stage = ContentFilteringStage;
+        let context = create_test_context();
+        let file = ProcessedFile::new("test.txt".to_string(), "content".to_string(), 0, 0);
+        let files = stage.process(vec![file], &context).unwrap();
+        assert_eq!(files.len(), 1);
+    }
+
+    #[test]
+    fn test_output_formatting_stage_process() {
+        let stage = OutputFormattingStage;
+        let context = create_test_context();
+        let file = ProcessedFile::new("test.txt".to_string(), "line1\nline2".to_string(), 0, 0);
+        let files = stage.process(vec![file], &context).unwrap();
+        assert_eq!(files.len(), 1);
+    }
+
+    #[test]
+    fn test_processing_pipeline_process() {
+        let context = create_test_context();
+        let pipeline = ProcessingPipeline::new(context);
+        let result = pipeline.process();
+        // Should not panic, even if no files are found
+        assert!(result.is_ok());
     }
 }
