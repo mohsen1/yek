@@ -252,7 +252,7 @@ impl Default for ErrorContext {
 }
 
 /// Enhanced result type with context
-pub type YekResult<T> = std::result::Result<T, (YekError, ErrorContext)>;
+pub type YekResult<T> = std::result::Result<T, Box<(YekError, ErrorContext)>>;
 
 /// Error reporting utilities
 pub struct ErrorReporter;
@@ -432,7 +432,6 @@ pub mod safe_ops {
     use std::sync::{Arc, Mutex};
 
     /// Safely read a file with comprehensive error handling
-    #[allow(clippy::result_large_err)]
     pub fn safe_read_file(
         path: &Path,
         context: &ErrorContext,
@@ -440,26 +439,26 @@ pub mod safe_ops {
     ) -> YekResult<Vec<u8>> {
         // Check if file exists
         if !path.exists() {
-            return Err((
+            return Err(Box::new((
                 YekError::FileSystem {
                     operation: "read".to_string(),
                     path: path.to_path_buf(),
                     source: io::Error::new(io::ErrorKind::NotFound, "File not found"),
                 },
                 context.clone(),
-            ));
+            )));
         }
 
         // Check if it's actually a file
         if !path.is_file() {
-            return Err((
+            return Err(Box::new((
                 YekError::FileSystem {
                     operation: "read".to_string(),
                     path: path.to_path_buf(),
                     source: io::Error::new(io::ErrorKind::InvalidInput, "Path is not a file"),
                 },
                 context.clone(),
-            ));
+            )));
         }
 
         // Read file content
@@ -468,31 +467,30 @@ pub mod safe_ops {
                 // Check size limits
                 if let Some(max_size) = max_size {
                     if content.len() > max_size {
-                        return Err((
+                        return Err(Box::new((
                             YekError::Memory {
                                 operation: "file reading".to_string(),
                                 requested: content.len(),
                                 available: Some(max_size),
                             },
                             context.clone(),
-                        ));
+                        )));
                     }
                 }
                 Ok(content)
             }
-            Err(source) => Err((
+            Err(source) => Err(Box::new((
                 YekError::FileSystem {
                     operation: "read".to_string(),
                     path: path.to_path_buf(),
                     source,
                 },
                 context.clone(),
-            )),
+            ))),
         }
     }
 
     /// Safely validate UTF-8 content with fallback
-    #[allow(clippy::result_large_err)]
     pub fn safe_validate_utf8(bytes: &[u8], _context: &ErrorContext) -> YekResult<String> {
         match String::from_utf8(bytes.to_vec()) {
             Ok(content) => Ok(content),
@@ -509,7 +507,6 @@ pub mod safe_ops {
     }
 
     /// Safely check path traversal attempts
-    #[allow(clippy::result_large_err)]
     pub fn safe_validate_path(
         input_path: &Path,
         base_path: &Path,
@@ -517,14 +514,14 @@ pub mod safe_ops {
     ) -> YekResult<PathBuf> {
         // Normalize the path
         let normalized = std::fs::canonicalize(input_path).map_err(|source| {
-            (
+            Box::new((
                 YekError::FileSystem {
                     operation: "canonicalize".to_string(),
                     path: input_path.to_path_buf(),
                     source,
                 },
                 context.clone(),
-            )
+            ))
         })?;
 
         // Check for path traversal attempts
@@ -533,19 +530,18 @@ pub mod safe_ops {
             Ok(normalized)
         } else {
             // Path tries to escape base directory, potential security issue
-            Err((
+            Err(Box::new((
                 YekError::Security {
                     violation: "Path traversal attempt".to_string(),
                     path: normalized,
                     attempted_by: context.operation.clone(),
                 },
                 context.clone(),
-            ))
+            )))
         }
     }
 
     /// Safely handle mutex operations with poison error recovery
-    #[allow(clippy::result_large_err)]
     pub fn safe_mutex_access<T, F, R>(
         mutex: &Arc<Mutex<T>>,
         operation: F,

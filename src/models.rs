@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 /// Represents a processed file with its metadata and content
 #[derive(Debug, Serialize, Deserialize)]
@@ -15,7 +16,8 @@ pub struct ProcessedFile {
     /// File size in bytes
     pub size_bytes: usize,
     /// Token count (computed lazily with caching)
-    pub token_count: std::sync::RwLock<Option<usize>>,
+    #[serde(skip)]
+    pub token_count: OnceLock<usize>,
     /// Cached formatted content (for line numbers)
     pub formatted_content: Option<String>,
 }
@@ -28,7 +30,7 @@ impl Clone for ProcessedFile {
             rel_path: self.rel_path.clone(),
             content: self.content.clone(),
             size_bytes: self.size_bytes,
-            token_count: std::sync::RwLock::new(*self.token_count.read().unwrap()),
+            token_count: OnceLock::new(),
             formatted_content: self.formatted_content.clone(),
         }
     }
@@ -44,21 +46,14 @@ impl ProcessedFile {
             rel_path,
             content,
             size_bytes,
-            token_count: std::sync::RwLock::new(None),
+            token_count: OnceLock::new(),
             formatted_content: None,
         }
     }
 
     /// Get token count, computing it lazily if not already computed
     pub fn get_token_count(&self) -> usize {
-        let mut token_count_guard = self.token_count.write().unwrap();
-        if let Some(count) = *token_count_guard {
-            count
-        } else {
-            let count = self.compute_token_count();
-            *token_count_guard = Some(count);
-            count
-        }
+        *self.token_count.get_or_init(|| self.compute_token_count())
     }
 
     /// Get formatted content with line numbers if requested
@@ -141,7 +136,7 @@ impl ProcessedFile {
 
     /// Clear caches to free memory
     pub fn clear_caches(&mut self) {
-        *self.token_count.write().unwrap() = None;
+        self.token_count = OnceLock::new();
         self.formatted_content = None;
     }
 }
@@ -319,8 +314,8 @@ impl ProcessingStats {
     pub fn add_file(&mut self, file: &ProcessedFile, was_cached: bool) {
         self.files_processed += 1;
         self.bytes_processed += file.size_bytes;
-        if let Some(token_count) = *file.token_count.read().unwrap() {
-            self.tokens_processed += token_count;
+        if let Some(token_count) = file.token_count.get() {
+            self.tokens_processed += *token_count;
         }
         if was_cached {
             // This is a simplified cache hit tracking

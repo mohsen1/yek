@@ -9,6 +9,9 @@ use std::{
     time::SystemTime,
 };
 
+/// Maximum depth for symlink resolution to prevent infinite loops
+const MAX_SYMLINK_DEPTH: usize = 100;
+
 /// Trait for file system operations
 pub trait FileSystem {
     /// Check if a path exists
@@ -102,7 +105,7 @@ impl FileSystem for RealFileSystem {
         let mut visited = std::collections::HashSet::new();
         let mut current = path.to_path_buf();
 
-        for _ in 0..100 {
+        for _ in 0..MAX_SYMLINK_DEPTH {
             // Reasonable limit to prevent infinite loops
             if !self.is_symlink(&current) {
                 break;

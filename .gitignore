@@ -12,3 +12,6 @@ dist/
 *.backup
 coverage/
 *.html
+*.profraw
+coverage_html/
+.ai/
