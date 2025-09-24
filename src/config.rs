@@ -10,6 +10,99 @@ use crate::{
     priority::PriorityRule,
 };
 
+/// Configuration for output formatting and generation
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct OutputConfig {
+    /// Enable JSON output
+    pub json: bool,
+    /// Include line numbers in output
+    pub line_numbers: bool,
+    /// Output directory. If none is provided & stdout is a TTY, we pick a temp dir
+    pub output_dir: Option<String>,
+    /// Output filename. If provided, write output to this file in current directory
+    pub output_name: Option<String>,
+    /// Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
+    pub output_template: Option<String>,
+    /// Include directory tree header in output (incompatible with JSON output)
+    pub tree_header: bool,
+    /// Show only the directory tree (no file contents, incompatible with JSON output)
+    pub tree_only: bool,
+    /// True if we should stream output to stdout (computed)
+    pub stream: bool,
+    /// Final resolved output file path (only used if not streaming)
+    pub output_file_full_path: Option<String>,
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self {
+            json: false,
+            line_numbers: false,
+            output_dir: None,
+            output_name: None,
+            output_template: Some(DEFAULT_OUTPUT_TEMPLATE.to_string()),
+            tree_header: false,
+            tree_only: false,
+            stream: false,
+            output_file_full_path: None,
+        }
+    }
+}
+
+/// Configuration for size limits and processing constraints
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ProcessingConfig {
+    /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
+    pub max_size: String,
+    /// Use token mode instead of byte mode
+    pub tokens: String,
+    /// True if we should count tokens, not bytes (computed)
+    pub token_mode: bool,
+    /// Binary file extensions to ignore
+    pub binary_extensions: Vec<String>,
+}
+
+impl Default for ProcessingConfig {
+    fn default() -> Self {
+        Self {
+            max_size: "10MB".to_string(),
+            tokens: String::new(),
+            token_mode: false,
+            binary_extensions: BINARY_FILE_EXTENSIONS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        }
+    }
+}
+
+/// Configuration for file filtering and prioritization
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct FilterConfig {
+    /// Ignore patterns
+    pub ignore_patterns: Vec<String>,
+    /// Unignore patterns. Yek has some built-in ignore patterns, but you can override them here.
+    pub unignore_patterns: Vec<String>,
+    /// Priority rules
+    pub priority_rules: Vec<PriorityRule>,
+    /// Maximum additional boost from Git commit times (0..1000)
+    pub git_boost_max: Option<i32>,
+    /// Maximum depth to search for Git commit times
+    pub max_git_depth: i32,
+}
+
+impl Default for FilterConfig {
+    fn default() -> Self {
+        Self {
+            ignore_patterns: Vec::new(),
+            unignore_patterns: Vec::new(),
+            priority_rules: Vec::new(),
+            git_boost_max: Some(100),
+            max_git_depth: 100,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, clap::ValueEnum, serde::Serialize, serde::Deserialize)]
 pub enum ConfigFormat {
     #[default]
@@ -30,6 +123,11 @@ pub struct YekConfig {
     #[config_arg(long = "version", short = 'V')]
     pub version: bool,
 
+    /// Enable debug output
+    #[config_arg()]
+    pub debug: bool,
+
+    // Legacy flat fields for CLI compatibility - these map to the focused configs
     /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
     #[config_arg(default_value = "10MB")]
     pub max_size: String,
@@ -41,10 +139,6 @@ pub struct YekConfig {
     /// Enable JSON output
     #[config_arg()]
     pub json: bool,
-
-    /// Enable debug output
-    #[config_arg()]
-    pub debug: bool,
 
     /// Include line numbers in output
     #[config_arg(long = "line-numbers")]
@@ -102,12 +196,17 @@ pub struct YekConfig {
     /// Maximum depth to search for Git commit times
     #[config_arg(accept_from = "config_only", default_value = "100")]
     pub max_git_depth: i32,
+
+    // Focused configuration components
+    pub output: OutputConfig,
+    pub processing: ProcessingConfig,
+    pub filtering: FilterConfig,
 }
 
 /// Provide defaults so tests or other callers can create a baseline YekConfig easily.
 impl Default for YekConfig {
     fn default() -> Self {
-        Self {
+        let mut config = Self {
             input_paths: Vec::new(),
             version: false,
             max_size: "10MB".to_string(),
@@ -134,17 +233,54 @@ impl Default for YekConfig {
             token_mode: false,
             output_file_full_path: None,
             max_git_depth: 100,
-        }
+
+            // focused configs
+            output: OutputConfig::default(),
+            processing: ProcessingConfig::default(),
+            filtering: FilterConfig::default(),
+        };
+        config.sync_focused_configs();
+        config
     }
 }
 
 impl YekConfig {
     pub fn extend_config_with_defaults(input_paths: Vec<String>, output_dir: String) -> Self {
-        YekConfig {
+        let mut config = YekConfig {
             input_paths,
             output_dir: Some(output_dir),
             ..Default::default()
-        }
+        };
+        config.sync_focused_configs();
+        config
+    }
+
+    /// Synchronize flat configuration fields with focused configuration components
+    /// This maintains backward compatibility while enabling better organization
+    pub fn sync_focused_configs(&mut self) {
+        // Sync output config
+        self.output.json = self.json;
+        self.output.line_numbers = self.line_numbers;
+        self.output.output_dir = self.output_dir.clone();
+        self.output.output_name = self.output_name.clone();
+        self.output.output_template = self.output_template.clone();
+        self.output.tree_header = self.tree_header;
+        self.output.tree_only = self.tree_only;
+        self.output.stream = self.stream;
+        self.output.output_file_full_path = self.output_file_full_path.clone();
+
+        // Sync processing config
+        self.processing.max_size = self.max_size.clone();
+        self.processing.tokens = self.tokens.clone();
+        self.processing.token_mode = self.token_mode;
+        self.processing.binary_extensions = self.binary_extensions.clone();
+
+        // Sync filtering config
+        self.filtering.ignore_patterns = self.ignore_patterns.clone();
+        self.filtering.unignore_patterns = self.unignore_patterns.clone();
+        self.filtering.priority_rules = self.priority_rules.clone();
+        self.filtering.git_boost_max = self.git_boost_max;
+        self.filtering.max_git_depth = self.max_git_depth;
     }
 
     /// Read input paths from stdin, filtering out empty lines and trimming whitespace
@@ -274,6 +410,9 @@ impl YekConfig {
 
         // By default, we start with no final output_file_full_path:
         cfg.output_file_full_path = None;
+
+        // Sync flat fields to focused configs
+        cfg.sync_focused_configs();
 
         // 3) Validate
         if let Err(e) = cfg.validate() {
