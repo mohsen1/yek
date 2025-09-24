@@ -458,26 +458,26 @@ pub mod safe_ops {
     ) -> YekResult<Vec<u8>> {
         // Check if file exists
         if !path.exists() {
-            return Err(Box::new((
-                YekError::FileSystem {
+            return Err(Box::new(YekErrorWithContext {
+                error: YekError::FileSystem {
                     operation: "read".to_string(),
                     path: path.to_path_buf(),
                     source: io::Error::new(io::ErrorKind::NotFound, "File not found"),
                 },
-                context.clone(),
-            )));
+                context: context.clone(),
+            }));
         }
 
         // Check if it's actually a file
         if !path.is_file() {
-            return Err(Box::new((
-                YekError::FileSystem {
+            return Err(Box::new(YekErrorWithContext {
+                error: YekError::FileSystem {
                     operation: "read".to_string(),
                     path: path.to_path_buf(),
                     source: io::Error::new(io::ErrorKind::InvalidInput, "Path is not a file"),
                 },
-                context.clone(),
-            )));
+                context: context.clone(),
+            }));
         }
 
         // Read file content
@@ -486,26 +486,26 @@ pub mod safe_ops {
                 // Check size limits
                 if let Some(max_size) = max_size {
                     if content.len() > max_size {
-                        return Err(Box::new((
-                            YekError::Memory {
+                        return Err(Box::new(YekErrorWithContext {
+                            error: YekError::Memory {
                                 operation: "file reading".to_string(),
                                 requested: content.len(),
                                 available: Some(max_size),
                             },
-                            context.clone(),
-                        )));
+                            context: context.clone(),
+                        }));
                     }
                 }
                 Ok(content)
             }
-            Err(source) => Err(Box::new((
-                YekError::FileSystem {
+            Err(source) => Err(Box::new(YekErrorWithContext {
+                error: YekError::FileSystem {
                     operation: "read".to_string(),
                     path: path.to_path_buf(),
                     source,
                 },
-                context.clone(),
-            ))),
+                context: context.clone(),
+            })),
         }
     }
 
@@ -533,14 +533,14 @@ pub mod safe_ops {
     ) -> YekResult<PathBuf> {
         // Normalize the path
         let normalized = std::fs::canonicalize(input_path).map_err(|source| {
-            Box::new((
-                YekError::FileSystem {
+            Box::new(YekErrorWithContext {
+                error: YekError::FileSystem {
                     operation: "canonicalize".to_string(),
                     path: input_path.to_path_buf(),
                     source,
                 },
-                context.clone(),
-            ))
+                context: context.clone(),
+            })
         })?;
 
         // Check for path traversal attempts
@@ -549,14 +549,14 @@ pub mod safe_ops {
             Ok(normalized)
         } else {
             // Path tries to escape base directory, potential security issue
-            Err(Box::new((
-                YekError::Security {
+            Err(Box::new(YekErrorWithContext {
+                error: YekError::Security {
                     violation: "Path traversal attempt".to_string(),
                     path: normalized,
                     attempted_by: context.operation.clone(),
                 },
-                context.clone(),
-            )))
+                context: context.clone(),
+            }))
         }
     }
 
