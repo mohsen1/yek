@@ -67,7 +67,10 @@ fn process_single_file(
             }
         }
         Err(e) => {
-            debug!("Failed to read file '{}' (size check): {} - file will be skipped", rel_path, e);
+            debug!(
+                "Failed to read file '{}' (size check): {} - file will be skipped",
+                rel_path, e
+            );
         }
     }
 

@@ -26,6 +26,17 @@ pub fn get_file_priority(path: &str, rules: &[PriorityRule]) -> i32 {
 
 /// Rank-based approach to compute how "recent" each file is (0=oldest, 1=newest).
 /// Then scale it to a user-defined or default max boost.
+///
+/// Algorithm:
+/// 1. Sort all files by their commit timestamps (oldest first)
+/// 2. Calculate the time range between oldest and newest commits
+/// 3. For each file, compute its normalized position in the time range (0.0 to 1.0)
+/// 4. Scale this position by max_boost to get the final priority boost
+///
+/// Example: If max_boost=100 and we have files with timestamps:
+/// - fileA: day 1 (oldest) → rank=0.0 → boost=0
+/// - fileB: day 5 (middle) → rank=0.5 → boost=50  
+/// - fileC: day 9 (newest) → rank=1.0 → boost=100
 pub fn compute_recentness_boost(
     commit_times: &HashMap<String, u64>,
     max_boost: i32,
@@ -48,7 +59,7 @@ pub fn compute_recentness_boost(
     }
 
     let mut result = HashMap::new();
-    
+
     // Safe access to first and last elements - we know sorted.len() >= 2 at this point
     let oldest_time = match sorted.first() {
         Some((_, time)) => **time,
@@ -58,7 +69,7 @@ pub fn compute_recentness_boost(
             return result;
         }
     };
-    
+
     let newest_time = match sorted.last() {
         Some((_, time)) => **time,
         None => {
@@ -67,7 +78,7 @@ pub fn compute_recentness_boost(
             return result;
         }
     };
-    
+
     let time_range = newest_time.saturating_sub(oldest_time) as f64;
 
     // If all files have the same timestamp, they should all get the same boost

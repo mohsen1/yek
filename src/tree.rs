@@ -92,6 +92,18 @@ fn add_path_to_tree(root: &mut TreeNode, path: &Path) {
 
 /// Internal function to add a path to the tree with explicit control over final component type.
 ///
+/// This function handles the complex logic of building a directory tree where conflicts
+/// can occur between files and directories with the same name. The resolution strategy is:
+/// 1. Directories always win over files if they will have children
+/// 2. If a directory is empty and conflicts with a file, the file wins
+/// 3. Files that conflict with non-empty directories are ignored
+///
+/// Algorithm:
+/// 1. Clean and normalize path components (remove empty parts, handle edge cases)
+/// 2. Traverse the tree path, creating intermediate directory nodes as needed
+/// 3. For the final component, apply conflict resolution rules
+/// 4. Update the tree structure with the new or modified nodes
+///
 /// # Arguments
 /// * `root` - The root tree node to add the path to
 /// * `path` - The path to add to the tree

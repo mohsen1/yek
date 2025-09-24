@@ -29,6 +29,16 @@ static TOKENIZER: OnceLock<CoreBPE> = OnceLock::new();
 
 /// A helper struct to cache formatted content and size calculations
 /// This enables lazy evaluation of expensive operations like token counting
+///
+/// **Performance Benefits:**
+/// - Token counting only occurs when files will actually be included in output
+/// - Content formatting is cached to avoid duplicate template processing  
+/// - Size calculations are memoized to prevent repeated expensive operations
+///
+/// **Memory Trade-offs:**
+/// - Uses additional memory to cache formatted content and size
+/// - Memory is only allocated when operations are actually performed
+/// - Significant CPU savings for files that exceed size limits (never processed)
 #[derive(Debug)]
 struct FileContentCache {
     file: ProcessedFile,
@@ -54,12 +64,20 @@ impl FileContentCache {
                     "filename": &self.file.rel_path,
                     "content": content,
                 }))
-                .map_err(|e| anyhow::anyhow!("Failed to serialize JSON for file {}: {}", self.file.rel_path, e))?
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to serialize JSON for file {}: {}",
+                        self.file.rel_path,
+                        e
+                    )
+                })?
             } else {
                 config
                     .output_template
                     .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("Output template not set - this is a configuration error"))?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Output template not set - this is a configuration error")
+                    })?
                     .replace("FILE_PATH", &self.file.rel_path)
                     .replace("FILE_CONTENT", &content)
                     // Handle both literal "\n" and escaped "\\n"
@@ -119,7 +137,28 @@ pub fn is_text_file(path: &Path, user_binary_extensions: &[String]) -> io::Resul
     Ok(inspect(&buf) != ContentType::BINARY)
 }
 
-/// Main entrypoint for serialization, used by CLI and tests
+/// Main entrypoint for repository serialization, used by CLI and tests
+///
+/// **High-level Algorithm:**
+/// 1. **Path Resolution**: Convert input paths (files, directories, globs) to concrete file paths
+/// 2. **Git Integration**: Analyze git history to compute file priority boosts based on recent changes  
+/// 3. **Parallel Processing**: Process files concurrently, applying ignore patterns and binary detection
+/// 4. **Priority Sorting**: Sort files by computed priority (lower priority = higher importance)
+/// 5. **Content Generation**: Format and concatenate files within size/token limits using lazy evaluation
+///
+/// **Performance Optimizations:**
+/// - Parallel file processing for I/O bound operations
+/// - Lazy token counting (only for files that will be included)
+/// - Single sort operation to avoid redundant ordering
+/// - Pre-allocated strings to reduce memory fragmentation
+///
+/// **Error Handling:**
+/// - Graceful degradation when Git is unavailable
+/// - Non-existent paths are logged but don't fail the operation
+/// - File read errors are logged at debug level and files are skipped
+///
+/// # Returns
+/// A tuple of (formatted_output_string, processed_files_list)
 pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)> {
     // Validate input paths and warn about non-existent ones
     let mut non_existent_paths = Vec::new();
@@ -262,7 +301,10 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
         let json_objects: Vec<serde_json::Value> = files_to_include
             .iter()
             .map(|cached_file| {
-                let content = format_content_with_line_numbers(&cached_file.file().content, config.line_numbers);
+                let content = format_content_with_line_numbers(
+                    &cached_file.file().content,
+                    config.line_numbers,
+                );
                 serde_json::json!({
                     "filename": &cached_file.file().rel_path,
                     "content": content,
@@ -272,9 +314,12 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
         serde_json::to_string_pretty(&json_objects)?
     } else {
         // Pre-allocate capacity to reduce reallocations
-        let estimated_size = files_to_include.iter().map(|f| f.size_cache.unwrap_or(1000)).sum::<usize>();
+        let estimated_size = files_to_include
+            .iter()
+            .map(|f| f.size_cache.unwrap_or(1000))
+            .sum::<usize>();
         let mut result = String::with_capacity(estimated_size);
-        
+
         for (i, cached_file) in files_to_include.iter_mut().enumerate() {
             if i > 0 {
                 result.push('\n');
