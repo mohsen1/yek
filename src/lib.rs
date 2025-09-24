@@ -16,7 +16,6 @@ use tiktoken_rs::CoreBPE;
 pub mod config;
 pub mod defaults;
 pub mod error;
-pub mod main_new;
 pub mod models;
 pub mod parallel;
 pub mod parallel_fixed;

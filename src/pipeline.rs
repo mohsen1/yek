@@ -2,9 +2,10 @@ use crate::{
     models::{
         InputConfig, OutputConfig, ProcessedFile, ProcessingConfig, ProcessingStats, RepositoryInfo,
     },
-    repository::{FileSystem, GitOperations, RepositoryFactory},
+    repository::{FileSystem, RepositoryFactory},
 };
 use anyhow::{anyhow, Result};
+use glob;
 use std::{
     collections::HashMap,
     path::Path,
@@ -58,14 +59,12 @@ impl ProcessingContext {
 /// File discovery stage - finds and filters files to process
 pub struct FileDiscoveryStage {
     repository_factory: RepositoryFactory,
-    git_operations: Option<Arc<dyn GitOperations>>,
 }
 
 impl FileDiscoveryStage {
-    pub fn new(git_operations: Option<Arc<dyn GitOperations>>) -> Self {
+    pub fn new() -> Self {
         Self {
             repository_factory: RepositoryFactory::new(),
-            git_operations,
         }
     }
 }
@@ -76,19 +75,27 @@ impl ProcessingStage for FileDiscoveryStage {
         _files: Vec<ProcessedFile>,
         context: &ProcessingContext,
     ) -> Result<Vec<ProcessedFile>> {
+        // eprintln!("DEBUG: FileDiscoveryStage::process called");
         let start_time = Instant::now();
         let mut discovered_files = Vec::new();
 
+        // Calculate optimal base directory for mixed inputs
+        let base_dir = self.calculate_base_directory(&context.input_config.input_paths)?;
+        // eprintln!("DEBUG: Base directory calculated: {}", base_dir.display());
+
+        // Create repository info for the base directory
+        let repo_info = self
+            .repository_factory
+            .create_repository_info(&base_dir, &context.input_config)?;
+
+        // Process all inputs with the same repository context
         for input_path in &context.input_config.input_paths {
             let path = Path::new(input_path);
-
-            // Create repository info for this path
-            let repo_info = self
-                .repository_factory
-                .create_repository_info(path, &context.input_config)?;
+            // eprintln!("DEBUG: Processing input path: {}", path.display());
 
             // Discover files in this path
             let files = self.discover_files_in_path(path, &repo_info, context)?;
+            // eprintln!("DEBUG: Found {} files for path: {}", files.len(), path.display());
             discovered_files.extend(files);
         }
 
@@ -107,22 +114,181 @@ impl ProcessingStage for FileDiscoveryStage {
 }
 
 impl FileDiscoveryStage {
+    /// Calculate the optimal base directory for mixed inputs
+    fn calculate_base_directory(&self, input_paths: &[String]) -> Result<std::path::PathBuf> {
+        if input_paths.is_empty() {
+            return Ok(std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf()));
+        }
+
+        // Convert all paths to absolute paths for comparison, handling glob patterns
+        let mut absolute_paths = Vec::new();
+        for path_str in input_paths {
+            let path = Path::new(path_str);
+
+            // For glob patterns, extract the directory part
+            let actual_path =
+                if path_str.contains('*') || path_str.contains('?') || path_str.contains('[') {
+                    // This is a glob pattern, extract the directory part
+                    if let Some(parent) = path.parent() {
+                        if parent == Path::new("") {
+                            // Pattern like "*.txt" - use current directory
+                            std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
+                        } else {
+                            // Pattern like "src/*.txt" - use the parent directory
+                            if parent.is_absolute() {
+                                parent.to_path_buf()
+                            } else {
+                                std::env::current_dir()
+                                    .unwrap_or_else(|_| Path::new(".").to_path_buf())
+                                    .join(parent)
+                            }
+                        }
+                    } else {
+                        // Pattern with no directory part - use current directory
+                        std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
+                    }
+                } else {
+                    // Regular path
+                    if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        std::env::current_dir()
+                            .unwrap_or_else(|_| Path::new(".").to_path_buf())
+                            .join(path)
+                    }
+                };
+            absolute_paths.push(actual_path);
+        }
+
+        // Check if all paths are files (not directories)
+        let all_files = absolute_paths.iter().all(|path| {
+            // Check if the path exists and is a file, or if it doesn't exist but has a file extension
+            path.exists() && path.is_file() || (!path.exists() && path.extension().is_some())
+        });
+
+        // If all paths are files, use the parent directory of the first file as the base
+        if all_files && !absolute_paths.is_empty() {
+            let first_file = &absolute_paths[0];
+            if let Some(parent) = first_file.parent() {
+                return Ok(parent.to_path_buf());
+            }
+        }
+
+        // Find the common base directory
+        let first_path = &absolute_paths[0];
+        let mut common_base = first_path.as_path();
+
+        for path in &absolute_paths[1..] {
+            common_base = self.find_common_base(common_base, path);
+        }
+
+        Ok(common_base.to_path_buf())
+    }
+
+    /// Find the common base directory between two paths
+    fn find_common_base<'a>(&self, path1: &'a Path, path2: &'a Path) -> &'a Path {
+        let ancestors1 = path1.ancestors().collect::<Vec<_>>();
+        let ancestors2 = path2.ancestors().collect::<Vec<_>>();
+
+        // Find the last common ancestor
+        for (a, b) in ancestors1.iter().zip(ancestors2.iter()) {
+            if a != b {
+                // Return the parent of the first mismatch
+                return ancestors1
+                    .iter()
+                    .position(|&x| x == *a)
+                    .and_then(|pos| ancestors1.get(pos + 1))
+                    .map(|&path| path)
+                    .unwrap_or_else(|| Path::new("."));
+            }
+        }
+
+        // If one path is a parent of the other, return the shorter one
+        if ancestors1.len() <= ancestors2.len() {
+            path1
+        } else {
+            path2
+        }
+    }
+
+    /// Expand glob patterns into concrete paths
+    fn expand_globs(&self, path: &Path) -> Result<Vec<std::path::PathBuf>> {
+        let mut expanded_paths = Vec::new();
+        let path_str = path.to_string_lossy();
+
+        // Check if the path contains glob patterns
+        // eprintln!("DEBUG: Checking path for glob patterns: {}", path_str);
+        if path_str.contains('*') || path_str.contains('?') || path_str.contains('[') {
+            // eprintln!("DEBUG: Found glob pattern, expanding: {}", path_str);
+            // Expand glob pattern
+            for entry in glob::glob(&path_str)? {
+                match entry {
+                    Ok(expanded_path) => {
+                        // eprintln!("DEBUG: Found glob match: {}", expanded_path.display());
+                        // Convert to absolute path to ensure consistency
+                        let absolute_path = if expanded_path.is_absolute() {
+                            expanded_path
+                        } else {
+                            std::env::current_dir()
+                                .unwrap_or_else(|_| Path::new(".").to_path_buf())
+                                .join(expanded_path)
+                        };
+                        expanded_paths.push(absolute_path);
+                    }
+                    Err(e) => {
+                        // Log the error but continue with other matches
+                        eprintln!("Warning: Glob pattern error for '{}': {}", path_str, e);
+                    }
+                }
+            }
+        } else {
+            // No glob patterns, use the path as-is, converting to absolute
+            let absolute_path = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| Path::new(".").to_path_buf())
+                    .join(path)
+            };
+            expanded_paths.push(absolute_path);
+        }
+
+        Ok(expanded_paths)
+    }
+
     fn discover_files_in_path(
         &self,
         path: &Path,
         repo_info: &RepositoryInfo,
         context: &ProcessingContext,
     ) -> Result<Vec<ProcessedFile>> {
+        // eprintln!("DEBUG: discover_files_in_path called with: {}", path.display());
         let mut files = Vec::new();
 
-        if context.file_system.is_file(path) {
-            // Single file
-            if let Ok(processed_file) = self.process_single_file(path, repo_info, context) {
-                files.push(processed_file);
+        // First, expand glob patterns
+        let expanded_paths = self.expand_globs(path)?;
+
+        for expanded_path in expanded_paths {
+            // eprintln!("DEBUG: Processing expanded path: {}", expanded_path.display());
+            // eprintln!("DEBUG: is_file: {}, is_directory: {}", context.file_system.is_file(&expanded_path), context.file_system.is_directory(&expanded_path));
+            if context.file_system.is_file(&expanded_path) {
+                // Single file
+                // eprintln!("DEBUG: Processing single file: {}", expanded_path.display());
+                if let Ok(processed_file) =
+                    self.process_single_file(&expanded_path, repo_info, context)
+                {
+                    // eprintln!("DEBUG: Successfully processed file: {} with content length: {}", processed_file.rel_path, processed_file.content.len());
+                    files.push(processed_file);
+                } else {
+                    // eprintln!("DEBUG: Failed to process file: {}", expanded_path.display());
+                }
+            } else if context.file_system.is_directory(&expanded_path) {
+                // Directory - walk recursively
+                // eprintln!("DEBUG: Processing directory: {}", expanded_path.display());
+                self.walk_directory(&expanded_path, repo_info, context, &mut files)?;
+            } else {
+                // eprintln!("DEBUG: Path is neither file nor directory: {}", expanded_path.display());
             }
-        } else if context.file_system.is_directory(path) {
-            // Directory - walk recursively
-            self.walk_directory(path, repo_info, context, &mut files)?;
         }
 
         Ok(files)
@@ -134,22 +300,53 @@ impl FileDiscoveryStage {
         repo_info: &RepositoryInfo,
         context: &ProcessingContext,
     ) -> Result<ProcessedFile> {
+        // eprintln!("DEBUG: process_single_file called for: {}", file_path.display());
         // Check if file should be ignored
         if self.should_ignore_file(file_path, context) {
+            // eprintln!("DEBUG: File ignored: {}", file_path.display());
             return Err(anyhow!("File ignored: {}", file_path.display()));
         }
 
         // Read file content
-        let content = crate::repository::convenience::read_file_content_safe(
+        // eprintln!("DEBUG: Reading file content for: {}", file_path.display());
+        let content = match crate::repository::convenience::read_file_content_safe(
             file_path,
             &*context.file_system,
-        )?;
+        ) {
+            Ok(content) => {
+                // eprintln!("DEBUG: Successfully read file content, length: {}", content.len());
+                content
+            }
+            Err(e) => {
+                // eprintln!("DEBUG: Failed to read file content: {}", e);
+                return Err(anyhow!(
+                    "Failed to read file '{}': {}",
+                    file_path.display(),
+                    e
+                ));
+            }
+        };
 
         // Create processed file
-        let rel_path =
-            crate::repository::convenience::get_relative_path(file_path, &repo_info.root_path)?
-                .to_string_lossy()
-                .to_string();
+        // eprintln!("DEBUG: Creating relative path for: {} with base: {}", file_path.display(), repo_info.root_path.display());
+        let rel_path = match crate::repository::convenience::get_relative_path(
+            file_path,
+            &repo_info.root_path,
+        ) {
+            Ok(path) => {
+                let rel_path_str = path.to_string_lossy().to_string();
+                // eprintln!("DEBUG: Successfully created relative path: {}", rel_path_str);
+                rel_path_str
+            }
+            Err(e) => {
+                // eprintln!("DEBUG: Failed to create relative path: {}", e);
+                return Err(anyhow!(
+                    "Failed to create relative path for '{}': {}",
+                    file_path.display(),
+                    e
+                ));
+            }
+        };
 
         // Calculate priority
         let priority = self.calculate_priority(&rel_path, repo_info, context);
@@ -158,24 +355,158 @@ impl FileDiscoveryStage {
     }
 
     fn should_ignore_file(&self, path: &Path, context: &ProcessingContext) -> bool {
+        // eprintln!("DEBUG: should_ignore_file called for: {}", path.display());
         let path_str = path.to_string_lossy();
         let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+        // eprintln!("DEBUG: path_str: {}, file_name: {}", path_str, file_name);
 
-        // Check ignore patterns - try both full path and filename
-        let ignored_by_pattern = context
-            .input_config
-            .ignore_patterns
-            .iter()
-            .any(|pattern| pattern.matches(&path_str) || pattern.matches(&file_name));
-
-        // Check binary extensions
+        // First check binary extensions - these always take precedence
         let is_binary = path
             .extension()
             .and_then(|ext| ext.to_str())
             .map(|ext| context.input_config.binary_extensions.contains(ext))
             .unwrap_or(false);
 
-        ignored_by_pattern || is_binary
+        if is_binary {
+            // eprintln!("DEBUG: File ignored due to binary extension");
+            return true;
+        }
+
+        // Check if file should be ignored by .gitignore files
+        let ignored_by_gitignore = self.is_ignored_by_gitignore(path, context);
+        // eprintln!("DEBUG: ignored_by_gitignore: {}", ignored_by_gitignore);
+
+        // Check if file should be ignored by default patterns (like LICENSE)
+        let ignored_by_default = self.is_ignored_by_default_patterns(path, context);
+        // eprintln!("DEBUG: ignored_by_default: {}", ignored_by_default);
+
+        // Check if file is allowlisted by any source (.gitignore or config)
+        let allowlisted = self.is_allowlisted(path, context);
+        // eprintln!("DEBUG: allowlisted: {}", allowlisted);
+
+        // A file is ignored if it's ignored by any source AND not allowlisted
+        let should_ignore = (ignored_by_gitignore || ignored_by_default) && !allowlisted;
+        // eprintln!("DEBUG: final should_ignore: {}", should_ignore);
+
+        should_ignore
+    }
+
+    /// Check if a file should be ignored by default patterns (like LICENSE)
+    fn is_ignored_by_default_patterns(&self, path: &Path, context: &ProcessingContext) -> bool {
+        let path_str = path.to_string_lossy();
+        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+
+        // Get the relative path from the repository root
+        let rel_path = match path.strip_prefix(&context.repository_info.root_path) {
+            Ok(rel_path) => rel_path.to_string_lossy().to_string(),
+            Err(_) => path_str.to_string(), // Fallback to full path if we can't make it relative
+        };
+
+        // Check default ignore patterns (these are built into the config)
+        for pattern in &context.input_config.ignore_patterns {
+            let pattern_str = pattern.as_str();
+            // Skip allowlist patterns (starting with !) for default pattern matching
+            if !pattern_str.starts_with('!') {
+                let matches_path = pattern.matches(&path_str)
+                    || pattern.matches(&file_name)
+                    || pattern.matches(&rel_path);
+                if matches_path {
+                    // eprintln!("DEBUG: File ignored by default pattern: {} (matched path: {})", pattern_str, rel_path);
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if a file is allowlisted by any source (.gitignore or config patterns)
+    fn is_allowlisted(&self, path: &Path, context: &ProcessingContext) -> bool {
+        let path_str = path.to_string_lossy();
+        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+        // eprintln!("DEBUG: Checking if file is allowlisted: {}", path_str);
+
+        // Check allowlist patterns from config
+        for pattern in &context.input_config.ignore_patterns {
+            let pattern_str = pattern.as_str();
+            if pattern_str.starts_with('!') {
+                let matches_path = pattern.matches(&path_str) || pattern.matches(&file_name);
+                // eprintln!("DEBUG: Checking config allowlist pattern: {} against {} -> {}", pattern_str, path_str, matches_path);
+                if matches_path {
+                    // eprintln!("DEBUG: File allowlisted by config pattern: {}", pattern_str);
+                    return true;
+                }
+            }
+        }
+
+        // Check allowlist patterns from .gitignore
+        let root_path = &context.repository_info.root_path;
+        // eprintln!("DEBUG: Checking .gitignore in: {}", root_path.display());
+
+        // Manual .gitignore parsing for allowlist patterns
+        let gitignore_path = root_path.join(".gitignore");
+        if gitignore_path.exists() {
+            // eprintln!("DEBUG: .gitignore file exists at: {}", gitignore_path.display());
+            if let Ok(contents) = std::fs::read_to_string(&gitignore_path) {
+                // eprintln!("DEBUG: .gitignore contents: {:?}", contents);
+
+                // Parse .gitignore manually for allowlist patterns
+                for line in contents.lines() {
+                    let line = line.trim();
+                    if line.starts_with('!') && !line.starts_with("!#") {
+                        let pattern = &line[1..]; // Remove the '!' prefix
+                                                  // eprintln!("DEBUG: Found allowlist pattern in .gitignore: {}", pattern);
+
+                        // Check if this pattern matches our file
+                        let path_str = path.to_string_lossy();
+                        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+
+                        // Simple pattern matching (basic glob support)
+                        if Self::matches_pattern(pattern, &path_str)
+                            || Self::matches_pattern(pattern, &file_name)
+                        {
+                            // eprintln!("DEBUG: File allowlisted by .gitignore pattern: {}", pattern);
+                            return true;
+                        }
+                    }
+                }
+            } else {
+                // eprintln!("DEBUG: Failed to read .gitignore file");
+            }
+        } else {
+            // eprintln!("DEBUG: .gitignore file does not exist");
+        }
+
+        false
+    }
+
+    /// Check if a file should be ignored based on .gitignore files
+    fn is_ignored_by_gitignore(&self, path: &Path, context: &ProcessingContext) -> bool {
+        let root_path = &context.repository_info.root_path;
+        // eprintln!("DEBUG: Checking .gitignore for: {} (root: {})", path.display(), root_path.display());
+
+        // Create a gitignore matcher for the root directory
+        let (gi, error) = ignore::gitignore::Gitignore::new(root_path);
+
+        if let Some(_e) = error {
+            // eprintln!("DEBUG: Failed to create gitignore matcher: {}", e);
+            return false;
+        }
+
+        // Get the relative path from root to the file
+        match path.strip_prefix(root_path) {
+            Ok(rel_path) => {
+                // eprintln!("DEBUG: Relative path: {}", rel_path.display());
+                let matched = gi.matched(rel_path, false);
+                let should_ignore = matched.is_ignore();
+                // eprintln!("DEBUG: .gitignore matched: {:?}, is_ignore: {}", matched, should_ignore);
+                should_ignore
+            }
+            Err(_) => {
+                // eprintln!("DEBUG: Could not make path relative: {} relative to {}", path.display(), root_path.display());
+                false
+            }
+        }
     }
 
     fn calculate_priority(
@@ -252,6 +583,31 @@ impl FileDiscoveryStage {
         }
 
         Ok(())
+    }
+
+    /// Simple pattern matching for .gitignore patterns
+    fn matches_pattern(pattern: &str, text: &str) -> bool {
+        // Handle exact matches
+        if pattern == text {
+            return true;
+        }
+
+        // Handle simple glob patterns
+        if pattern.contains('*') {
+            // Simple wildcard matching
+            let pattern_parts: Vec<&str> = pattern.split('*').collect();
+            if pattern_parts.len() == 2 {
+                let (prefix, suffix) = (pattern_parts[0], pattern_parts[1]);
+                return text.starts_with(prefix) && text.ends_with(suffix);
+            }
+        }
+
+        // Handle patterns ending with /
+        if pattern.ends_with('/') && text.starts_with(pattern) {
+            return true;
+        }
+
+        false
     }
 }
 
@@ -378,23 +734,18 @@ impl OutputFormattingStage {
 pub struct ProcessingPipeline {
     stages: Vec<Box<dyn ProcessingStage>>,
     context: ProcessingContext,
-    git_operations: Option<Arc<dyn GitOperations>>,
 }
 
 impl ProcessingPipeline {
-    pub fn new(context: ProcessingContext, git_operations: Option<Arc<dyn GitOperations>>) -> Self {
+    pub fn new(context: ProcessingContext) -> Self {
         let mut stages: Vec<Box<dyn ProcessingStage>> = Vec::new();
 
         // Add default stages
-        stages.push(Box::new(FileDiscoveryStage::new(git_operations.clone())));
+        stages.push(Box::new(FileDiscoveryStage::new()));
         stages.push(Box::new(ContentFilteringStage));
         stages.push(Box::new(OutputFormattingStage));
 
-        Self {
-            stages,
-            context,
-            git_operations,
-        }
+        Self { stages, context }
     }
 
     pub fn add_stage(&mut self, stage: Box<dyn ProcessingStage>) {
@@ -427,15 +778,13 @@ impl ProcessingPipeline {
 pub struct ProcessingPipelineBuilder {
     context: ProcessingContext,
     stages: Vec<Box<dyn ProcessingStage>>,
-    git_operations: Option<Arc<dyn GitOperations>>,
 }
 
 impl ProcessingPipelineBuilder {
-    pub fn new(context: ProcessingContext, git_operations: Option<Arc<dyn GitOperations>>) -> Self {
+    pub fn new(context: ProcessingContext) -> Self {
         Self {
             context,
             stages: Vec::new(),
-            git_operations,
         }
     }
 
@@ -445,7 +794,7 @@ impl ProcessingPipelineBuilder {
     }
 
     pub fn build(self) -> ProcessingPipeline {
-        let mut pipeline = ProcessingPipeline::new(self.context, self.git_operations);
+        let mut pipeline = ProcessingPipeline::new(self.context);
         for stage in self.stages {
             pipeline.add_stage(stage);
         }

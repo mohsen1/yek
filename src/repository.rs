@@ -317,7 +317,10 @@ pub mod convenience {
 
     /// Read file content safely with UTF-8 validation
     pub fn read_file_content_safe(path: &Path, fs: &dyn FileSystem) -> Result<String> {
-        let bytes = fs.read_file(path)?;
+        let bytes = match fs.read_file(path) {
+            Ok(bytes) => bytes,
+            Err(e) => return Err(e),
+        };
         String::from_utf8(bytes)
             .map_err(|e| anyhow!("File '{}' contains invalid UTF-8: {}", path.display(), e))
     }
