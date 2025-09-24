@@ -9,7 +9,7 @@ mod lib_tests {
     use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
     use yek::{
-        concat_files, config::YekConfig, count_tokens, is_text_file, parallel::ProcessedFile,
+        concat_files, config::YekConfig, count_tokens, is_text_file, models::ProcessedFile,
         parse_token_limit, priority::PriorityRule, serialize_repo,
     };
 
@@ -531,18 +531,13 @@ mod lib_tests {
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
 
         let files = vec![
-            ProcessedFile {
-                priority: 100,
-                file_index: 0,
-                rel_path: "src/main.rs".to_string(),
-                content: "fn main() {}".to_string(),
-            },
-            ProcessedFile {
-                priority: 50,
-                file_index: 1,
-                rel_path: "README.md".to_string(),
-                content: "# Yek".to_string(),
-            },
+            ProcessedFile::new(
+                "src/main.rs".to_string(),
+                "fn main() {}".to_string(),
+                100,
+                0,
+            ),
+            ProcessedFile::new("README.md".to_string(), "# Yek".to_string(), 50, 1),
         ];
 
         // Test default template
@@ -573,12 +568,12 @@ mod lib_tests {
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         config.json = true;
 
-        let files = vec![ProcessedFile {
-            priority: 100,
-            file_index: 0,
-            rel_path: "file with ünicöde.txt".to_string(),
-            content: "content".to_string(),
-        }];
+        let files = vec![ProcessedFile::new(
+            "file with ünicöde.txt".to_string(),
+            "content".to_string(),
+            100,
+            0,
+        )];
         let output_json = yek::concat_files(&files, &config).unwrap();
         assert!(output_json.contains(r#""filename": "file with ünicöde.txt""#));
     }
@@ -590,12 +585,12 @@ mod lib_tests {
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         config.json = false;
 
-        let files = vec![ProcessedFile {
-            priority: 100,
-            file_index: 0,
-            rel_path: "file.txt".to_string(),
-            content: "".to_string(), // Empty content
-        }];
+        let files = vec![ProcessedFile::new(
+            "file.txt".to_string(),
+            "".to_string(),
+            100,
+            0,
+        )];
         let output_template = yek::concat_files(&files, &config).unwrap();
         assert!(output_template.contains(">>>> file.txt\n")); // Should handle empty content
     }
@@ -607,12 +602,12 @@ mod lib_tests {
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
         config.json = true;
 
-        let files = vec![ProcessedFile {
-            priority: 100,
-            file_index: 0,
-            rel_path: "file.txt".to_string(),
-            content: "".to_string(), // Empty content
-        }];
+        let files = vec![ProcessedFile::new(
+            "file.txt".to_string(),
+            "".to_string(),
+            100,
+            0,
+        )];
         let output_json = yek::concat_files(&files, &config).unwrap();
         assert!(output_json.contains(r#""content": """#)); // Should handle empty content in JSON
     }
@@ -631,12 +626,12 @@ mod lib_tests {
             output_template: Some("File: FILE_PATH\nContent:\nFILE_CONTENT".to_string()),
             ..Default::default()
         };
-        let files = vec![ProcessedFile {
-            rel_path: "test.txt".to_string(),
-            content: "Hello world".to_string(),
-            priority: 0,
-            file_index: 0,
-        }];
+        let files = vec![ProcessedFile::new(
+            "test.txt".to_string(),
+            "Hello world".to_string(),
+            0,
+            0,
+        )];
         let output = concat_files(&files, &config).unwrap();
         let tokens = count_tokens(&output);
         // Verify token count includes template overhead
@@ -649,12 +644,12 @@ mod lib_tests {
             json: true,
             ..Default::default()
         };
-        let files = vec![ProcessedFile {
-            rel_path: "test.txt".to_string(),
-            content: "Hello world".to_string(),
-            priority: 0,
-            file_index: 0,
-        }];
+        let files = vec![ProcessedFile::new(
+            "test.txt".to_string(),
+            "Hello world".to_string(),
+            0,
+            0,
+        )];
         let output = concat_files(&files, &config).unwrap();
         let tokens = count_tokens(&output);
         // Verify token count includes JSON structure overhead
@@ -671,18 +666,18 @@ mod lib_tests {
             ..Default::default()
         };
         let files = vec![
-            ProcessedFile {
-                rel_path: "test1.txt".to_string(),
-                content: "This is a short test".to_string(),
-                priority: 0,
-                file_index: 0,
-            },
-            ProcessedFile {
-                rel_path: "test2.txt".to_string(),
-                content: "This is another test that should be excluded".to_string(),
-                priority: 0,
-                file_index: 1,
-            },
+            ProcessedFile::new(
+                "test1.txt".to_string(),
+                "This is a short test".to_string(),
+                0,
+                0,
+            ),
+            ProcessedFile::new(
+                "test2.txt".to_string(),
+                "This is another test that should be excluded".to_string(),
+                0,
+                1,
+            ),
         ];
         let output = concat_files(&files, &config).unwrap();
         // Check that only the first file is included in the output
@@ -913,19 +908,14 @@ mod lib_tests {
         config.tokens = "5".to_string(); // Very low token limit
 
         let files = vec![
-            ProcessedFile {
-                priority: 100,
-                file_index: 0,
-                rel_path: "long.txt".to_string(),
-                content: "This is a very long piece of content that should exceed the token limit."
+            ProcessedFile::new(
+                "long.txt".to_string(),
+                "This is a very long piece of content that should exceed the token limit."
                     .to_string(),
-            },
-            ProcessedFile {
-                priority: 50,
-                file_index: 1,
-                rel_path: "short.txt".to_string(),
-                content: "Short".to_string(),
-            },
+                100,
+                0,
+            ),
+            ProcessedFile::new("short.txt".to_string(), "Short".to_string(), 50, 1),
         ];
 
         let result = concat_files(&files, &config);
@@ -958,12 +948,12 @@ mod lib_tests {
         config.token_mode = true;
         config.tokens = "1000".to_string();
 
-        let files = vec![ProcessedFile {
-            priority: 100,
-            file_index: 0,
-            rel_path: "test.txt".to_string(),
-            content: "content".to_string(),
-        }];
+        let files = vec![ProcessedFile::new(
+            "test.txt".to_string(),
+            "content".to_string(),
+            100,
+            0,
+        )];
 
         let result = concat_files(&files, &config);
         assert!(result.is_ok());
@@ -1036,20 +1026,22 @@ mod lib_tests {
         config.tokens = "50".to_string(); // Very low limit
 
         let result = concat_files(
-            &[ProcessedFile {
-                    priority: 0,
-                    file_index: 0,
-                    rel_path: "file0.txt".to_string(),
-                    content: "This is file 0 with some content that will contribute to token count"
+            &[
+                ProcessedFile::new(
+                    "file0.txt".to_string(),
+                    "This is file 0 with some content that will contribute to token count"
                         .to_string(),
-                },
-                ProcessedFile {
-                    priority: 0,
-                    file_index: 1,
-                    rel_path: "file1.txt".to_string(),
-                    content: "This is file 1 with some content that will contribute to token count"
+                    0,
+                    0,
+                ),
+                ProcessedFile::new(
+                    "file1.txt".to_string(),
+                    "This is file 1 with some content that will contribute to token count"
                         .to_string(),
-                }],
+                    0,
+                    1,
+                ),
+            ],
             &config,
         );
 

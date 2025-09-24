@@ -203,7 +203,8 @@ impl FileDiscoveryStage {
                 return ancestors1
                     .iter()
                     .position(|&x| x == *a)
-                    .and_then(|pos| ancestors1.get(pos + 1)).copied()
+                    .and_then(|pos| ancestors1.get(pos + 1))
+                    .copied()
                     .unwrap_or_else(|| Path::new("."));
             }
         }
@@ -390,7 +391,7 @@ impl FileDiscoveryStage {
         // eprintln!("DEBUG: allowlisted: {}", allowlisted);
 
         // A file is ignored if it's ignored by any source AND not allowlisted
-        
+
         // eprintln!("DEBUG: final should_ignore: {}", should_ignore);
 
         (ignored_by_gitignore || ignored_by_default) && !allowlisted
@@ -503,7 +504,7 @@ impl FileDiscoveryStage {
             Ok(rel_path) => {
                 // eprintln!("DEBUG: Relative path: {}", rel_path.display());
                 let matched = gi.matched(rel_path, false);
-                
+
                 // eprintln!("DEBUG: .gitignore matched: {:?}, is_ignore: {}", matched, should_ignore);
                 matched.is_ignore()
             }

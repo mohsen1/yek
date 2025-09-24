@@ -18,14 +18,14 @@ pub mod defaults;
 pub mod error;
 pub mod models;
 pub mod parallel;
-pub mod parallel_fixed;
 pub mod pipeline;
 pub mod priority;
 pub mod repository;
 pub mod tree;
 
 use config::YekConfig;
-use parallel::{process_files_parallel, ProcessedFile};
+use models::ProcessedFile;
+use parallel::process_files_parallel;
 use priority::compute_recentness_boost;
 use tree::generate_tree;
 
