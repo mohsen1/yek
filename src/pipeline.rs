@@ -61,6 +61,12 @@ pub struct FileDiscoveryStage {
     repository_factory: RepositoryFactory,
 }
 
+impl Default for FileDiscoveryStage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FileDiscoveryStage {
     pub fn new() -> Self {
         Self {
@@ -197,8 +203,7 @@ impl FileDiscoveryStage {
                 return ancestors1
                     .iter()
                     .position(|&x| x == *a)
-                    .and_then(|pos| ancestors1.get(pos + 1))
-                    .map(|&path| path)
+                    .and_then(|pos| ancestors1.get(pos + 1)).copied()
                     .unwrap_or_else(|| Path::new("."));
             }
         }
@@ -385,10 +390,10 @@ impl FileDiscoveryStage {
         // eprintln!("DEBUG: allowlisted: {}", allowlisted);
 
         // A file is ignored if it's ignored by any source AND not allowlisted
-        let should_ignore = (ignored_by_gitignore || ignored_by_default) && !allowlisted;
+        
         // eprintln!("DEBUG: final should_ignore: {}", should_ignore);
 
-        should_ignore
+        (ignored_by_gitignore || ignored_by_default) && !allowlisted
     }
 
     /// Check if a file should be ignored by default patterns (like LICENSE)
@@ -498,9 +503,9 @@ impl FileDiscoveryStage {
             Ok(rel_path) => {
                 // eprintln!("DEBUG: Relative path: {}", rel_path.display());
                 let matched = gi.matched(rel_path, false);
-                let should_ignore = matched.is_ignore();
+                
                 // eprintln!("DEBUG: .gitignore matched: {:?}, is_ignore: {}", matched, should_ignore);
-                should_ignore
+                matched.is_ignore()
             }
             Err(_) => {
                 // eprintln!("DEBUG: Could not make path relative: {} relative to {}", path.display(), root_path.display());
@@ -738,12 +743,11 @@ pub struct ProcessingPipeline {
 
 impl ProcessingPipeline {
     pub fn new(context: ProcessingContext) -> Self {
-        let mut stages: Vec<Box<dyn ProcessingStage>> = Vec::new();
-
-        // Add default stages
-        stages.push(Box::new(FileDiscoveryStage::new()));
-        stages.push(Box::new(ContentFilteringStage));
-        stages.push(Box::new(OutputFormattingStage));
+        let stages: Vec<Box<dyn ProcessingStage>> = vec![
+            Box::new(FileDiscoveryStage::new()),
+            Box::new(ContentFilteringStage),
+            Box::new(OutputFormattingStage),
+        ];
 
         Self { stages, context }
     }

@@ -58,9 +58,9 @@ mod stdin_tests {
 
         if let Some(stdin) = child.stdin.as_mut() {
             writeln!(stdin, "test.txt")?;
-            writeln!(stdin, "")?; // empty line
+            writeln!(stdin)?; // empty line
             writeln!(stdin, "   ")?; // whitespace only
-            writeln!(stdin, "")?; // another empty line
+            writeln!(stdin)?; // another empty line
         }
 
         let output = child.wait_with_output()?;

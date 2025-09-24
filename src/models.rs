@@ -53,16 +53,7 @@ impl ProcessedFile {
             return &self.content;
         }
 
-        if let Some(ref formatted) = self.formatted_content {
-            formatted
-        } else {
-            // Note: This is a limitation - we can't cache formatted content without mutability
-            // For now, we'll compute it on-demand without caching
-            // In a future version, we could use interior mutability (Mutex/RwLock) for caching
-            // We need to return a reference, so we'll have to accept this limitation for now
-            // This means formatted content won't be cached when called from immutable references
-            ""
-        }
+        self.formatted_content.as_deref().unwrap_or("")
     }
 
     /// Compute token count for the content

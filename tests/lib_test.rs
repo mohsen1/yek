@@ -1036,8 +1036,7 @@ mod lib_tests {
         config.tokens = "50".to_string(); // Very low limit
 
         let result = concat_files(
-            &vec![
-                ProcessedFile {
+            &[ProcessedFile {
                     priority: 0,
                     file_index: 0,
                     rel_path: "file0.txt".to_string(),
@@ -1050,8 +1049,7 @@ mod lib_tests {
                     rel_path: "file1.txt".to_string(),
                     content: "This is file 1 with some content that will contribute to token count"
                         .to_string(),
-                },
-            ],
+                }],
             &config,
         );
 

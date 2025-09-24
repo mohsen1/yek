@@ -492,14 +492,14 @@ mod tree_tests {
         // problematic components like ".." and "."
 
         let path = Path::new("./src/../src/lib.rs");
-        let components = clean_path_components(&path);
+        let components = clean_path_components(path);
 
         // Should filter out "." and keep ".." and normal components
         assert_eq!(components, vec!["src", "..", "src", "lib.rs"]);
 
         // Test with a simple path
         let path = Path::new("repo/src/lib.rs");
-        let components = clean_path_components(&path);
+        let components = clean_path_components(path);
         assert_eq!(components, vec!["repo", "src", "lib.rs"]);
     }
 

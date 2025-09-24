@@ -162,9 +162,8 @@ impl GitOperations for RealGitOperations {
             .map_err(|e| anyhow!("Failed to set sorting for revision walker: {}", e))?;
 
         let mut commit_times = HashMap::new();
-        let mut commits_processed = 0;
 
-        for oid_result in revwalk {
+        for (commits_processed, oid_result) in revwalk.enumerate() {
             if commits_processed >= max_commits {
                 break;
             }
@@ -193,8 +192,6 @@ impl GitOperations for RealGitOperations {
                 git2::TreeWalkResult::Ok
             })
             .map_err(|e| anyhow!("Failed to walk commit tree: {}", e))?;
-
-            commits_processed += 1;
         }
 
         Ok(commit_times)
@@ -219,6 +216,12 @@ pub struct FileMetadata {
 pub struct RepositoryFactory {
     file_system: Box<dyn FileSystem + Send + Sync>,
     git_cache: OnceLock<HashMap<PathBuf, Arc<dyn GitOperations + Send + Sync>>>,
+}
+
+impl Default for RepositoryFactory {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RepositoryFactory {
@@ -317,10 +320,7 @@ pub mod convenience {
 
     /// Read file content safely with UTF-8 validation
     pub fn read_file_content_safe(path: &Path, fs: &dyn FileSystem) -> Result<String> {
-        let bytes = match fs.read_file(path) {
-            Ok(bytes) => bytes,
-            Err(e) => return Err(e),
-        };
+        let bytes = fs.read_file(path)?;
         String::from_utf8(bytes)
             .map_err(|e| anyhow!("File '{}' contains invalid UTF-8: {}", path.display(), e))
     }
