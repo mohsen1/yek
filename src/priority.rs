@@ -48,8 +48,26 @@ pub fn compute_recentness_boost(
     }
 
     let mut result = HashMap::new();
-    let oldest_time = *sorted.first().unwrap().1;
-    let newest_time = *sorted.last().unwrap().1;
+    
+    // Safe access to first and last elements - we know sorted.len() >= 2 at this point
+    let oldest_time = match sorted.first() {
+        Some((_, time)) => **time,
+        None => {
+            // This should never happen due to the checks above, but handle gracefully
+            tracing::warn!("Unexpected empty sorted list in compute_recentness_boost");
+            return result;
+        }
+    };
+    
+    let newest_time = match sorted.last() {
+        Some((_, time)) => **time,
+        None => {
+            // This should never happen due to the checks above, but handle gracefully
+            tracing::warn!("Unexpected empty sorted list in compute_recentness_boost");
+            return result;
+        }
+    };
+    
     let time_range = newest_time.saturating_sub(oldest_time) as f64;
 
     // If all files have the same timestamp, they should all get the same boost

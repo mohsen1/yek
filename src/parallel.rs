@@ -67,7 +67,7 @@ fn process_single_file(
             }
         }
         Err(e) => {
-            debug!("Failed to read {rel_path}: {e}");
+            debug!("Failed to read file '{}' (size check): {} - file will be skipped", rel_path, e);
         }
     }
 
@@ -183,7 +183,7 @@ fn process_files_parallel_internal(
                         });
                     }
                     Err(e) => {
-                        debug!("Failed to read {rel_path}: {e}");
+                        debug!("Failed to read file '{}' during parallel processing: {} - file will be skipped", rel_path, e);
                     }
                 }
             }
@@ -229,8 +229,16 @@ fn process_files_parallel_internal(
     // Drop the sender so the thread can end
     drop(processed_files_tx);
 
-    // Join the processing thread
-    let mut processed_files = process_thread.join().unwrap();
+    // Join the processing thread - handle panics gracefully
+    let mut processed_files = match process_thread.join() {
+        Ok(files) => files,
+        Err(_) => {
+            return Err(anyhow::anyhow!(
+                "File processing thread panicked while processing files in {}. This may indicate corrupted files or insufficient memory.",
+                base_path.display()
+            ));
+        }
+    };
 
     // Now assign file_index within each priority group
     let mut counters = HashMap::new();

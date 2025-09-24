@@ -46,7 +46,7 @@ impl FileContentCache {
     }
 
     /// Get the formatted content, computing it lazily
-    fn get_formatted_content(&mut self, config: &YekConfig) -> &str {
+    fn get_formatted_content(&mut self, config: &YekConfig) -> Result<&str> {
         if self.formatted_content.is_none() {
             let content = format_content_with_line_numbers(&self.file.content, config.line_numbers);
             let formatted = if config.json {
@@ -54,13 +54,12 @@ impl FileContentCache {
                     "filename": &self.file.rel_path,
                     "content": content,
                 }))
-                .unwrap_or_else(|_| format!("{{\"filename\":\"{}\",\"content\":\"{}\"}}", 
-                    self.file.rel_path, content.replace('"', "\\\"")))
+                .map_err(|e| anyhow::anyhow!("Failed to serialize JSON for file {}: {}", self.file.rel_path, e))?
             } else {
                 config
                     .output_template
                     .as_ref()
-                    .expect("output_template should be set")
+                    .ok_or_else(|| anyhow::anyhow!("Output template not set - this is a configuration error"))?
                     .replace("FILE_PATH", &self.file.rel_path)
                     .replace("FILE_CONTENT", &content)
                     // Handle both literal "\n" and escaped "\\n"
@@ -69,13 +68,13 @@ impl FileContentCache {
             };
             self.formatted_content = Some(formatted);
         }
-        self.formatted_content.as_ref().unwrap()
+        Ok(self.formatted_content.as_ref().unwrap())
     }
 
     /// Get the size (tokens or bytes), computing it lazily
-    fn get_size(&mut self, config: &YekConfig) -> usize {
+    fn get_size(&mut self, config: &YekConfig) -> Result<usize> {
         if self.size_cache.is_none() {
-            let formatted_content = self.get_formatted_content(config);
+            let formatted_content = self.get_formatted_content(config)?;
             let size = if config.token_mode {
                 count_tokens(formatted_content)
             } else {
@@ -83,7 +82,7 @@ impl FileContentCache {
             };
             self.size_cache = Some(size);
         }
-        self.size_cache.unwrap()
+        Ok(self.size_cache.unwrap())
     }
 
     /// Get a reference to the underlying file
@@ -94,7 +93,9 @@ impl FileContentCache {
 
 fn get_tokenizer() -> &'static CoreBPE {
     TOKENIZER.get_or_init(|| {
-        tiktoken_rs::get_bpe_from_model("gpt-3.5-turbo").expect("Failed to load tokenizer")
+        tiktoken_rs::get_bpe_from_model("gpt-3.5-turbo").unwrap_or_else(|e| {
+            panic!("Failed to initialize GPT-3.5-Turbo tokenizer: {}. This indicates a problem with the tiktoken library or system configuration.", e)
+        })
     })
 }
 
@@ -245,7 +246,7 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
 
     let mut files_to_include = Vec::new();
     for mut cached_file in cached_files {
-        let content_size = cached_file.get_size(config);
+        let content_size = cached_file.get_size(config)?;
 
         if accumulated + content_size <= cap {
             accumulated += content_size;
@@ -278,7 +279,7 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             if i > 0 {
                 result.push('\n');
             }
-            result.push_str(cached_file.get_formatted_content(config));
+            result.push_str(cached_file.get_formatted_content(config)?);
         }
         result
     };
