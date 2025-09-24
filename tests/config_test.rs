@@ -931,8 +931,8 @@ fn test_get_checksum_with_nonexistent_files() {
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)]
 fn test_get_checksum_with_mixed_paths() {
-    #![allow(clippy::field_reassign_with_default)]
 
     use std::fs;
     use tempfile::tempdir;
