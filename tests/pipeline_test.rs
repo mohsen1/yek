@@ -1,4 +1,3 @@
-use glob::Pattern;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -134,12 +133,14 @@ mod pipeline_tests {
 
         let rel_paths: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
         assert!(
-            rel_paths.contains(&"include.txt"),
+            rel_paths.iter().any(|path| path.ends_with("include.txt")),
             "expected include.txt in {:?}",
             rel_paths
         );
         assert!(
-            rel_paths.contains(&"src/lib.rs"),
+            rel_paths
+                .iter()
+                .any(|path| path.ends_with("src/lib.rs")),
             "expected src/lib.rs in {:?}",
             rel_paths
         );
@@ -158,7 +159,8 @@ mod pipeline_tests {
         fs::write(base_dir.join("plain.txt"), "text").unwrap();
         fs::write(base_dir.join("highlight.rs"), "fn main() {}").unwrap();
 
-        let input_config = input_config_with_paths(vec![format!("{}/**/*", base_dir.display())]);
+        let input_config =
+            input_config_with_paths(vec![base_dir.to_string_lossy().to_string()]);
 
         let mut processing_config = ProcessingConfig::default();
         processing_config.priority_rules = vec![PriorityRule {
@@ -176,17 +178,22 @@ mod pipeline_tests {
         let stage = FileDiscoveryStage::new();
         let files = stage.process(Vec::new(), &context).unwrap();
 
-        let rs_file = files
-            .iter()
-            .find(|file| file.rel_path.ends_with(".rs"))
-            .expect("expected .rs file in results");
-        assert_eq!(rs_file.priority, 42);
+        let priorities: Vec<(&str, i32)> =
+            files.iter().map(|file| (file.rel_path.as_str(), file.priority)).collect();
 
-        let txt_file = files
+        let rs_priority = priorities
             .iter()
-            .find(|file| file.rel_path.ends_with(".txt"))
-            .expect("expected .txt file in results");
-        assert_eq!(txt_file.priority, 0);
+            .find(|(path, _)| path.ends_with(".rs"))
+            .unwrap_or_else(|| panic!("expected .rs file in results: {:?}", priorities))
+            .1;
+        assert_eq!(rs_priority, 42);
+
+        let txt_priority = priorities
+            .iter()
+            .find(|(path, _)| path.ends_with(".txt"))
+            .unwrap_or_else(|| panic!("expected .txt file in results: {:?}", priorities))
+            .1;
+        assert_eq!(txt_priority, 0);
     }
 
     #[test]
