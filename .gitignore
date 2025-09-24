@@ -1,4 +1,5 @@
 target/
+lcov.info
 *.log
 *.tmp
 *.tar.gz
@@ -11,3 +12,6 @@ dist/
 *.backup
 coverage/
 *.html
+*.profraw
+coverage_html/
+.ai/
