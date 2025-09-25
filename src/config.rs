@@ -3,7 +3,7 @@ use bytesize::ByteSize;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
 use std::io::{self, BufRead, BufReader, IsTerminal};
-use std::{fs, path::Path, str::FromStr, time::UNIX_EPOCH, process::Command};
+use std::{fs, path::Path, process::Command, str::FromStr, time::UNIX_EPOCH};
 
 use crate::{
     defaults::{BINARY_FILE_EXTENSIONS, DEFAULT_IGNORE_PATTERNS, DEFAULT_OUTPUT_TEMPLATE},
@@ -455,66 +455,69 @@ impl YekConfig {
     pub fn perform_update(&self) -> Result<()> {
         const REPO_OWNER: &str = "bodo-run";
         const REPO_NAME: &str = "yek";
-        
+
         println!("Checking for latest version...");
-        
+
         // Get the current executable path
         let current_exe = std::env::current_exe()
             .map_err(|e| anyhow!("Failed to get current executable path: {}", e))?;
-        
+
         if !current_exe.exists() {
             return Err(anyhow!("Current executable path does not exist"));
         }
-        
+
         // Check if the current executable is writable
         let metadata = fs::metadata(&current_exe)?;
         if metadata.permissions().readonly() {
             return Err(anyhow!("Cannot update: current executable is not writable. Try running with elevated permissions or install to a writable location."));
         }
-        
+
         // Determine target architecture
         let target = Self::get_target_triple()?;
         let asset_name = format!("yek-{}.tar.gz", target);
-        
+
         println!("Fetching release info for target: {}", target);
-        
+
         // Get latest release info from GitHub API
-        let releases_url = format!("https://api.github.com/repos/{}/{}/releases/latest", REPO_OWNER, REPO_NAME);
+        let releases_url = format!(
+            "https://api.github.com/repos/{}/{}/releases/latest",
+            REPO_OWNER, REPO_NAME
+        );
         let releases_output = Command::new("curl")
             .args(["-s", &releases_url])
             .output()
             .map_err(|e| anyhow!("Failed to execute curl command: {}. Is curl installed?", e))?;
-            
+
         if !releases_output.status.success() {
             let stderr = String::from_utf8_lossy(&releases_output.stderr);
             return Err(anyhow!("Failed to fetch release info: {}", stderr));
         }
-        
+
         let release_json = String::from_utf8_lossy(&releases_output.stdout);
-        
+
         // Parse JSON to find download URL (simple string parsing to avoid adding serde_json dependency)
         let download_url = Self::extract_download_url(&release_json, &asset_name)?;
-        
+
         // Get the new version tag
         let new_version = Self::extract_version_tag(&release_json)?;
         let current_version = env!("CARGO_PKG_VERSION");
-        
+
         println!("Current version: {}", current_version);
         println!("Latest version: {}", new_version);
-        
+
         if new_version == current_version {
             println!("You are already running the latest version!");
             return Ok(());
         }
-        
+
         println!("Downloading update from: {}", download_url);
-        
+
         // Create temp directory for download
         let temp_dir = std::env::temp_dir().join(format!("yek-update-{}", new_version));
         fs::create_dir_all(&temp_dir)?;
-        
+
         let archive_path = temp_dir.join(&asset_name);
-        
+
         // Download the archive
         let download_output = Command::new("curl")
             .args(["-L", "-o"])
@@ -522,12 +525,12 @@ impl YekConfig {
             .arg(&download_url)
             .output()
             .map_err(|e| anyhow!("Failed to download update: {}", e))?;
-            
+
         if !download_output.status.success() {
             let stderr = String::from_utf8_lossy(&download_output.stderr);
             return Err(anyhow!("Failed to download update: {}", stderr));
         }
-        
+
         // Extract the archive
         println!("Extracting update...");
         let extract_output = Command::new("tar")
@@ -536,27 +539,27 @@ impl YekConfig {
             .current_dir(&temp_dir)
             .output()
             .map_err(|e| anyhow!("Failed to extract archive: {}. Is tar installed?", e))?;
-            
+
         if !extract_output.status.success() {
             let stderr = String::from_utf8_lossy(&extract_output.stderr);
             return Err(anyhow!("Failed to extract archive: {}", stderr));
         }
-        
+
         // Find the new binary
         let extracted_dir = temp_dir.join(format!("yek-{}", target));
         let new_binary = extracted_dir.join("yek");
-        
+
         if !new_binary.exists() {
             return Err(anyhow!("Updated binary not found in extracted archive"));
         }
-        
+
         // Replace the current binary
         println!("Installing update...");
-        
+
         // Create backup of current binary
         let backup_path = format!("{}.backup", current_exe.to_string_lossy());
         fs::copy(&current_exe, &backup_path)?;
-        
+
         // Replace with new binary
         match fs::copy(&new_binary, &current_exe) {
             Ok(_) => {
@@ -568,11 +571,14 @@ impl YekConfig {
                     perms.set_mode(0o755);
                     fs::set_permissions(&current_exe, perms)?;
                 }
-                
+
                 // Remove backup on success
                 let _ = fs::remove_file(&backup_path);
-                
-                println!("Successfully updated yek from {} to {}!", current_version, new_version);
+
+                println!(
+                    "Successfully updated yek from {} to {}!",
+                    current_version, new_version
+                );
                 println!("Update complete! You can now run yek with the new version.");
             }
             Err(e) => {
@@ -582,18 +588,18 @@ impl YekConfig {
                 return Err(anyhow!("Failed to replace binary: {}", e));
             }
         }
-        
+
         // Cleanup temp directory
         let _ = fs::remove_dir_all(&temp_dir);
-        
+
         Ok(())
     }
-    
+
     /// Determine the target triple for the current platform
     pub fn get_target_triple() -> Result<String> {
         let os = std::env::consts::OS;
         let arch = std::env::consts::ARCH;
-        
+
         let target = match (os, arch) {
             ("linux", "x86_64") => {
                 // Try to detect if we should use musl or gnu
@@ -607,23 +613,23 @@ impl YekConfig {
             ("windows", "aarch64") => "aarch64-pc-windows-msvc",
             _ => return Err(anyhow!("Unsupported platform: {} {}", os, arch)),
         };
-        
+
         Ok(target.to_string())
     }
-    
+
     /// Extract download URL from GitHub releases API JSON response
     pub fn extract_download_url(json: &str, asset_name: &str) -> Result<String> {
         // Simple JSON parsing to find the browser_download_url for our asset
         let lines: Vec<&str> = json.lines().collect();
         let mut found_asset = false;
-        
+
         for line in lines.iter() {
             // Look for the asset name
             if line.contains(&format!("\"name\": \"{}\"", asset_name)) {
                 found_asset = true;
                 continue;
             }
-            
+
             // If we found our asset, look for the download URL in nearby lines
             if found_asset && line.contains("browser_download_url") {
                 if let Some(url_start) = line.find("https://") {
@@ -634,10 +640,13 @@ impl YekConfig {
                 }
             }
         }
-        
-        Err(anyhow!("Could not find download URL for asset: {}", asset_name))
+
+        Err(anyhow!(
+            "Could not find download URL for asset: {}",
+            asset_name
+        ))
     }
-    
+
     /// Extract version tag from GitHub releases API JSON response
     pub fn extract_version_tag(json: &str) -> Result<String> {
         // Look for "tag_name": "v1.2.3"
@@ -664,7 +673,7 @@ impl YekConfig {
                 }
             }
         }
-        
+
         Err(anyhow!("Could not extract version from release info"))
     }
 }

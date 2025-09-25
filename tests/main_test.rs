@@ -442,7 +442,7 @@ fn test_output_name_only_no_output_dir() {
 fn test_main_help_includes_update_flag() {
     // Verify that running the binary with '--help' includes the --update flag
     use predicates::prelude::*;
-    
+
     Command::cargo_bin("yek")
         .expect("Binary 'yek' not found")
         .arg("--help")

@@ -1309,20 +1309,20 @@ fn test_get_target_triple() {
     // Test that we can determine a target triple for the current platform
     let result = YekConfig::get_target_triple();
     assert!(result.is_ok(), "Should be able to determine target triple");
-    
+
     let target = result.unwrap();
     assert!(!target.is_empty(), "Target triple should not be empty");
-    
+
     // Should be one of the supported platforms
     let supported_targets = [
         "x86_64-unknown-linux-musl",
-        "aarch64-unknown-linux-musl", 
+        "aarch64-unknown-linux-musl",
         "x86_64-apple-darwin",
         "aarch64-apple-darwin",
         "x86_64-pc-windows-msvc",
         "aarch64-pc-windows-msvc",
     ];
-    
+
     assert!(
         supported_targets.contains(&target.as_str()),
         "Target triple '{}' should be supported",
@@ -1338,17 +1338,17 @@ fn test_extract_version_tag() {
         "name": "Release v1.2.3",
         "draft": false
     }"#;
-    
+
     let result = YekConfig::extract_version_tag(mock_json);
     assert!(result.is_ok(), "Should extract version successfully");
     assert_eq!(result.unwrap(), "1.2.3", "Should remove 'v' prefix");
-    
+
     // Test without 'v' prefix
     let mock_json_no_v = r#"{
         "tag_name": "2.0.0",
         "name": "Release 2.0.0"
     }"#;
-    
+
     let result = YekConfig::extract_version_tag(mock_json_no_v);
     assert!(result.is_ok(), "Should extract version without 'v' prefix");
     assert_eq!(result.unwrap(), "2.0.0", "Should return version as-is");
@@ -1368,14 +1368,14 @@ fn test_extract_download_url() {
             }
         ]
     }"#;
-    
+
     let result = YekConfig::extract_download_url(mock_json, "yek-x86_64-unknown-linux-musl.tar.gz");
     assert!(result.is_ok(), "Should extract download URL successfully");
     assert_eq!(
         result.unwrap(),
         "https://github.com/bodo-run/yek/releases/download/v1.2.3/yek-x86_64-unknown-linux-musl.tar.gz"
     );
-    
+
     // Test asset not found
     let result = YekConfig::extract_download_url(mock_json, "nonexistent-asset.tar.gz");
     assert!(result.is_err(), "Should fail when asset not found");
