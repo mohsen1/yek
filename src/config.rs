@@ -3,7 +3,7 @@ use bytesize::ByteSize;
 use clap_config_file::ClapConfigFile;
 use sha2::{Digest, Sha256};
 use std::io::{self, BufRead, BufReader, IsTerminal};
-use std::{fs, path::Path, str::FromStr, time::UNIX_EPOCH};
+use std::{fs, path::Path, process::Command, str::FromStr, time::UNIX_EPOCH};
 
 use crate::{
     defaults::{BINARY_FILE_EXTENSIONS, DEFAULT_IGNORE_PATTERNS, DEFAULT_OUTPUT_TEMPLATE},
@@ -29,6 +29,10 @@ pub struct YekConfig {
     /// Print version of yek
     #[config_arg(long = "version", short = 'V')]
     pub version: bool,
+
+    /// Update yek to the latest version
+    #[config_arg(long = "update")]
+    pub update: bool,
 
     /// Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
     #[config_arg(default_value = "10MB")]
@@ -114,6 +118,7 @@ impl Default for YekConfig {
         Self {
             input_paths: Vec::new(),
             version: false,
+            update: false,
             max_size: "10MB".to_string(),
             tokens: String::new(),
             json: false,
@@ -205,6 +210,17 @@ impl YekConfig {
         if cfg.version {
             println!("{}", env!("CARGO_PKG_VERSION"));
             std::process::exit(0);
+        }
+
+        // Handle update flag
+        if cfg.update {
+            match cfg.perform_update() {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("Error updating yek: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
 
         // 2) compute derived fields:
@@ -433,5 +449,231 @@ impl YekConfig {
         }
 
         Ok(())
+    }
+
+    /// Update yek to the latest version by downloading and replacing the current binary
+    pub fn perform_update(&self) -> Result<()> {
+        const REPO_OWNER: &str = "bodo-run";
+        const REPO_NAME: &str = "yek";
+
+        println!("Checking for latest version...");
+
+        // Get the current executable path
+        let current_exe = std::env::current_exe()
+            .map_err(|e| anyhow!("Failed to get current executable path: {}", e))?;
+
+        if !current_exe.exists() {
+            return Err(anyhow!("Current executable path does not exist"));
+        }
+
+        // Check if the current executable is writable
+        let metadata = fs::metadata(&current_exe)?;
+        if metadata.permissions().readonly() {
+            return Err(anyhow!("Cannot update: current executable is not writable. Try running with elevated permissions or install to a writable location."));
+        }
+
+        // Determine target architecture
+        let target = Self::get_target_triple()?;
+        let asset_name = format!("yek-{}.tar.gz", target);
+
+        println!("Fetching release info for target: {}", target);
+
+        // Get latest release info from GitHub API
+        let releases_url = format!(
+            "https://api.github.com/repos/{}/{}/releases/latest",
+            REPO_OWNER, REPO_NAME
+        );
+        let releases_output = Command::new("curl")
+            .args(["-s", &releases_url])
+            .output()
+            .map_err(|e| anyhow!("Failed to execute curl command: {}. Is curl installed?", e))?;
+
+        if !releases_output.status.success() {
+            let stderr = String::from_utf8_lossy(&releases_output.stderr);
+            return Err(anyhow!("Failed to fetch release info: {}", stderr));
+        }
+
+        let release_json = String::from_utf8_lossy(&releases_output.stdout);
+
+        // Parse JSON to find download URL (simple string parsing to avoid adding serde_json dependency)
+        let download_url = Self::extract_download_url(&release_json, &asset_name)?;
+
+        // Get the new version tag
+        let new_version = Self::extract_version_tag(&release_json)?;
+        let current_version = env!("CARGO_PKG_VERSION");
+
+        println!("Current version: {}", current_version);
+        println!("Latest version: {}", new_version);
+
+        if new_version == current_version {
+            println!("You are already running the latest version!");
+            return Ok(());
+        }
+
+        println!("Downloading update from: {}", download_url);
+
+        // Create temp directory for download
+        let temp_dir = std::env::temp_dir().join(format!("yek-update-{}", new_version));
+        fs::create_dir_all(&temp_dir)?;
+
+        let archive_path = temp_dir.join(&asset_name);
+
+        // Download the archive
+        let download_output = Command::new("curl")
+            .args(["-L", "-o"])
+            .arg(&archive_path)
+            .arg(&download_url)
+            .output()
+            .map_err(|e| anyhow!("Failed to download update: {}", e))?;
+
+        if !download_output.status.success() {
+            let stderr = String::from_utf8_lossy(&download_output.stderr);
+            return Err(anyhow!("Failed to download update: {}", stderr));
+        }
+
+        // Extract the archive
+        println!("Extracting update...");
+        let extract_output = Command::new("tar")
+            .args(["xzf"])
+            .arg(&archive_path)
+            .current_dir(&temp_dir)
+            .output()
+            .map_err(|e| anyhow!("Failed to extract archive: {}. Is tar installed?", e))?;
+
+        if !extract_output.status.success() {
+            let stderr = String::from_utf8_lossy(&extract_output.stderr);
+            return Err(anyhow!("Failed to extract archive: {}", stderr));
+        }
+
+        // Find the new binary
+        let extracted_dir = temp_dir.join(format!("yek-{}", target));
+        let new_binary = extracted_dir.join("yek");
+
+        if !new_binary.exists() {
+            return Err(anyhow!("Updated binary not found in extracted archive"));
+        }
+
+        // Replace the current binary
+        println!("Installing update...");
+
+        // Create backup of current binary
+        let backup_path = format!("{}.backup", current_exe.to_string_lossy());
+        fs::copy(&current_exe, &backup_path)?;
+
+        // Replace with new binary
+        match fs::copy(&new_binary, &current_exe) {
+            Ok(_) => {
+                // Make the new binary executable (Unix-like systems)
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = fs::metadata(&current_exe)?.permissions();
+                    perms.set_mode(0o755);
+                    fs::set_permissions(&current_exe, perms)?;
+                }
+
+                // Remove backup on success
+                let _ = fs::remove_file(&backup_path);
+
+                println!(
+                    "Successfully updated yek from {} to {}!",
+                    current_version, new_version
+                );
+                println!("Update complete! You can now run yek with the new version.");
+            }
+            Err(e) => {
+                // Restore from backup on failure
+                let _ = fs::copy(&backup_path, &current_exe);
+                let _ = fs::remove_file(&backup_path);
+                return Err(anyhow!("Failed to replace binary: {}", e));
+            }
+        }
+
+        // Cleanup temp directory
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        Ok(())
+    }
+
+    /// Determine the target triple for the current platform
+    pub fn get_target_triple() -> Result<String> {
+        let os = std::env::consts::OS;
+        let arch = std::env::consts::ARCH;
+
+        let target = match (os, arch) {
+            ("linux", "x86_64") => {
+                // Try to detect if we should use musl or gnu
+                // Default to musl for better compatibility
+                "x86_64-unknown-linux-musl"
+            }
+            ("linux", "aarch64") => "aarch64-unknown-linux-musl",
+            ("macos", "x86_64") => "x86_64-apple-darwin",
+            ("macos", "aarch64") => "aarch64-apple-darwin",
+            ("windows", "x86_64") => "x86_64-pc-windows-msvc",
+            ("windows", "aarch64") => "aarch64-pc-windows-msvc",
+            _ => return Err(anyhow!("Unsupported platform: {} {}", os, arch)),
+        };
+
+        Ok(target.to_string())
+    }
+
+    /// Extract download URL from GitHub releases API JSON response
+    pub fn extract_download_url(json: &str, asset_name: &str) -> Result<String> {
+        // Simple JSON parsing to find the browser_download_url for our asset
+        let lines: Vec<&str> = json.lines().collect();
+        let mut found_asset = false;
+
+        for line in lines.iter() {
+            // Look for the asset name
+            if line.contains(&format!("\"name\": \"{}\"", asset_name)) {
+                found_asset = true;
+                continue;
+            }
+
+            // If we found our asset, look for the download URL in nearby lines
+            if found_asset && line.contains("browser_download_url") {
+                if let Some(url_start) = line.find("https://") {
+                    if let Some(url_end) = line[url_start..].find('"') {
+                        let url = &line[url_start..url_start + url_end];
+                        return Ok(url.to_string());
+                    }
+                }
+            }
+        }
+
+        Err(anyhow!(
+            "Could not find download URL for asset: {}",
+            asset_name
+        ))
+    }
+
+    /// Extract version tag from GitHub releases API JSON response
+    pub fn extract_version_tag(json: &str) -> Result<String> {
+        // Look for "tag_name": "v1.2.3"
+        for line in json.lines() {
+            if line.contains("\"tag_name\":") {
+                // Find the colon after tag_name
+                if let Some(colon_pos) = line.find(':') {
+                    let after_colon = &line[colon_pos + 1..];
+                    // Find the first quote after the colon
+                    if let Some(first_quote) = after_colon.find('"') {
+                        let value_start = first_quote + 1;
+                        // Find the closing quote
+                        if let Some(second_quote) = after_colon[value_start..].find('"') {
+                            let tag = &after_colon[value_start..value_start + second_quote];
+                            // Remove 'v' prefix if present
+                            let version = if let Some(stripped) = tag.strip_prefix('v') {
+                                stripped
+                            } else {
+                                tag
+                            };
+                            return Ok(version.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(anyhow!("Could not extract version from release info"))
     }
 }

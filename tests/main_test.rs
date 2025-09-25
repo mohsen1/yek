@@ -437,3 +437,17 @@ fn test_output_name_only_no_output_dir() {
     // Check that the output file was created in the temp directory (fallback behavior)
     // Note: when no output_dir is specified and not streaming, it should fall back to temp dir
 }
+
+#[test]
+fn test_main_help_includes_update_flag() {
+    // Verify that running the binary with '--help' includes the --update flag
+    use predicates::prelude::*;
+
+    Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--update"))
+        .stdout(predicate::str::contains("Update yek to the latest version"));
+}
