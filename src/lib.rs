@@ -13,6 +13,7 @@ use std::{
 };
 use tiktoken_rs::CoreBPE;
 
+pub mod category;
 pub mod config;
 pub mod defaults;
 pub mod error;

@@ -14,6 +14,8 @@ mod models_tests {
         assert_eq!(file.size_bytes, 11); // "Hello world".len()
         assert!(file.token_count.get().is_none());
         assert!(file.formatted_content.is_none());
+        // Category should be automatically determined from file path
+        assert_eq!(file.category, yek::category::FileCategory::Documentation); // .txt files are Documentation
     }
 
     #[test]
@@ -32,6 +34,58 @@ mod models_tests {
         // Clone creates a new OnceLock, so token_count is empty
         assert!(cloned.token_count.get().is_none());
         assert_eq!(cloned.formatted_content, file.formatted_content);
+        // Category should be preserved in clone
+        assert_eq!(cloned.category, file.category);
+    }
+
+    #[test]
+    fn test_processed_file_new_with_category() {
+        use yek::category::FileCategory;
+
+        let file = ProcessedFile::new_with_category(
+            "some_file.data".to_string(),
+            "Hello world".to_string(),
+            10,
+            0,
+            FileCategory::Source,
+        );
+        assert_eq!(file.rel_path, "some_file.data");
+        assert_eq!(file.content, "Hello world");
+        assert_eq!(file.priority, 10);
+        assert_eq!(file.file_index, 0);
+        assert_eq!(file.size_bytes, 11); // "Hello world".len()
+        assert!(file.token_count.get().is_none());
+        assert!(file.formatted_content.is_none());
+        // Category should be explicitly set to Source
+        assert_eq!(file.category, FileCategory::Source);
+    }
+
+    #[test]
+    fn test_processed_file_category_detection() {
+        use yek::category::FileCategory;
+
+        // Test various file types to ensure category detection works
+        let source_file =
+            ProcessedFile::new("src/main.rs".to_string(), "fn main() {}".to_string(), 10, 0);
+        assert_eq!(source_file.category, FileCategory::Source);
+
+        let test_file = ProcessedFile::new(
+            "tests/unit.test.js".to_string(),
+            "test()".to_string(),
+            10,
+            0,
+        );
+        assert_eq!(test_file.category, FileCategory::Test);
+
+        let config_file = ProcessedFile::new("package.json".to_string(), "{}".to_string(), 10, 0);
+        assert_eq!(config_file.category, FileCategory::Configuration);
+
+        let doc_file = ProcessedFile::new("README.md".to_string(), "# Title".to_string(), 10, 0);
+        assert_eq!(doc_file.category, FileCategory::Documentation);
+
+        let other_file =
+            ProcessedFile::new("image.png".to_string(), "binary data".to_string(), 10, 0);
+        assert_eq!(other_file.category, FileCategory::Other);
     }
 
     #[test]

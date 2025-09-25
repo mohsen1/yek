@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use crate::category::FileCategory;
+
 /// Represents a processed file with its metadata and content
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessedFile {
@@ -20,6 +22,8 @@ pub struct ProcessedFile {
     pub token_count: OnceLock<usize>,
     /// Cached formatted content (for line numbers)
     pub formatted_content: Option<String>,
+    /// File category for improved sorting and organization
+    pub category: FileCategory,
 }
 
 impl Clone for ProcessedFile {
@@ -32,6 +36,7 @@ impl Clone for ProcessedFile {
             size_bytes: self.size_bytes,
             token_count: OnceLock::new(),
             formatted_content: self.formatted_content.clone(),
+            category: self.category,
         }
     }
 }
@@ -39,6 +44,7 @@ impl Clone for ProcessedFile {
 impl ProcessedFile {
     /// Create a new ProcessedFile with basic information
     pub fn new(rel_path: String, content: String, priority: i32, file_index: usize) -> Self {
+        let category = crate::category::categorize_file(&rel_path);
         let size_bytes = content.len();
         Self {
             priority,
@@ -48,6 +54,28 @@ impl ProcessedFile {
             size_bytes,
             token_count: OnceLock::new(),
             formatted_content: None,
+            category,
+        }
+    }
+
+    /// Create a new ProcessedFile with explicit category
+    pub fn new_with_category(
+        rel_path: String,
+        content: String,
+        priority: i32,
+        file_index: usize,
+        category: FileCategory,
+    ) -> Self {
+        let size_bytes = content.len();
+        Self {
+            priority,
+            file_index,
+            rel_path,
+            content,
+            size_bytes,
+            token_count: OnceLock::new(),
+            formatted_content: None,
+            category,
         }
     }
 
@@ -260,6 +288,8 @@ impl Default for OutputConfig {
 pub struct ProcessingConfig {
     /// Priority rules for file ordering
     pub priority_rules: Vec<crate::priority::PriorityRule>,
+    /// Category-based priority weights
+    pub category_weights: crate::category::CategoryWeights,
     /// Whether to enable debug output
     pub debug: bool,
     /// Whether to enable parallel processing
@@ -276,6 +306,7 @@ impl Default for ProcessingConfig {
     fn default() -> Self {
         Self {
             priority_rules: Vec::new(),
+            category_weights: crate::category::CategoryWeights::default(),
             debug: false,
             parallel: true,
             max_threads: None,

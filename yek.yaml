@@ -21,3 +21,11 @@ priority_rules:
       pattern: "scripts/**"
     - score: 10
       pattern: "src/defaults.rs"
+
+# Optional: Customize category-based priority weights
+# category_weights:
+#     source: 20         # Source code files (default: 20)
+#     test: 10           # Test files (default: 10)
+#     configuration: 5   # Config files like .toml, .yaml, package.json (default: 5)
+#     documentation: 15  # Documentation files like .md, .rst (default: 15)
+#     other: 1           # All other files (default: 1)

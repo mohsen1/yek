@@ -228,21 +228,23 @@ impl ParallelFileProcessor {
             return Err(anyhow!("Binary file: {}", rel_path));
         }
 
-        // Calculate priority
-        let priority = self.calculate_priority(rel_path);
+        // Calculate priority with category
+        let (priority, category) = self.calculate_priority_with_category(rel_path);
 
         // Get thread-safe file index
         let file_index = self.get_next_file_index(priority);
 
-        Ok(ProcessedFile::new(
+        Ok(ProcessedFile::new_with_category(
             rel_path.to_string(),
             String::from_utf8_lossy(&content).to_string(),
             priority,
             file_index,
+            category,
         ))
     }
 
-    /// Calculate priority for a file
+    /// Calculate priority for a file (legacy method for backward compatibility)
+    #[allow(dead_code)]
     fn calculate_priority(&self, rel_path: &str) -> i32 {
         let mut priority = 0;
 
@@ -266,6 +268,33 @@ impl ParallelFileProcessor {
         }
 
         priority
+    }
+
+    /// Calculate priority for a file including category-based offset
+    fn calculate_priority_with_category(
+        &self,
+        rel_path: &str,
+    ) -> (i32, crate::category::FileCategory) {
+        use crate::priority::get_file_priority_with_category;
+
+        // Get base priority from rules and category
+        let (mut priority, category) = get_file_priority_with_category(
+            rel_path,
+            &self.context.processing_config.priority_rules,
+            &self.context.processing_config.category_weights,
+        );
+
+        // Apply git boost if available
+        if let Some(commit_time) = self.context.repository_info.commit_times.get(rel_path) {
+            let max_boost = self.context.input_config.git_boost_max.unwrap_or(100);
+            priority += self.calculate_git_boost(
+                *commit_time,
+                &self.context.repository_info.commit_times,
+                max_boost,
+            );
+        }
+
+        (priority, category)
     }
 
     /// Calculate git boost for a file
@@ -341,14 +370,15 @@ impl ParallelFileProcessor {
 
     /// Create a processed file with proper metadata
     fn create_processed_file(&self, rel_path: &str, content: &[u8]) -> Result<ProcessedFile> {
-        let priority = self.calculate_priority(rel_path);
+        let (priority, category) = self.calculate_priority_with_category(rel_path);
         let file_index = self.get_next_file_index(priority);
 
-        Ok(ProcessedFile::new(
+        Ok(ProcessedFile::new_with_category(
             rel_path.to_string(),
             String::from_utf8_lossy(content).to_string(),
             priority,
             file_index,
+            category,
         ))
     }
 
@@ -396,6 +426,7 @@ pub fn process_files_parallel(
         OutputConfig::default(), // TODO: Convert from YekConfig
         ProcessingConfig {
             priority_rules: config.priority_rules.clone(),
+            category_weights: config.category_weights.clone().unwrap_or_default(),
             debug: config.debug,
             parallel: true,
             max_threads: None,
