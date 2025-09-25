@@ -138,9 +138,7 @@ mod pipeline_tests {
             rel_paths
         );
         assert!(
-            rel_paths
-                .iter()
-                .any(|path| path.ends_with("src/lib.rs")),
+            rel_paths.iter().any(|path| path.ends_with("src/lib.rs")),
             "expected src/lib.rs in {:?}",
             rel_paths
         );
@@ -159,14 +157,15 @@ mod pipeline_tests {
         fs::write(base_dir.join("plain.txt"), "text").unwrap();
         fs::write(base_dir.join("highlight.rs"), "fn main() {}").unwrap();
 
-        let input_config =
-            input_config_with_paths(vec![base_dir.to_string_lossy().to_string()]);
+        let input_config = input_config_with_paths(vec![base_dir.to_string_lossy().to_string()]);
 
-        let mut processing_config = ProcessingConfig::default();
-        processing_config.priority_rules = vec![PriorityRule {
-            pattern: ".*\\.rs$".to_string(),
-            score: 42,
-        }];
+        let processing_config = ProcessingConfig {
+            priority_rules: vec![PriorityRule {
+                pattern: ".*\\.rs$".to_string(),
+                score: 42,
+            }],
+            ..Default::default()
+        };
 
         let context = create_test_context_with_configs(
             input_config,
@@ -178,8 +177,10 @@ mod pipeline_tests {
         let stage = FileDiscoveryStage::new();
         let files = stage.process(Vec::new(), &context).unwrap();
 
-        let priorities: Vec<(&str, i32)> =
-            files.iter().map(|file| (file.rel_path.as_str(), file.priority)).collect();
+        let priorities: Vec<(&str, i32)> = files
+            .iter()
+            .map(|file| (file.rel_path.as_str(), file.priority))
+            .collect();
 
         let rs_priority = priorities
             .iter()
@@ -207,8 +208,10 @@ mod pipeline_tests {
 
     #[test]
     fn test_content_filtering_stage_enforces_byte_limit() {
-        let mut output_config = OutputConfig::default();
-        output_config.max_size = "1B".to_string();
+        let output_config = OutputConfig {
+            max_size: "1B".to_string(),
+            ..Default::default()
+        };
 
         let context = create_test_context_with_configs(
             InputConfig::default(),
@@ -228,9 +231,11 @@ mod pipeline_tests {
 
     #[test]
     fn test_content_filtering_stage_enforces_token_limit() {
-        let mut output_config = OutputConfig::default();
-        output_config.token_mode = true;
-        output_config.token_limit = Some("1".to_string());
+        let output_config = OutputConfig {
+            token_mode: true,
+            token_limit: Some("1".to_string()),
+            ..Default::default()
+        };
 
         let context = create_test_context_with_configs(
             InputConfig::default(),
@@ -240,12 +245,7 @@ mod pipeline_tests {
         );
 
         let stage = ContentFilteringStage;
-        let file = ProcessedFile::new(
-            "tokens.txt".into(),
-            "hello world token test".into(),
-            0,
-            0,
-        );
+        let file = ProcessedFile::new("tokens.txt".into(), "hello world token test".into(), 0, 0);
         let files = stage.process(vec![file], &context).unwrap();
         assert!(files.is_empty());
 
@@ -264,8 +264,10 @@ mod pipeline_tests {
 
     #[test]
     fn test_output_formatting_stage_adds_line_numbers() {
-        let mut output_config = OutputConfig::default();
-        output_config.line_numbers = true;
+        let output_config = OutputConfig {
+            line_numbers: true,
+            ..Default::default()
+        };
 
         let context = create_test_context_with_configs(
             InputConfig::default(),
@@ -275,8 +277,7 @@ mod pipeline_tests {
         );
 
         let stage = OutputFormattingStage;
-        let file =
-            ProcessedFile::new("test.txt".to_string(), "first\nsecond".to_string(), 0, 0);
+        let file = ProcessedFile::new("test.txt".to_string(), "first\nsecond".to_string(), 0, 0);
         let files = stage.process(vec![file], &context).unwrap();
         assert_eq!(files.len(), 1);
         assert!(files[0].content.contains("  1 | first"));

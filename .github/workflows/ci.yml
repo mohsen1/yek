@@ -70,6 +70,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
       - name: Clippy
         run: cargo clippy -- -D warnings
       - name: Format check
