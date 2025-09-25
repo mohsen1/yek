@@ -34,7 +34,7 @@ pub fn get_file_priority_with_category(
     let rule_priority = get_file_priority(path, rules);
     let category_offset = category_weights.get_offset(category);
     let total_priority = rule_priority + category_offset;
-    
+
     debug!(
         "File: {} | Category: {} | Rule priority: {} | Category offset: {} | Total: {}",
         path,
@@ -43,7 +43,7 @@ pub fn get_file_priority_with_category(
         category_offset,
         total_priority
     );
-    
+
     (total_priority, category)
 }
 

@@ -471,7 +471,7 @@ mod lib_tests {
         // file.data gets category "Other" (priority offset: 1) + no rule matches = 1
         assert_eq!(files[0].priority, 1);
         assert_eq!(files[1].rel_path, "src_file.rs"); // Highest priority comes last
-        // src_file.rs gets category "Source" (priority offset: 20) + rule match (500) = 520
+                                                      // src_file.rs gets category "Source" (priority offset: 20) + rule match (500) = 520
         assert_eq!(files[1].priority, 520);
     }
 

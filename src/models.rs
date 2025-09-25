@@ -59,7 +59,13 @@ impl ProcessedFile {
     }
 
     /// Create a new ProcessedFile with explicit category
-    pub fn new_with_category(rel_path: String, content: String, priority: i32, file_index: usize, category: FileCategory) -> Self {
+    pub fn new_with_category(
+        rel_path: String,
+        content: String,
+        priority: i32,
+        file_index: usize,
+        category: FileCategory,
+    ) -> Self {
         let size_bytes = content.len();
         Self {
             priority,

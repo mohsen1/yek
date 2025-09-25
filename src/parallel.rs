@@ -243,7 +243,8 @@ impl ParallelFileProcessor {
         ))
     }
 
-    /// Calculate priority for a file
+    /// Calculate priority for a file (legacy method for backward compatibility)
+    #[allow(dead_code)]
     fn calculate_priority(&self, rel_path: &str) -> i32 {
         let mut priority = 0;
 
@@ -270,9 +271,12 @@ impl ParallelFileProcessor {
     }
 
     /// Calculate priority for a file including category-based offset
-    fn calculate_priority_with_category(&self, rel_path: &str) -> (i32, crate::category::FileCategory) {
+    fn calculate_priority_with_category(
+        &self,
+        rel_path: &str,
+    ) -> (i32, crate::category::FileCategory) {
         use crate::priority::get_file_priority_with_category;
-        
+
         // Get base priority from rules and category
         let (mut priority, category) = get_file_priority_with_category(
             rel_path,
