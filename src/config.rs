@@ -82,6 +82,10 @@ pub struct YekConfig {
     #[config_arg(accept_from = "config_only")]
     pub git_boost_max: Option<i32>,
 
+    /// Category-based priority weights
+    #[config_arg(accept_from = "config_only")]
+    pub category_weights: Option<crate::category::CategoryWeights>,
+
     /// Include directory tree header in output (incompatible with JSON output)
     #[config_arg(long = "tree-header", short = 't')]
     pub tree_header: bool,
@@ -126,6 +130,7 @@ impl Default for YekConfig {
                 .map(|s| s.to_string())
                 .collect(),
             git_boost_max: Some(100),
+            category_weights: None,
 
             // computed fields
             tree_header: false,

@@ -24,6 +24,29 @@ pub fn get_file_priority(path: &str, rules: &[PriorityRule]) -> i32 {
     priority
 }
 
+/// Calculate file priority including category-based offset
+pub fn get_file_priority_with_category(
+    path: &str,
+    rules: &[PriorityRule],
+    category_weights: &crate::category::CategoryWeights,
+) -> (i32, crate::category::FileCategory) {
+    let category = crate::category::categorize_file(path);
+    let rule_priority = get_file_priority(path, rules);
+    let category_offset = category_weights.get_offset(category);
+    let total_priority = rule_priority + category_offset;
+    
+    debug!(
+        "File: {} | Category: {} | Rule priority: {} | Category offset: {} | Total: {}",
+        path,
+        category.name(),
+        rule_priority,
+        category_offset,
+        total_priority
+    );
+    
+    (total_priority, category)
+}
+
 /// Rank-based approach to compute how "recent" each file is (0=oldest, 1=newest).
 /// Then scale it to a user-defined or default max boost.
 pub fn compute_recentness_boost(

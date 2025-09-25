@@ -456,7 +456,7 @@ mod lib_tests {
     fn test_serialize_repo_with_priority_rules() {
         init_tracing();
         let temp_dir = tempdir().unwrap();
-        std::fs::write(temp_dir.path().join("file.txt"), "content").unwrap();
+        std::fs::write(temp_dir.path().join("file.data"), "content").unwrap();
         std::fs::write(temp_dir.path().join("src_file.rs"), "content").unwrap();
 
         let mut config = create_test_config(vec![temp_dir.path().to_string_lossy().to_string()]);
@@ -467,10 +467,12 @@ mod lib_tests {
         let result = serialize_repo(&config).unwrap();
         let files = result.1;
         assert_eq!(files.len(), 2);
-        assert_eq!(files[0].rel_path, "file.txt");
-        assert_eq!(files[0].priority, 0);
+        assert_eq!(files[0].rel_path, "file.data");
+        // file.data gets category "Other" (priority offset: 1) + no rule matches = 1
+        assert_eq!(files[0].priority, 1);
         assert_eq!(files[1].rel_path, "src_file.rs"); // Highest priority comes last
-        assert_eq!(files[1].priority, 500);
+        // src_file.rs gets category "Source" (priority offset: 20) + rule match (500) = 520
+        assert_eq!(files[1].priority, 520);
     }
 
     #[test]
