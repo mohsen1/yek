@@ -41,7 +41,7 @@ mod models_tests {
     #[test]
     fn test_processed_file_new_with_category() {
         use yek::category::FileCategory;
-        
+
         let file = ProcessedFile::new_with_category(
             "some_file.data".to_string(),
             "Hello world".to_string(),
@@ -63,12 +63,18 @@ mod models_tests {
     #[test]
     fn test_processed_file_category_detection() {
         use yek::category::FileCategory;
-        
+
         // Test various file types to ensure category detection works
-        let source_file = ProcessedFile::new("src/main.rs".to_string(), "fn main() {}".to_string(), 10, 0);
+        let source_file =
+            ProcessedFile::new("src/main.rs".to_string(), "fn main() {}".to_string(), 10, 0);
         assert_eq!(source_file.category, FileCategory::Source);
 
-        let test_file = ProcessedFile::new("tests/unit.test.js".to_string(), "test()".to_string(), 10, 0);
+        let test_file = ProcessedFile::new(
+            "tests/unit.test.js".to_string(),
+            "test()".to_string(),
+            10,
+            0,
+        );
         assert_eq!(test_file.category, FileCategory::Test);
 
         let config_file = ProcessedFile::new("package.json".to_string(), "{}".to_string(), 10, 0);
@@ -77,7 +83,8 @@ mod models_tests {
         let doc_file = ProcessedFile::new("README.md".to_string(), "# Title".to_string(), 10, 0);
         assert_eq!(doc_file.category, FileCategory::Documentation);
 
-        let other_file = ProcessedFile::new("image.png".to_string(), "binary data".to_string(), 10, 0);
+        let other_file =
+            ProcessedFile::new("image.png".to_string(), "binary data".to_string(), 10, 0);
         assert_eq!(other_file.category, FileCategory::Other);
     }
 
