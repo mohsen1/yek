@@ -294,7 +294,7 @@ Executed in   22.24 mins    fish           external
 
 ## Roadmap
 
-See [proposed features](https://github.com/bodo-run/yek/issues?q=type:%22Feature%22). I am open to accepting new feature requests. Please write a detailed proposal to discuss new features.
+See [proposed features](https://github.com/mohsen1/yek/issues?q=type:%22Feature%22). I am open to accepting new feature requests. Please write a detailed proposal to discuss new features.
 
 ## Alternatives
 

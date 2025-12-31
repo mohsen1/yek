@@ -16,7 +16,7 @@ body = """
 {% endif %}\
 {% if version and previous.version %}\
     {% if previous.version %}\
-        [{{ version | trim_start_matches(pat="v") }}]: https://github.com/bodo-run/yek/compare/{{ previous.version }}...{{ version }}\
+        [{{ version | trim_start_matches(pat="v") }}]: https://github.com/mohsen1/yek/compare/{{ previous.version }}...{{ version }}\
     {% endif %}\
 {% endif %}\
 

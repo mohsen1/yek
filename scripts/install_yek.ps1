@@ -27,7 +27,7 @@ switch ($arch) {
     }
 }
 
-$repoOwner = "bodo-run"
+$repoOwner = "mohsen1"
 $repoName  = "yek"
 $assetName = "yek-$target.zip"
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_OWNER="bodo-run"
+REPO_OWNER="mohsen1"
 REPO_NAME="yek"
 
 # Determine a sensible default install directory

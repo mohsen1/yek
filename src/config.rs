@@ -453,7 +453,7 @@ impl YekConfig {
 
     /// Update yek to the latest version by downloading and replacing the current binary
     pub fn perform_update(&self) -> Result<()> {
-        const REPO_OWNER: &str = "bodo-run";
+        const REPO_OWNER: &str = "mohsen1";
         const REPO_NAME: &str = "yek";
 
         println!("Checking for latest version...");

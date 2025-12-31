@@ -101,7 +101,7 @@ jobs:
 
       - name: Install Yek
         run: |
-          curl -fsSL https://bodo.run/yek.sh | bash
+          curl -fsSL https://azimi.me/yek.sh | bash
 
       - name: Configure git with Github Bot
         run: |
