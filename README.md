@@ -51,7 +51,7 @@ Choose the installation method for your platform:
 <!-- UNIX_INSTALLATION_BEGIN -->
 
 ```bash
-curl -fsSL https://bodo.run/yek.sh | bash
+curl -fsSL https://azimi.me/yek.sh | bash
 ```
 
 <!-- UNIX_INSTALLATION_END -->
@@ -61,7 +61,7 @@ For Windows (PowerShell):
 <!-- WINDOWS_INSTALLATION_BEGIN -->
 
 ```powershell
-irm https://bodo.run/yek.ps1 | iex
+irm https://azimi.me/yek.ps1 | iex
 ```
 
 <!-- WINDOWS_INSTALLATION_END -->
@@ -70,7 +70,7 @@ irm https://bodo.run/yek.ps1 | iex
 <summary style="cursor: pointer;">Build from Source</summary>
 
 ```bash
-git clone https://github.com/bodo-run/yek
+git clone https://github.com/mohsen1/yek
 cd yek
 cargo install --path .
 ```
