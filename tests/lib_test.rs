@@ -231,7 +231,15 @@ mod lib_tests {
 
         // Verify the file is detected as text
         assert!(
-            is_text_file(&ts_file, BINARY_FILE_EXTENSIONS.iter().map(|s| s.to_string()).collect::<Vec<_>>().as_slice()).unwrap(),
+            is_text_file(
+                &ts_file,
+                BINARY_FILE_EXTENSIONS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .as_slice()
+            )
+            .unwrap(),
             "TypeScript files should be detected as text files"
         );
     }
