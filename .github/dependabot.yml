@@ -4,3 +4,16 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Group all dependencies into a single PR to reduce PR noise
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+    # Add labels for easier filtering
+    labels:
+      - "dependencies"
+      - "rust"
+    # Limit open PRs to avoid clutter
+    open-pull-requests-limit: 5
+    # Rebase strategy to keep PRs up-to-date
+    rebase-strategy: "auto"
