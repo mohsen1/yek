@@ -208,6 +208,43 @@ mod lib_tests {
     }
 
     #[test]
+    fn test_typescript_files_not_treated_as_binary() {
+        // Test that .ts files (TypeScript) are correctly treated as text files
+        // and not confused with .ts video transport stream files
+        use yek::defaults::BINARY_FILE_EXTENSIONS;
+
+        let dir = tempdir().unwrap();
+        let ts_file = dir.path().join("example.ts");
+
+        // Create a typical TypeScript file with text content
+        fs::write(
+            &ts_file,
+            "interface User {\n  name: string;\n  age: number;\n}\n",
+        )
+        .unwrap();
+
+        // Check that "ts" is NOT in the binary extensions list
+        assert!(
+            !BINARY_FILE_EXTENSIONS.contains(&"ts"),
+            "TypeScript extension 'ts' should not be in binary extensions list"
+        );
+
+        // Verify the file is detected as text
+        assert!(
+            is_text_file(
+                &ts_file,
+                BINARY_FILE_EXTENSIONS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .as_slice()
+            )
+            .unwrap(),
+            "TypeScript files should be detected as text files"
+        );
+    }
+
+    #[test]
     fn test_is_text_file_large_text_file() {
         let dir = tempdir().unwrap();
         let large_text_file = dir.path().join("large.txt");
