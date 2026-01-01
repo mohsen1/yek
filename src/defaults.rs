@@ -52,7 +52,7 @@ pub const BINARY_FILE_EXTENSIONS: &[&str] = &[
 
     // Video
     "mp4", "m4v", "mov", "avi", "wmv", "mkv", "flv", "f4v", "f4p", "f4a", "f4b", "3gp",
-    "3g2", "mpeg", "mpg", "mpe", "m1v", "m2v", "ts", "mts", "m2ts", "vob", "rm", "rmvb",
+    "3g2", "mpeg", "mpg", "mpe", "m1v", "m2v", "mts", "m2ts", "vob", "rm", "rmvb",
     "asf", "ogv", "ogm", "webm", "dv", "divx", "xvid",
 
     // Font Files
