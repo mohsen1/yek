@@ -13,17 +13,17 @@ categories = ["command-line-utilities", "development-tools"]
 [dependencies]
 anyhow = "1.0"
 atty = "0.2.14"
-bytesize = "2.0.1"
+bytesize = "2.3.1"
 clap = { version = "4.5", features = ["derive"] }
 clap-config-file = "0.6.0"
-config = "0.15.11"
+config = "0.15.19"
 content_inspector = "0.2.4"
 crossbeam = "0.8"
 crossbeam-channel = "0.5"
-git2 = { version = "0.18.2", features = ["vendored-openssl", "https"] }
+git2 = { version = "0.20.3", features = ["vendored-openssl", "https"] }
 glob = "0.3.2"
 ignore = "0.4"
-indicatif = "0.17"
+indicatif = "0.18"
 normalize-path = "0.2.1"
 num_cpus = "1.16"
 path-slash = "0.2.1"
@@ -31,7 +31,7 @@ rayon = "1.8"
 regex = "1.12.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
-serde_json = "1.0.145"
+serde_json = "1.0.148"
 serde_yaml = "0.9.34"
 sha2 = "0.10"
 time = "0.3"
@@ -39,15 +39,15 @@ toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2.4"
-tiktoken-rs = "0.7.0"
+tiktoken-rs = "0.9.1"
 
 [dev-dependencies]
-assert_cmd = "2.0"
+assert_cmd = "2.1"
 chrono = "0.4"
 predicates = "3.0"
-tempfile = "3.19"
-criterion = "0.5"
-rand = "0.8"
+tempfile = "3.24"
+criterion = "0.8"
+rand = "0.9"
 grcov = "0.10.5"
 
 [[bench]]
