@@ -51,6 +51,9 @@ pub const BINARY_FILE_EXTENSIONS: &[&str] = &[
     "wma", "ra", "ram", "ape", "opus", "amr", "awb",
 
     // Video
+    // Note: .ts (MPEG transport stream) extension is intentionally excluded
+    // to avoid conflicts with TypeScript files, which are more common in code repositories.
+    // Actual binary .ts files will still be detected via content inspection.
     "mp4", "m4v", "mov", "avi", "wmv", "mkv", "flv", "f4v", "f4p", "f4a", "f4b", "3gp",
     "3g2", "mpeg", "mpg", "mpe", "m1v", "m2v", "mts", "m2ts", "vob", "rm", "rmvb",
     "asf", "ogv", "ogm", "webm", "dv", "divx", "xvid",
