@@ -117,6 +117,17 @@ fn test_process_files_parallel_file_read_error() {
 
     // Make the file unreadable (Unix only)
     if cfg!(unix) {
+        // Skip when running as root (permission checks don't apply)
+        if std::process::Command::new("id")
+            .arg("-u")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+            .unwrap_or(false)
+        {
+            eprintln!("Skipping test_process_files_parallel_file_read_error: running as root");
+            return;
+        }
+
         make_unreadable(&file_path).unwrap();
 
         let config = YekConfig::extend_config_with_defaults(

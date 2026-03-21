@@ -363,15 +363,16 @@ impl ParallelFileProcessor {
     fn build_gitignore(&self, dir_path: &Path) -> Result<Arc<ignore::gitignore::Gitignore>> {
         let mut gitignore_builder = GitignoreBuilder::new(dir_path);
 
-        // Add .gitignore file FIRST so that custom patterns take precedence
+        // Add config patterns FIRST (includes defaults) so .gitignore can override them
+        // In gitignore semantics, the last matching pattern wins
+        for pattern in &self.context.input_config.ignore_patterns {
+            gitignore_builder.add_line(None, &pattern.to_string())?;
+        }
+
+        // Add .gitignore file AFTER so its rules (including negations) take precedence
         let gitignore_file = dir_path.join(".gitignore");
         if self.context.file_system.path_exists(&gitignore_file) {
             gitignore_builder.add(&gitignore_file);
-        }
-
-        // Add custom patterns AFTER .gitignore so they override .gitignore rules
-        for pattern in &self.context.input_config.ignore_patterns {
-            gitignore_builder.add_line(None, &pattern.to_string())?;
         }
 
         Ok(Arc::new(gitignore_builder.build()?))
