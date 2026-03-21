@@ -157,6 +157,36 @@ impl YekConfig {
         }
     }
 
+    /// Merge default ignore patterns, binary extensions, and compute derived fields.
+    /// Used by both `init_config()` and the MCP server.
+    pub fn apply_defaults(&mut self) {
+        self.token_mode = !self.tokens.is_empty();
+
+        // Merge default binary extensions
+        let mut merged_bins = BINARY_FILE_EXTENSIONS
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        merged_bins.append(&mut self.binary_extensions);
+        self.binary_extensions = merged_bins
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        // Merge default ignore patterns
+        let mut ignore = DEFAULT_IGNORE_PATTERNS
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        ignore.extend(self.ignore_patterns.drain(..));
+        self.ignore_patterns = ignore;
+
+        // Apply unignore patterns
+        self.ignore_patterns
+            .extend(self.unignore_patterns.iter().map(|pat| format!("!{}", pat)));
+    }
+
     /// Read input paths from stdin, filtering out empty lines and trimming whitespace
     fn read_input_paths_from_stdin(&self) -> Result<Vec<String>> {
         let stdin = io::stdin();
@@ -224,12 +254,9 @@ impl YekConfig {
         }
 
         // 2) compute derived fields:
-        cfg.token_mode = !cfg.tokens.is_empty();
         let force_tty = std::env::var("FORCE_TTY").is_ok();
-
         cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
 
-        // Handle default for output_template if not provided
         if cfg.output_template.is_none() {
             cfg.output_template = Some(DEFAULT_OUTPUT_TEMPLATE.to_string());
         }
@@ -237,13 +264,11 @@ impl YekConfig {
         // Check if we should read input paths from stdin
         if cfg.input_paths.is_empty() {
             if !std::io::stdin().is_terminal() {
-                // Read file paths from stdin (one per line)
                 match cfg.read_input_paths_from_stdin() {
                     Ok(stdin_paths) => {
                         if !stdin_paths.is_empty() {
                             cfg.input_paths = stdin_paths;
                         } else {
-                            // stdin was empty, default to current dir
                             cfg.input_paths.push(".".to_string());
                         }
                     }
@@ -253,34 +278,11 @@ impl YekConfig {
                     }
                 }
             } else {
-                // No stdin input, default to current dir
                 cfg.input_paths.push(".".to_string());
             }
         }
 
-        // Extend binary extensions with the built-in list:
-        let mut merged_bins = BINARY_FILE_EXTENSIONS
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>();
-        merged_bins.append(&mut cfg.binary_extensions);
-        cfg.binary_extensions = merged_bins
-            .into_iter()
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect();
-
-        // Always start with default ignore patterns, then add user's:
-        let mut ignore = DEFAULT_IGNORE_PATTERNS
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>();
-        ignore.extend(cfg.ignore_patterns);
-        cfg.ignore_patterns = ignore;
-
-        // Apply unignore patterns (turn them into negative globs "!…")
-        cfg.ignore_patterns
-            .extend(cfg.unignore_patterns.iter().map(|pat| format!("!{}", pat)));
+        cfg.apply_defaults();
 
         // Handle output directory setup
         if !cfg.stream {

@@ -637,11 +637,7 @@ fn test_node_modules_ignored_at_any_level() {
         vec![temp_dir.path().to_string_lossy().to_string()],
         ".".to_string(),
     );
-    // Add both patterns to match default config behavior
-    config.ignore_patterns.push("node_modules/**".to_string());
-    config
-        .ignore_patterns
-        .push("**/node_modules/**".to_string());
+    config.ignore_patterns.push("**/node_modules/**".to_string());
 
     let boosts: HashMap<String, i32> = HashMap::new();
     let result = process_files_parallel(temp_dir.path(), &config, &boosts)

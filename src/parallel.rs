@@ -337,30 +337,20 @@ impl ParallelFileProcessor {
             .file_name()
             .unwrap_or_default()
             .to_string_lossy();
-        let ignored_by_pattern = self
-            .context
-            .input_config
-            .ignore_patterns
-            .iter()
-            .filter(|p| !p.as_str().starts_with('!'))
-            .any(|pattern| {
-                pattern.matches(&path_str)
-                    || pattern.matches(rel_path)
-                    || pattern.matches(&file_name)
-            });
-
-        // Check if allowlisted by negation patterns
-        let allowlisted = self
-            .context
-            .input_config
-            .ignore_patterns
-            .iter()
-            .filter(|p| p.as_str().starts_with('!'))
-            .any(|pattern| {
-                pattern.matches(&path_str)
-                    || pattern.matches(rel_path)
-                    || pattern.matches(&file_name)
-            });
+        let mut ignored_by_pattern = false;
+        let mut allowlisted = false;
+        for pattern in &self.context.input_config.ignore_patterns {
+            let matches = pattern.matches(&path_str)
+                || pattern.matches(rel_path)
+                || pattern.matches(&file_name);
+            if matches {
+                if pattern.as_str().starts_with('!') {
+                    allowlisted = true;
+                } else {
+                    ignored_by_pattern = true;
+                }
+            }
+        }
 
         // Check binary extensions
         let is_binary = file_path
@@ -377,7 +367,6 @@ impl ParallelFileProcessor {
         let mut gitignore_builder = GitignoreBuilder::new(dir_path);
 
         // Add .gitignore file FIRST so that custom patterns take precedence
-        // (in gitignore semantics, the last matching pattern wins)
         let gitignore_file = dir_path.join(".gitignore");
         if self.context.file_system.path_exists(&gitignore_file) {
             gitignore_builder.add(&gitignore_file);

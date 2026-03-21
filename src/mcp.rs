@@ -150,26 +150,7 @@ fn handle_serialize_repo(args: &Value) -> Value {
         ..Default::default()
     };
 
-    // Merge default ignore patterns
-    let mut merged_ignore = yek::defaults::DEFAULT_IGNORE_PATTERNS
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
-    merged_ignore.extend(config.ignore_patterns.drain(..));
-    config.ignore_patterns = merged_ignore;
-
-    // Merge default binary extensions
-    let mut merged_bins = yek::defaults::BINARY_FILE_EXTENSIONS
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
-    merged_bins.extend(config.binary_extensions.drain(..));
-    config.binary_extensions = merged_bins;
-
-    // Set token mode if tokens specified
-    if !config.tokens.is_empty() {
-        config.token_mode = true;
-    }
+    config.apply_defaults();
 
     match serialize_repo(&config) {
         Ok((output, files)) => {
