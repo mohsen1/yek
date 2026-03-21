@@ -179,7 +179,7 @@ impl YekConfig {
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<_>>();
-        ignore.extend(self.ignore_patterns.drain(..));
+        ignore.append(&mut self.ignore_patterns);
         self.ignore_patterns = ignore;
 
         // Apply unignore patterns

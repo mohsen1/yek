@@ -36,7 +36,7 @@ struct JsonRpcError {
 fn handle_request(request: &JsonRpcRequest) -> Value {
     match request.method.as_str() {
         "initialize" => handle_initialize(),
-        "notifications/initialized" => return Value::Null, // No response for notifications
+        "notifications/initialized" => Value::Null, // No response for notifications
         "tools/list" => handle_tools_list(),
         "tools/call" => handle_tools_call(&request.params),
         _ => json!({
@@ -95,10 +95,7 @@ fn handle_tools_list() -> Value {
 }
 
 fn handle_tools_call(params: &Value) -> Value {
-    let tool_name = params
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
 
     match tool_name {
         "serialize_repo" => handle_serialize_repo(params.get("arguments").unwrap_or(&json!({}))),

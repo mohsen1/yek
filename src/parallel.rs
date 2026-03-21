@@ -333,10 +333,7 @@ impl ParallelFileProcessor {
     fn should_ignore_file(&self, file_path: &Path, rel_path: &str) -> bool {
         // Check ignore patterns against both absolute and relative paths
         let path_str = file_path.to_string_lossy();
-        let file_name = file_path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
+        let file_name = file_path.file_name().unwrap_or_default().to_string_lossy();
         let mut ignored_by_pattern = false;
         let mut allowlisted = false;
         for pattern in &self.context.input_config.ignore_patterns {

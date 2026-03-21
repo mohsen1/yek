@@ -605,7 +605,10 @@ fn test_ignore_patterns_with_node_modules_in_path() {
     assert!(
         !paths.iter().any(|p| p.starts_with("TypeScript")),
         "Files under TypeScript/ should be ignored, but found: {:?}",
-        paths.iter().filter(|p| p.starts_with("TypeScript")).collect::<Vec<_>>()
+        paths
+            .iter()
+            .filter(|p| p.starts_with("TypeScript"))
+            .collect::<Vec<_>>()
     );
 
     // other_project should still be included
@@ -637,7 +640,9 @@ fn test_node_modules_ignored_at_any_level() {
         vec![temp_dir.path().to_string_lossy().to_string()],
         ".".to_string(),
     );
-    config.ignore_patterns.push("**/node_modules/**".to_string());
+    config
+        .ignore_patterns
+        .push("**/node_modules/**".to_string());
 
     let boosts: HashMap<String, i32> = HashMap::new();
     let result = process_files_parallel(temp_dir.path(), &config, &boosts)
