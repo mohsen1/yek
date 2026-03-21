@@ -50,6 +50,14 @@ criterion = "0.5"
 rand = "0.8"
 grcov = "0.10.5"
 
+[[bin]]
+name = "yek"
+path = "src/main.rs"
+
+[[bin]]
+name = "yek-mcp"
+path = "src/mcp.rs"
+
 [[bench]]
 name = "serialization"
 harness = false

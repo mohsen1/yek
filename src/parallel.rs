@@ -330,15 +330,37 @@ impl ParallelFileProcessor {
     }
 
     /// Check if a file should be ignored
-    fn should_ignore_file(&self, file_path: &Path, _rel_path: &str) -> bool {
-        // Check ignore patterns
+    fn should_ignore_file(&self, file_path: &Path, rel_path: &str) -> bool {
+        // Check ignore patterns against both absolute and relative paths
         let path_str = file_path.to_string_lossy();
+        let file_name = file_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy();
         let ignored_by_pattern = self
             .context
             .input_config
             .ignore_patterns
             .iter()
-            .any(|pattern| pattern.matches(&path_str));
+            .filter(|p| !p.as_str().starts_with('!'))
+            .any(|pattern| {
+                pattern.matches(&path_str)
+                    || pattern.matches(rel_path)
+                    || pattern.matches(&file_name)
+            });
+
+        // Check if allowlisted by negation patterns
+        let allowlisted = self
+            .context
+            .input_config
+            .ignore_patterns
+            .iter()
+            .filter(|p| p.as_str().starts_with('!'))
+            .any(|pattern| {
+                pattern.matches(&path_str)
+                    || pattern.matches(rel_path)
+                    || pattern.matches(&file_name)
+            });
 
         // Check binary extensions
         let is_binary = file_path
@@ -347,22 +369,23 @@ impl ParallelFileProcessor {
             .map(|ext| self.context.input_config.binary_extensions.contains(ext))
             .unwrap_or(false);
 
-        ignored_by_pattern || is_binary
+        (ignored_by_pattern && !allowlisted) || is_binary
     }
 
     /// Build gitignore for a directory
     fn build_gitignore(&self, dir_path: &Path) -> Result<Arc<ignore::gitignore::Gitignore>> {
         let mut gitignore_builder = GitignoreBuilder::new(dir_path);
 
-        // Add custom patterns
-        for pattern in &self.context.input_config.ignore_patterns {
-            gitignore_builder.add_line(None, &pattern.to_string())?;
-        }
-
-        // Add .gitignore file if it exists
+        // Add .gitignore file FIRST so that custom patterns take precedence
+        // (in gitignore semantics, the last matching pattern wins)
         let gitignore_file = dir_path.join(".gitignore");
         if self.context.file_system.path_exists(&gitignore_file) {
             gitignore_builder.add(&gitignore_file);
+        }
+
+        // Add custom patterns AFTER .gitignore so they override .gitignore rules
+        for pattern in &self.context.input_config.ignore_patterns {
+            gitignore_builder.add_line(None, &pattern.to_string())?;
         }
 
         Ok(Arc::new(gitignore_builder.build()?))
