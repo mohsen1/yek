@@ -105,6 +105,44 @@ fn test_main_with_line_numbers() {
 }
 
 #[test]
+fn test_main_with_yaml_boolean_config() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "line1\nline2").unwrap();
+    fs::write(
+        temp_dir.path().join("yek.yaml"),
+        "line_numbers: true\ntree_header: true\n",
+    )
+    .unwrap();
+
+    let output_name = temp_dir.path().join("output.txt");
+
+    Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .current_dir(temp_dir.path())
+        .arg(".")
+        .arg("--output-name")
+        .arg(&output_name)
+        .env("FORCE_TTY", "1")
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(output_name).unwrap();
+    assert!(
+        output.contains("Directory structure:"),
+        "expected tree_header from YAML config, got:\n{}",
+        output
+    );
+    assert!(
+        output.contains("  1 | line1") && output.contains("  2 | line2"),
+        "expected line_numbers from YAML config, got:\n{}",
+        output
+    );
+}
+
+#[test]
 fn test_main_with_output_name() {
     use std::fs;
     use tempfile::tempdir;

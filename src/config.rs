@@ -204,7 +204,9 @@ impl YekConfig {
     /// Parse from CLI + config file, fill in computed fields, and validate.
     pub fn init_config() -> Self {
         // 1) parse from CLI and optional config file:
-        let (mut cfg, _config_path, _config_format) = YekConfig::parse_info();
+        let (mut cfg, config_path, _config_format) = YekConfig::parse_info();
+
+        cfg.apply_config_bool_overrides(config_path.as_deref());
 
         // Handle version flag
         if cfg.version {
@@ -303,6 +305,25 @@ impl YekConfig {
         }
 
         cfg
+    }
+
+    fn apply_config_bool_overrides(&mut self, config_path: Option<&Path>) {
+        let Some(config_path) = config_path else {
+            return;
+        };
+
+        let Ok(settings) = ::config::Config::builder()
+            .add_source(::config::File::from(config_path).required(false))
+            .build()
+        else {
+            return;
+        };
+
+        self.json |= config_bool(&settings, "json", "json");
+        self.debug |= config_bool(&settings, "debug", "debug");
+        self.line_numbers |= config_bool(&settings, "line_numbers", "line-numbers");
+        self.tree_header |= config_bool(&settings, "tree_header", "tree-header");
+        self.tree_only |= config_bool(&settings, "tree_only", "tree-only");
     }
 
     /// Compute a quick checksum for the input paths (files and directories).
@@ -676,4 +697,11 @@ impl YekConfig {
 
         Err(anyhow!("Could not extract version from release info"))
     }
+}
+
+fn config_bool(settings: &::config::Config, snake_case_key: &str, kebab_case_key: &str) -> bool {
+    settings
+        .get_bool(snake_case_key)
+        .or_else(|_| settings.get_bool(kebab_case_key))
+        .unwrap_or(false)
 }
