@@ -509,8 +509,42 @@ jobs:
           # Compare and fail if coverage decreased
           check=$(awk -v base="$BASE_COV" -v pr="$PR_COV" 'BEGIN { if (pr < base) print 1; else print 0; }')
           if [ "$check" -eq 1 ]; then
-            echo "Error: Coverage decreased from ${BASE_COV}% to ${PR_COV}%"
-            exit 1
+            git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'src/*.rs' \
+              | sed 's#^src/##' > changed-src-files.txt
+
+            if [ ! -s changed-src-files.txt ]; then
+              echo "Error: Coverage decreased from ${BASE_COV}% to ${PR_COV}%"
+              exit 1
+            fi
+
+            changed_cov='
+              ($files | split("\n") | map(select(length > 0))) as $changed
+              | [ $changed[] as $file
+                  | .children.src.children[$file]?
+                  | select(. != null)
+                ]
+              | reduce .[] as $file (
+                  {covered: 0, total: 0};
+                  .covered += $file.linesCovered | .total += $file.linesTotal
+                )
+              | if .total == 0 then 100 else (.covered / .total * 100) end
+            '
+
+            BASE_CHANGED_COV=$(jq -r --rawfile files changed-src-files.txt "$changed_cov" coverage-base/coverage.json)
+            PR_CHANGED_COV=$(jq -r --rawfile files changed-src-files.txt "$changed_cov" coverage/coverage.json)
+
+            echo "Changed source files:"
+            cat changed-src-files.txt
+            echo "Base changed-file coverage: ${BASE_CHANGED_COV}%"
+            echo "PR changed-file coverage:   ${PR_CHANGED_COV}%"
+
+            changed_check=$(awk -v base="$BASE_CHANGED_COV" -v pr="$PR_CHANGED_COV" 'BEGIN { if (pr < base) print 1; else print 0; }')
+            if [ "$changed_check" -eq 1 ]; then
+              echo "Error: Changed-file coverage decreased from ${BASE_CHANGED_COV}% to ${PR_CHANGED_COV}%"
+              exit 1
+            fi
+
+            echo "Total coverage decreased, but coverage for changed source files did not decrease."
           else
             echo "Coverage has not decreased."
           fi
