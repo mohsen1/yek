@@ -737,6 +737,73 @@ mod tests {
     }
 
     #[test]
+    fn test_config_bool_defaults_missing_keys_to_false() {
+        let settings = ::config::Config::builder()
+            .add_source(::config::File::from_str(
+                "debug: true",
+                ::config::FileFormat::Yaml,
+            ))
+            .build()
+            .unwrap();
+
+        assert!(!config_bool(&settings, "line_numbers", "line-numbers"));
+    }
+
+    #[test]
+    fn test_apply_config_bool_overrides_ignores_missing_config_path() {
+        let mut cfg = YekConfig {
+            json: true,
+            ..Default::default()
+        };
+
+        cfg.apply_config_bool_overrides(None);
+
+        assert!(cfg.json);
+        assert!(!cfg.debug);
+        assert!(!cfg.line_numbers);
+        assert!(!cfg.tree_header);
+        assert!(!cfg.tree_only);
+    }
+
+    #[test]
+    fn test_apply_config_bool_overrides_ignores_invalid_config() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_path = temp_dir.path().join("yek.yaml");
+        fs::write(&config_path, "debug: [").unwrap();
+
+        let mut cfg = YekConfig::default();
+
+        cfg.apply_config_bool_overrides(Some(&config_path));
+
+        assert!(!cfg.json);
+        assert!(!cfg.debug);
+        assert!(!cfg.line_numbers);
+        assert!(!cfg.tree_header);
+        assert!(!cfg.tree_only);
+    }
+
+    #[test]
+    fn test_apply_config_bool_overrides_reads_all_boolean_keys() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_path = temp_dir.path().join("yek.yaml");
+        fs::write(
+            &config_path,
+            "json: true\ndebug: true\nline_numbers: true\ntree-header: true\ntree_only: true\n",
+        )
+        .unwrap();
+
+        let mut cfg = YekConfig::default();
+
+        cfg.apply_config_bool_overrides(Some(&config_path));
+
+        assert!(cfg.json);
+        assert!(cfg.debug);
+        assert!(cfg.line_numbers);
+        assert!(cfg.tree_header);
+        assert!(cfg.tree_only);
+    }
+
+    #[test]
     fn test_apply_config_bool_overrides_preserves_cli_true_values() {
         let temp_dir = tempfile::tempdir().unwrap();
         let config_path = temp_dir.path().join("yek.yaml");

@@ -445,6 +445,7 @@ jobs:
             --ignore-not-existing \
             --ignore "/*" \
             --ignore "tests/*" \
+            --ignore "target/*" \
             -o coverage-base/lcov.info
           grcov . \
             --binary-path ./target/coverage/deps/ \
@@ -454,6 +455,7 @@ jobs:
             --ignore-not-existing \
             --ignore "/*" \
             --ignore "tests/*" \
+            --ignore "target/*" \
             -o coverage-base/coverage.json
 
       # --- PR Branch Coverage ---
@@ -474,6 +476,7 @@ jobs:
             --ignore-not-existing \
             --ignore "/*" \
             --ignore "tests/*" \
+            --ignore "target/*" \
             -o coverage/lcov.info
           grcov . \
             --binary-path ./target/coverage/deps/ \
@@ -483,6 +486,7 @@ jobs:
             --ignore-not-existing \
             --ignore "/*" \
             --ignore "tests/*" \
+            --ignore "target/*" \
             -o coverage/coverage.json
 
       - name: Compare coverage
