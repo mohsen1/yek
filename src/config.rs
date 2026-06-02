@@ -307,7 +307,8 @@ impl YekConfig {
         cfg
     }
 
-    fn apply_config_bool_overrides(&mut self, config_path: Option<&Path>) {
+    #[doc(hidden)]
+    pub fn apply_config_bool_overrides(&mut self, config_path: Option<&Path>) {
         let Some(config_path) = config_path else {
             return;
         };

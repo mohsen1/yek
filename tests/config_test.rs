@@ -14,6 +14,47 @@ use yek::priority::PriorityRule;
 static CONFIG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
+fn test_apply_config_bool_overrides_reads_yaml_booleans() {
+    let temp_dir = tempdir().unwrap();
+    let config_path = temp_dir.path().join("yek.yaml");
+    fs::write(
+        &config_path,
+        "json: true\ndebug: true\nline_numbers: true\ntree-header: true\ntree_only: true\n",
+    )
+    .unwrap();
+
+    let mut config = YekConfig::default();
+    config.apply_config_bool_overrides(Some(&config_path));
+
+    assert!(config.json);
+    assert!(config.debug);
+    assert!(config.line_numbers);
+    assert!(config.tree_header);
+    assert!(config.tree_only);
+}
+
+#[test]
+fn test_apply_config_bool_overrides_handles_missing_and_invalid_config() {
+    let temp_dir = tempdir().unwrap();
+    let config_path = temp_dir.path().join("yek.yaml");
+    fs::write(&config_path, "debug: [").unwrap();
+
+    let mut config = YekConfig {
+        debug: true,
+        ..YekConfig::default()
+    };
+
+    config.apply_config_bool_overrides(None);
+    config.apply_config_bool_overrides(Some(&config_path));
+
+    assert!(config.debug);
+    assert!(!config.json);
+    assert!(!config.line_numbers);
+    assert!(!config.tree_header);
+    assert!(!config.tree_only);
+}
+
+#[test]
 fn test_validate_config_valid() {
     let mut config =
         YekConfig::extend_config_with_defaults(vec![".".to_string()], "output".to_string());
