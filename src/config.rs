@@ -705,3 +705,37 @@ fn config_bool(settings: &::config::Config, snake_case_key: &str, kebab_case_key
         .or_else(|_| settings.get_bool(kebab_case_key))
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod bool_config_tests {
+    use super::*;
+
+    #[test]
+    fn applies_yaml_boolean_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("yek.yaml");
+        fs::write(
+            &path,
+            "json: true\ndebug: true\nline_numbers: true\ntree-header: true\ntree_only: true\n",
+        )
+        .unwrap();
+
+        let mut cfg = YekConfig::default();
+        cfg.apply_config_bool_overrides(Some(&path));
+
+        assert!(cfg.json && cfg.debug && cfg.line_numbers && cfg.tree_header && cfg.tree_only);
+    }
+
+    #[test]
+    fn ignores_missing_or_invalid_boolean_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("yek.yaml");
+        fs::write(&path, "debug: [").unwrap();
+
+        let mut cfg = YekConfig::default();
+        cfg.apply_config_bool_overrides(None);
+        cfg.apply_config_bool_overrides(Some(&path));
+
+        assert!(!cfg.json && !cfg.debug && !cfg.line_numbers && !cfg.tree_header && !cfg.tree_only);
+    }
+}
