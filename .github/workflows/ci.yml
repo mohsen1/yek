@@ -436,26 +436,26 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           mkdir -p coverage-base
-          LLVM_PROFILE_FILE="coverage-base/yek-%p-%m.profraw" cargo test --profile coverage
+          CARGO_TARGET_DIR=target-base LLVM_PROFILE_FILE="coverage-base/yek-%p-%m.profraw" cargo test --profile coverage
           grcov . \
-            --binary-path ./target/coverage/deps/ \
+            --binary-path ./target-base/coverage/deps/ \
             -s . \
             -t lcov \
             --branch \
             --ignore-not-existing \
             --ignore "/*" \
             --ignore "tests/*" \
-            --ignore "target/*" \
+            --ignore "target*/*" \
             -o coverage-base/lcov.info
           grcov . \
-            --binary-path ./target/coverage/deps/ \
+            --binary-path ./target-base/coverage/deps/ \
             -s . \
             -t covdir \
             --branch \
             --ignore-not-existing \
             --ignore "/*" \
             --ignore "tests/*" \
-            --ignore "target/*" \
+            --ignore "target*/*" \
             -o coverage-base/coverage.json
 
       # --- PR Branch Coverage ---
@@ -467,26 +467,26 @@ jobs:
       - name: Build + Test coverage on PR
         run: |
           mkdir -p coverage
-          LLVM_PROFILE_FILE="coverage/yek-%p-%m.profraw" cargo test --profile coverage
+          CARGO_TARGET_DIR=target-pr LLVM_PROFILE_FILE="coverage/yek-%p-%m.profraw" cargo test --profile coverage
           grcov . \
-            --binary-path ./target/coverage/deps/ \
+            --binary-path ./target-pr/coverage/deps/ \
             -s . \
             -t lcov \
             --branch \
             --ignore-not-existing \
             --ignore "/*" \
             --ignore "tests/*" \
-            --ignore "target/*" \
+            --ignore "target*/*" \
             -o coverage/lcov.info
           grcov . \
-            --binary-path ./target/coverage/deps/ \
+            --binary-path ./target-pr/coverage/deps/ \
             -s . \
             -t covdir \
             --branch \
             --ignore-not-existing \
             --ignore "/*" \
             --ignore "tests/*" \
-            --ignore "target/*" \
+            --ignore "target*/*" \
             -o coverage/coverage.json
 
       - name: Compare coverage
