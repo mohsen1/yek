@@ -143,6 +143,73 @@ fn test_main_with_yaml_boolean_config() {
 }
 
 #[test]
+fn test_main_with_yaml_json_boolean_config() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+    fs::write(temp_dir.path().join("yek.yaml"), "json: true\n").unwrap();
+
+    let output = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .current_dir(temp_dir.path())
+        .arg(".")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("Invalid UTF-8");
+    assert!(
+        stdout.trim_start().starts_with('[') && stdout.contains("test.txt"),
+        "expected JSON output from YAML config, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn test_main_with_yaml_tree_only_boolean_config() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+    fs::write(temp_dir.path().join("yek.yaml"), "tree-only: true\n").unwrap();
+
+    let output = Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .current_dir(temp_dir.path())
+        .arg(".")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("Invalid UTF-8");
+    assert!(
+        stdout.contains("└── test.txt") && !stdout.contains(">>>>"),
+        "expected tree-only output from YAML config, got:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn test_main_with_yaml_debug_boolean_config() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+    fs::write(temp_dir.path().join("yek.yaml"), "debug: true\n").unwrap();
+
+    Command::cargo_bin("yek")
+        .expect("Binary 'yek' not found")
+        .current_dir(temp_dir.path())
+        .arg(".")
+        .assert()
+        .success();
+}
+
+#[test]
 fn test_main_with_output_name() {
     use std::fs;
     use tempfile::tempdir;

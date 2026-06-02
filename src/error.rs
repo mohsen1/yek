@@ -306,16 +306,19 @@ impl ErrorReporter {
     }
 
     /// Show helpful suggestions for common errors
+    #[allow(clippy::collapsible_match)]
     fn show_suggestions(error: &YekError, _context: &ErrorContext) {
         match error {
             YekError::FileSystem {
                 operation, path, ..
-            } if operation.contains("read") => {
-                if !path.exists() {
-                    eprintln!("Suggestion: Check if the file exists and the path is correct.");
-                } else if let Ok(metadata) = std::fs::metadata(path) {
-                    if metadata.permissions().readonly() {
-                        eprintln!("Suggestion: Check if the file is readable (permissions).");
+            } => {
+                if operation.contains("read") {
+                    if !path.exists() {
+                        eprintln!("Suggestion: Check if the file exists and the path is correct.");
+                    } else if let Ok(metadata) = std::fs::metadata(path) {
+                        if metadata.permissions().readonly() {
+                            eprintln!("Suggestion: Check if the file is readable (permissions).");
+                        }
                     }
                 }
             }
