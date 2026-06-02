@@ -310,14 +310,12 @@ impl ErrorReporter {
         match error {
             YekError::FileSystem {
                 operation, path, ..
-            } => {
-                if operation.contains("read") {
-                    if !path.exists() {
-                        eprintln!("Suggestion: Check if the file exists and the path is correct.");
-                    } else if let Ok(metadata) = std::fs::metadata(path) {
-                        if metadata.permissions().readonly() {
-                            eprintln!("Suggestion: Check if the file is readable (permissions).");
-                        }
+            } if operation.contains("read") => {
+                if !path.exists() {
+                    eprintln!("Suggestion: Check if the file exists and the path is correct.");
+                } else if let Ok(metadata) = std::fs::metadata(path) {
+                    if metadata.permissions().readonly() {
+                        eprintln!("Suggestion: Check if the file is readable (permissions).");
                     }
                 }
             }

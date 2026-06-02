@@ -180,7 +180,7 @@ fn is_test_file(path_lower: &str, file_name: &str, extension: &Option<String>) -
     // Special cases for specific languages/frameworks
     match extension.as_deref() {
         Some("test") | Some("spec") => return true,
-        Some("js") | Some("ts") | Some("jsx") | Some("tsx") => {
+        Some("js") | Some("ts") | Some("jsx") | Some("tsx")
             if file_name.ends_with(".test.js")
                 || file_name.ends_with(".test.ts")
                 || file_name.ends_with(".spec.js")
@@ -188,29 +188,23 @@ fn is_test_file(path_lower: &str, file_name: &str, extension: &Option<String>) -
                 || file_name.ends_with(".test.jsx")
                 || file_name.ends_with(".test.tsx")
                 || file_name.ends_with(".spec.jsx")
-                || file_name.ends_with(".spec.tsx")
-            {
-                return true;
-            }
+                || file_name.ends_with(".spec.tsx") =>
+        {
+            return true
         }
-        Some("py") => {
-            if file_name.starts_with("test_") || file_name.ends_with("_test.py") {
-                return true;
-            }
+        Some("py") if file_name.starts_with("test_") || file_name.ends_with("_test.py") => {
+            return true;
         }
-        Some("rs") => {
-            // Rust integration tests
+        // Rust integration tests
+        Some("rs")
             if path_lower.contains("/tests/")
                 || path_lower.contains("\\tests\\")
-                || path_lower.starts_with("tests/")
-            {
-                return true;
-            }
+                || path_lower.starts_with("tests/") =>
+        {
+            return true
         }
-        Some("java") => {
-            if file_name.ends_with("test.java") || file_name.ends_with("tests.java") {
-                return true;
-            }
+        Some("java") if file_name.ends_with("test.java") || file_name.ends_with("tests.java") => {
+            return true;
         }
         _ => {}
     }

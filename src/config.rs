@@ -705,3 +705,57 @@ fn config_bool(settings: &::config::Config, snake_case_key: &str, kebab_case_key
         .or_else(|_| settings.get_bool(kebab_case_key))
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_bool_reads_snake_case_key() {
+        let settings = ::config::Config::builder()
+            .add_source(::config::File::from_str(
+                "line_numbers: true",
+                ::config::FileFormat::Yaml,
+            ))
+            .build()
+            .unwrap();
+
+        assert!(config_bool(&settings, "line_numbers", "line-numbers"));
+    }
+
+    #[test]
+    fn test_config_bool_reads_kebab_case_key() {
+        let settings = ::config::Config::builder()
+            .add_source(::config::File::from_str(
+                "tree-header: true",
+                ::config::FileFormat::Yaml,
+            ))
+            .build()
+            .unwrap();
+
+        assert!(config_bool(&settings, "tree_header", "tree-header"));
+    }
+
+    #[test]
+    fn test_apply_config_bool_overrides_preserves_cli_true_values() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_path = temp_dir.path().join("yek.yaml");
+        fs::write(
+            &config_path,
+            "debug: false\nline_numbers: true\ntree-only: true\n",
+        )
+        .unwrap();
+
+        let mut cfg = YekConfig {
+            debug: true,
+            ..Default::default()
+        };
+
+        cfg.apply_config_bool_overrides(Some(&config_path));
+
+        assert!(cfg.debug);
+        assert!(cfg.line_numbers);
+        assert!(cfg.tree_only);
+        assert!(!cfg.tree_header);
+    }
+}
