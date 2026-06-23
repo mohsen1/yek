@@ -228,6 +228,10 @@ the existing rayon/threaded walk in `parallel.rs` with no architectural change.
 
 3. `concat_files` is replaced/extended by the **degradation allocator** (§9).
 
+> Refined in §15.3/§15.6: store `Option<Vec<Symbol>>` (parse once, byte ranges,
+> no string copies) and render the *chosen* level lazily, rather than caching
+> three rendered strings per file — a memory and token-counting win.
+
 This keeps the hot path for the default (outline-off) build byte-for-byte
 identical to today.
 
@@ -302,21 +306,33 @@ outline for the rest"** — include full content top-down until the budget is, s
 60% spent, then switch every remaining file to outline, then to symbols, then
 stop. Ship that first; generalize to the upgrade loop in Phase 3.
 
+> The production allocator — single-pass suffix-floor, lazy/memoized token
+> counting, and the "even the skeleton won't fit" global fallback — is specified
+> with perf bounds in §15.7. The seed-then-upgrade sketch above recomputes costs
+> repeatedly; §15.7 avoids that.
+
 ## 10. Output format
 
 So the model (and humans) can tell a file was abbreviated, annotate the template
 context. Add an optional `LEVEL` placeholder and a default suffix marker:
 
 ```text
->>>> src/parallel.rs (outline)
+>>>> src/parallel.rs
+⟪outline: bodies elided⟫
 …signatures…
 ```
 
-- Default template stays `>>>> FILE_PATH\nFILE_CONTENT`; when a file is rendered
-  below L0, `FILE_PATH` is suffixed with ` (outline)` / ` (api)` / ` (symbols)`,
-  or a new `LEVEL` token is exposed for custom templates.
-- `--json` output gains a `"level": "outline"` field per object so programmatic
-  consumers (and an MCP server) can distinguish abbreviated entries.
+- Default template stays `>>>> FILE_PATH\nFILE_CONTENT`, and **`FILE_PATH` is
+  never mutated** — suffixing it (e.g. `(outline)`) would break round-tripping
+  (`unyek`, issue #64) and any path-keyed consumer. Instead, expose a new
+  `LEVEL` placeholder that expands to `""` for full files and ` (outline)` etc.
+  for abbreviated ones, opt-in via custom templates (see §15.9).
+- For LLM legibility, abbreviated files get an in-block hint line
+  (`⟪outline: bodies elided⟫`) so the model knows the content is partial without
+  inspecting the header.
+- `--json` output gains a `"level": "full|outline|api|symbols|index"` field per
+  object so programmatic consumers (and an MCP server) can distinguish
+  abbreviated entries; full files keep today's shape (the field is additive).
 
 ## 11. Performance
 
@@ -374,7 +390,323 @@ broader roadmap.
   `export`, Python `_name` convention, Go capitalization). Encode per-extractor;
   document the heuristic per language.
 
-## 15. Appendix — illustrative before/after
+## 15. Implementation plan (detailed)
+
+This section turns §5–§11 into concrete, perf-bounded engineering work, and folds
+in the gaps found while detailing it (§15.12).
+
+### 15.1 Dependencies, build, and binary-size strategy
+
+Engine = `tree-sitter` + per-language outline queries, **gated behind a Cargo
+feature** so the default build is byte-identical to today.
+
+```toml
+[features]
+default = []
+outline = [
+  "dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript",
+  "dep:tree-sitter-javascript", "dep:tree-sitter-python",
+  "dep:tree-sitter-go", "dep:tree-sitter-java",
+]
+
+[dependencies]
+tree-sitter      = { version = "0.24", optional = true }   # representative; pin a tested set
+tree-sitter-rust = { version = "0.23", optional = true }
+# … one optional dep per grammar …
+```
+
+Hard rules (each closes a gap):
+
+- **ABI pinning.** Core and every grammar must agree on the tree-sitter language
+  ABI. Pin an exact, tested set; prefer grammar crates that depend on the
+  lightweight `tree-sitter-language` shim (decouples them from a specific core
+  version). A CI job builds `--features outline` and smoke-parses one fixture per
+  language so an ABI bump fails loudly instead of at runtime.
+- **C toolchain on every release target.** Grammars compile C via `cc`. yek's
+  release matrix (Build/Stress per target: apple-darwin aarch64/x86, linux
+  gnu/**musl**, **windows-msvc**) all have a C compiler on GH runners and in
+  `cross` images — but musl and msvc grammar builds must be verified in CI before
+  the feature is enabled on prebuilt artifacts.
+- **Binary size / compile time.** Each grammar adds ~0.5–2 MB and C compile time;
+  with the existing `lto = true` + `strip = true` profile the 5-language set is a
+  few MB. Keep the feature **off by default**; decide separately whether prebuilt
+  release binaries ship it on (recommended: yes for prebuilt, off for the
+  crates.io default so `cargo install yek` stays slim).
+- **`panic = "abort"`.** Extraction must never panic — every tree-sitter call
+  returns `Option`/`Result` and falls back to L0.
+
+Built **without** the feature, any `--outline-mode` other than `off` prints a
+one-line stderr warning and proceeds as `off` (no hard error → scripts stay
+portable).
+
+### 15.2 Module layout
+
+```
+src/outline/
+  mod.rs        # public API: detect_language, extract, render, OutlineLevel, Symbol
+  lang.rs       # Language enum, extension→Language, per-language LanguageConfig (data)
+  registry.rs   # OnceLock registry of CompiledLanguage (holds the compiled Query)
+  extract.rs    # parse-once → Vec<Symbol> (ranges only, no copies)
+  render.rs     # render-at-level (slices content by range), elision, nesting
+  queries/      # rust.scm typescript.scm javascript.scm python.scm go.scm java.scm
+```
+
+`.scm` files are `include_str!`-embedded (zero runtime file IO).
+
+### 15.3 Core types
+
+```rust
+pub enum OutlineLevel { Full, Outline, Api, Symbols }   // Omit handled by allocator
+
+pub enum SymbolKind { Module, Import, Class, Struct, Enum, Trait, Interface,
+                      Function, Method, Type, Const, Field, Macro, Other }
+
+pub struct Symbol {
+    kind: SymbolKind,
+    is_public: bool,
+    name_range: Range<usize>,    // byte ranges INTO ProcessedFile.content — no String copies
+    sig_range: Range<usize>,     // decl start .. body open (whole decl if bodyless)
+    doc_range: Option<Range<usize>>,
+    body_open: Option<usize>,    // byte offset where body starts (None ⇒ no body to elide)
+    start_row: usize, end_row: usize,   // for the "… N lines …" marker (free from nodes)
+    depth: u16,                  // nesting depth → indentation
+    children: Vec<u32>,          // indices into this file's symbol vec (a tree)
+}
+```
+
+Storing **ranges, not strings** is the key memory decision: file content already
+lives in `ProcessedFile.content`, so every level renders by slicing it. Per-file
+overhead is one small `Vec<Symbol>`.
+
+### 15.4 Extraction (parse once per file)
+
+A single, data-driven code path. Each language ships one `.scm` using a uniform
+capture protocol:
+
+| Capture | Meaning |
+| --- | --- |
+| `@item` | the whole declaration node |
+| `@item.name` | identifier to display |
+| `@item.body` | body node to elide (absent ⇒ no body, e.g. a type alias) |
+| `@item.doc` | leading doc-comment node(s) |
+
+`SymbolKind` is fixed by *which* pattern matched; `is_public` comes from a
+per-language rule (this is the gap "visibility differs per language"):
+
+```rust
+enum VisibilityRule {
+    Marker(&'static str),  // Rust: child node kind "visibility_modifier"
+    Exported,              // JS/TS: nearest ancestor is export_statement
+    Capitalized,           // Go: identifier starts uppercase
+    Underscore,            // Python: name does not start with '_'
+    AlwaysPublic,
+}
+```
+
+Algorithm (`extract.rs`), per file, on a worker thread:
+
+1. Look up `CompiledLanguage` from the registry (`OnceLock`; query compiled once).
+2. Thread-local `Parser` (set language once per thread); `parse(content.as_bytes(), None)`.
+3. If a high fraction of bytes are under `ERROR` nodes ⇒ return `None` (caller
+   keeps L0). A few `ERROR` nodes are tolerated.
+4. Run the outline `Query` with a **reused** `QueryCursor`; collect flat `Symbol`s.
+5. Rebuild nesting: sort by `sig_range.start`, push/pop a stack by end-byte
+   containment to set `depth`/`children`.
+6. Guard rails: cap at `MAX_SYMBOLS` (~2000) per file; beyond it keep top-level
+   only and append a synthetic "… +N nested elided".
+7. Empty/near-empty (≤1 trivial symbol) ⇒ return `None` (outline wouldn't save
+   tokens; keeping L0 is strictly better).
+
+Perf: parse is O(bytes) at tree-sitter's MB/s; the `Query` compiles **once per
+language** and is shared (`&Query: Sync`); `QueryCursor` is reused; no source
+text is copied.
+
+### 15.5 Rendering (render the chosen level only)
+
+`render(content, &[Symbol], level) -> String`, slicing `content` by range:
+
+- **Full** — content verbatim.
+- **Outline (L1)** — preorder over the symbol tree, indented by `depth`: emit
+  `@doc` (if any) + `content[sig_range]`; if `body_open` is `Some`, append the
+  language's elision marker carrying the hidden line count
+  (`{ /* … 42 lines … */ }` for brace langs, `: …  # 42 lines` for Python).
+  Container bodies (class/module) are **not** elided — we recurse into members.
+- **Api (L2)** — L1 minus non-public symbols (and their private-only subtrees),
+  and without `@doc`.
+- **Symbols (L3)** — one line per symbol: `kind name (Lstart–Lend)`, indented.
+
+### 15.6 Pipeline integration (parallel, perf-first)
+
+The read path is unchanged. Add **one parallel CPU stage** after files are read
+and before sorting, only when outline is active:
+
+```rust
+// lib.rs::serialize_repo, right after process_files_parallel(...) returns `files`
+#[cfg(feature = "outline")]
+if config.outline_active() {
+    files.par_iter_mut().for_each(|f| {
+        if let Some(lang) = outline::detect_language(&f.rel_path) {
+            f.language = Some(lang);
+            f.symbols  = outline::extract(&f.content, lang); // Option<Vec<Symbol>>
+        }
+    });
+}
+```
+
+Why a separate stage: extraction is CPU-bound and embarrassingly parallel, so it
+wants the full rayon pool. Today's pipeline reads files on a **single** processing
+thread (the channel consumer in `parallel.rs`); parsing there would serialize it.
+`par_iter_mut` over the already-collected, already-in-memory files avoids that
+bottleneck with no extra IO. Parsers are `Send` but not `Sync`, so use a
+thread-local pool:
+
+```rust
+thread_local! { static PARSERS: RefCell<HashMap<Language, Parser>> = /* … */; }
+```
+
+### 15.7 Budget-aware allocator (replaces the `concat_files` cut)
+
+Refines §9 into a **single forward pass with bounded token counting**. Files are
+processed priority-DESC; per-file candidate levels `Full ▸ Outline ▸ Api ▸
+Symbols` (cheapest last); `Omit` is the implicit floor.
+
+```text
+cost(f, L) = token_mode ? count_tokens(format(f, L)) : len(format(f, L))   # memoized per (f,L)
+floor(f)   = cost(f, Symbols)            # cheapest non-omit form of f
+
+# Precompute in parallel (par_iter):
+#   floor(f) for all f
+#   suffix_floor[i] = Σ floor(f) for files i..n      # what the tail still needs
+# If suffix_floor[0] > cap  →  GLOBAL FALLBACK (below).
+
+used = 0
+for i, f in files:                        # priority DESC, sequential
+    budget_here = cap - used - suffix_floor[i+1]    # room that still lets the tail reach its floor
+    pick = Symbols
+    for L in [Api, Outline, Full]:        # try richer; first that doesn't fit stops the climb
+        if cost(f, L) <= budget_here { pick = L } else { break }
+    used += cost(f, pick); assign(f, pick)
+```
+
+Perf properties / gaps closed:
+
+- **Hard cap respected** (token or byte) — every choice is checked against exact
+  `cost`.
+- **Priority-greedy, not knapsack** — *by design*: a high-priority file is never
+  downgraded to fund a lower-priority one. Matches yek's "importance is king"
+  model and is O(n·levels), not NP-hard search.
+- **Bounded tiktoken work.** Exact counts: `floor` for all files (parallel) +
+  `Full` only for files whose `budget_here` could admit it (the long
+  low-priority tail never pays for a `Full` count) + ≤2 intermediate counts for
+  frontier files. Low-priority files cost exactly one count. This is comparable
+  to today's token-mode cost — `Full` counts reuse the same per-file-formatted
+  counting `concat_files` already does — not a 4× blowup.
+- **Byte mode is nearly free** (`len`, no tiktoken).
+- **Template overhead is counted.** `format(f, L)` includes the `>>>> PATH`
+  header, so the per-file header cost is in the budget (it can dominate for many
+  tiny files — see fallback).
+- **GLOBAL FALLBACK** for the maintainer's "even the skeleton won't fit" case:
+  when all-`Symbols` exceeds `cap`, collapse the lowest-priority tail into a
+  **single repo-level compact index** block (one header; `path: symA, symB, …`
+  per line), amortizing the per-file header that otherwise dominates at thousands
+  of files; keep upgrading the high-priority head. A bare **file-tree** (paths
+  only) is the terminal rung before `Omit`.
+- **Debug metrics** (cheap): under `--debug`, log
+  `full M · outline N · api A · symbols K · index/omit J — saved ≈X tokens (Y%)`.
+
+This also corrects the §3 ordering issue: processing priority-DESC means tight
+budgets keep the *most* important files, not drop them.
+
+### 15.8 CLI & config plumbing
+
+`config.rs` gains fields in the existing `#[config_arg]` style:
+
+```rust
+#[config_arg(default_value = "off")]      pub outline_mode: OutlineMode,       // off|always|degrade
+#[config_arg(default_value = "outline")]  pub outline_level: OutlineLevel,     // outline|api|symbols
+#[config_arg(accept_from = "config_only")] pub outline_languages: Vec<String>,
+#[config_arg(default_value = "full")]     pub outline_fallback: OutlineFallback, // full|omit
+```
+
+`--outline` is sugar for `--outline-mode always`. Add a computed
+`outline_active()`. `validate()` rejects unknown language names and, when built
+without the `outline` feature, downgrades non-`off` modes to `off` with a stderr
+warning. All defaults reproduce current behavior.
+
+### 15.9 Output format & round-tripping
+
+Refines §10, closing a correctness gap: **never mutate `FILE_PATH`** (that breaks
+`unyek`/#64 and path-keyed tools). Instead expose a `LEVEL` placeholder
+(`""` for full, ` (outline)`/` (api)`/` (symbols)`/` (index)` otherwise),
+opt-in via custom templates; add an in-block `⟪outline: bodies elided⟫` hint for
+the LLM; add `"level"` to `--json`. Document loudly that non-`full` output is
+**lossy and irreversible** — `unyek` must refuse to reconstruct it.
+
+### 15.10 Testing & CI
+
+- **Golden/snapshot** (add `insta` dev-dep) per language: fixture source → L1/L2/L3.
+- **Fallback**: unsupported extension stays L0 under `always`; `--outline-fallback
+  omit` drops it; high-`ERROR`-ratio source ⇒ L0.
+- **Allocator unit tests** with synthetic known costs: (a) never exceeds cap;
+  (b) monotonic — no lower-priority file ends richer than a higher-priority one;
+  (c) `off` reproduces today's bytes exactly; (d) global-fallback triggers and
+  stays under cap.
+- **Determinism**: stable order + stable markers (snapshot).
+- **Property**: `cost(Symbols) ≤ cost(Api) ≤ cost(Outline) ≤ cost(Full)` per fixture.
+- **CI matrix**: build & test `--no-default-features` (today's path) **and**
+  `--features outline`; smoke-parse each language (ABI guard); verify musl +
+  windows-msvc grammar builds; add a binary-size report step.
+- **Bench**: extend `benches/serialization.rs` with a mixed-language tree
+  measuring (1) extraction wall-clock vs. read time and (2) tokens emitted per
+  mode, to quantify the budget win.
+
+### 15.11 Milestones (file-level)
+
+- **M1 — Scaffold (Rust only).** `Cargo.toml` feature+deps; `src/outline/*` with
+  the Rust query; `config.rs` flags+validation; `lib.rs` parallel extract stage +
+  allocator restricted to `Full/Omit` for `off`-equivalence; `LEVEL` token;
+  fixtures + snapshots; two-config CI build. *Acceptance:* `--outline` on a Rust
+  dir emits signatures; `off` output is byte-for-byte unchanged;
+  `--no-default-features` builds.
+- **M2 — Languages.** TS/JS(+TSX/JSX), Python, Go, Java queries + visibility
+  rules + fixtures; `--outline-languages`, `--outline-fallback`.
+- **M3 — Degradation.** Suffix-floor allocator, `Api`/`Symbols`, global
+  compact-index fallback, `--outline-mode degrade`, debug metrics; allocator +
+  property tests; bench proving reduction. *Acceptance:* tight `--tokens` keeps
+  every file represented under the cap with high-priority files full.
+- **M4 — Custom rules.** User-overridable queries/visibility in `yek.yaml`;
+  document adding a language with no code change.
+- **M5 — Lazy retrieval / MCP.** Outline-first serialization + on-demand
+  symbol/file expansion as MCP tools (issues #245, #232).
+
+### 15.12 Gaps found while detailing, and resolutions
+
+| Gap in the v1 sketch | Resolution |
+| --- | --- |
+| Counting tokens for 4 levels × all files is costly | Parse once → `Vec<Symbol>` (ranges); render lazily; precompute only `floor` (parallel) + `Full` for the head; memoize per (file,level); suffix-floor skips `Full` counts for the tail (§15.7). |
+| Caching 4 rendered strings per file wastes memory | Store ranges only; render the chosen level once at the end (§15.3). |
+| Per-file template header dominates at thousands of tiny files (skeleton still won't fit) | Global compact-index fallback (one header, many files) + bare file-tree rung (§15.7). |
+| Suffixing `FILE_PATH` with `(outline)` breaks round-trip/#64 and path-keyed tools | Separate `LEVEL` placeholder; path stays exact; in-block hint; JSON `level` (§15.9). |
+| Single processing thread would serialize CPU-bound parsing | Dedicated `par_iter_mut` extract stage on the rayon pool (§15.6). |
+| Files with no / huge symbol sets | Empty ⇒ fall back to L0; huge ⇒ `MAX_SYMBOLS` cap with elision (§15.4). |
+| Parse errors / partial files | Tolerate few `ERROR` nodes; high error ratio ⇒ L0 (§15.4). |
+| Grammar/core ABI drift across many release targets | Pin a tested set (prefer `tree-sitter-language` shim) + CI smoke-parse + musl/msvc build checks (§15.1). |
+| Building slim/default without grammars | Cargo feature gate; non-`off` modes warn and act as `off` (§15.1/§15.8). |
+| `from_utf8_lossy` could desync byte ranges | Parse and slice the *same* lossy string ⇒ self-consistent ranges (§15.4). |
+| Nested members (methods in classes) flattened | Stack-based nesting reconstruction → `depth`/`children`, indented render (§15.4/§15.5). |
+
+### 15.13 Performance targets (acceptance guards)
+
+- **Outline OFF:** zero overhead — identical code path and binary as today
+  (feature-gated out); enforced by the byte-identical `off` snapshot test.
+- **Outline ON:** added latency dominated by parse (target ≲ 1× the warm
+  file-read time, run in parallel) plus bounded tiktoken counts (≈ today's
+  token-mode counts + the frontier). Peak memory grows only by `Vec<Symbol>`
+  per file.
+- **Token win:** target the ast-grep-reported **35–55%** reduction on large repos
+  at equal symbol coverage, tracked by the new benchmark.
+
+## 16. Appendix — illustrative before/after
 
 A 1,200-line, 5-file TypeScript service, budget `--tokens 8k`:
 
