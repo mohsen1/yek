@@ -568,7 +568,10 @@ fn test_outline_defaults_off() {
     assert_eq!(config.outline_mode, None);
     assert_eq!(config.outline_mode(), yek::config::OutlineMode::Off);
     assert_eq!(config.outline_level(), yek::config::OutlineLevel::Outline);
-    assert_eq!(config.outline_fallback(), yek::config::OutlineFallback::Full);
+    assert_eq!(
+        config.outline_fallback(),
+        yek::config::OutlineFallback::Full
+    );
     assert!(!config.outline_active());
     assert!(config.validate().is_ok());
 }

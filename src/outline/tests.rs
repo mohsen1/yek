@@ -65,7 +65,10 @@ fn detects_language_by_extension() {
 #[test]
 fn full_level_is_verbatim() {
     let symbols = extract(SAMPLE, Language::Rust).unwrap();
-    assert_eq!(render(SAMPLE, Language::Rust, &symbols, OutlineLevel::Full), SAMPLE);
+    assert_eq!(
+        render(SAMPLE, Language::Rust, &symbols, OutlineLevel::Full),
+        SAMPLE
+    );
 }
 
 #[test]
@@ -74,11 +77,20 @@ fn outline_keeps_signatures_and_elides_bodies() {
 
     // Signatures are present.
     assert!(out.contains("pub fn area(s: &Shape) -> f64"), "got:\n{out}");
-    assert!(out.contains("fn helper() -> i32"), "private fn shown at Outline");
+    assert!(
+        out.contains("fn helper() -> i32"),
+        "private fn shown at Outline"
+    );
 
     // Bodies are gone.
-    assert!(!out.contains("3.14159"), "area body should be elided:\n{out}");
-    assert!(!out.contains("total += i"), "helper body should be elided:\n{out}");
+    assert!(
+        !out.contains("3.14159"),
+        "area body should be elided:\n{out}"
+    );
+    assert!(
+        !out.contains("total += i"),
+        "helper body should be elided:\n{out}"
+    );
     assert!(out.contains("/* …"), "elision marker missing:\n{out}");
 
     // Declarations (struct fields, enum variants) are shown verbatim.
@@ -91,7 +103,10 @@ fn outline_keeps_signatures_and_elides_bodies() {
     assert!(out.contains("fn draw(&self)"));
 
     // A bodyless trait method is kept verbatim (function_signature_item).
-    assert!(out.contains("fn draw(&self);"), "trait method dropped:\n{out}");
+    assert!(
+        out.contains("fn draw(&self);"),
+        "trait method dropped:\n{out}"
+    );
 }
 
 #[test]
@@ -100,10 +115,19 @@ fn api_level_drops_private_symbols() {
 
     assert!(out.contains("pub fn area"), "got:\n{out}");
     assert!(out.contains("pub fn origin"), "public method kept:\n{out}");
-    assert!(out.contains("fn draw"), "trait impl method is public API:\n{out}");
+    assert!(
+        out.contains("fn draw"),
+        "trait impl method is public API:\n{out}"
+    );
 
-    assert!(!out.contains("fn helper"), "private free fn dropped:\n{out}");
-    assert!(!out.contains("private_helper"), "private method dropped:\n{out}");
+    assert!(
+        !out.contains("fn helper"),
+        "private free fn dropped:\n{out}"
+    );
+    assert!(
+        !out.contains("private_helper"),
+        "private method dropped:\n{out}"
+    );
 }
 
 #[test]
@@ -144,7 +168,11 @@ fn single_line_container_does_not_duplicate_header_or_leak_bodies() {
     let symbols = extract(src, Language::Rust).unwrap();
     let out = render(src, Language::Rust, &symbols, OutlineLevel::Outline);
 
-    assert_eq!(out.matches("impl S").count(), 1, "header duplicated:\n{out}");
+    assert_eq!(
+        out.matches("impl S").count(),
+        1,
+        "header duplicated:\n{out}"
+    );
     assert!(!out.contains("{ 1 }"), "body leaked un-elided:\n{out}");
     assert!(!out.contains("{ 2 }"), "body leaked un-elided:\n{out}");
     assert!(out.contains("pub fn a(&self) -> i32"));
@@ -153,12 +181,16 @@ fn single_line_container_does_not_duplicate_header_or_leak_bodies() {
 
 #[test]
 fn outline_keeps_attributes_and_doc_comments() {
-    let src = "/// The config.\n#[derive(Debug, Clone)]\npub struct Config {\n    pub name: String,\n}\n";
+    let src =
+        "/// The config.\n#[derive(Debug, Clone)]\npub struct Config {\n    pub name: String,\n}\n";
     let symbols = extract(src, Language::Rust).unwrap();
     let out = render(src, Language::Rust, &symbols, OutlineLevel::Outline);
 
     assert!(out.contains("/// The config."), "doc dropped:\n{out}");
-    assert!(out.contains("#[derive(Debug, Clone)]"), "attribute dropped:\n{out}");
+    assert!(
+        out.contains("#[derive(Debug, Clone)]"),
+        "attribute dropped:\n{out}"
+    );
     assert!(out.contains("pub struct Config"));
 }
 
@@ -175,7 +207,11 @@ fn elide_marker_counts_hidden_content_lines() {
 fn handles_multibyte_source_without_panicking() {
     let src = "/// café ☕ 漢字\npub fn naïve() -> &'static str {\n    \"日本語 😀\"\n}\n";
     let symbols = extract(src, Language::Rust).unwrap();
-    for level in [OutlineLevel::Outline, OutlineLevel::Api, OutlineLevel::Symbols] {
+    for level in [
+        OutlineLevel::Outline,
+        OutlineLevel::Api,
+        OutlineLevel::Symbols,
+    ] {
         let _ = render(src, Language::Rust, &symbols, level);
     }
 }

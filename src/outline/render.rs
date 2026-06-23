@@ -109,7 +109,11 @@ fn symbol_label(source: &str, sym: &Symbol) -> String {
     }
     let end = sym.body_open.unwrap_or(sym.node.end);
     let head = &source[sym.node.start..end];
-    head.split(['\n', '{', '(']).next().unwrap_or(head).trim().to_string()
+    head.split(['\n', '{', '('])
+        .next()
+        .unwrap_or(head)
+        .trim()
+        .to_string()
 }
 
 fn elide_marker(lang: Language, lines: u32) -> String {

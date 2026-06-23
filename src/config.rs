@@ -20,7 +20,15 @@ pub enum ConfigFormat {
 
 /// How outline mode replaces file content with structural skeletons.
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    clap::ValueEnum,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum OutlineMode {
@@ -35,7 +43,15 @@ pub enum OutlineMode {
 
 /// The base level of detail used when a file is outlined.
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    clap::ValueEnum,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum OutlineLevel {
@@ -50,7 +66,15 @@ pub enum OutlineLevel {
 
 /// What to do with files whose language has no outline support.
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    clap::ValueEnum,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum OutlineFallback {
@@ -439,7 +463,10 @@ impl YekConfig {
         #[cfg(feature = "outline")]
         for lang in &self.outline_languages {
             if crate::outline::Language::from_name(lang).is_none() {
-                return Err(anyhow!("outline_languages: unsupported language '{}'", lang));
+                return Err(anyhow!(
+                    "outline_languages: unsupported language '{}'",
+                    lang
+                ));
             }
         }
 

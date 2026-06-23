@@ -92,7 +92,15 @@ fn walk(
                 other => other,
             };
             let mut children = Vec::new();
-            walk(body, source, lang, depth + 1, Some(child_parent), out, &mut children);
+            walk(
+                body,
+                source,
+                lang,
+                depth + 1,
+                Some(child_parent),
+                out,
+                &mut children,
+            );
             out[idx as usize].children = children;
         }
     }
@@ -121,7 +129,10 @@ fn build_symbol(
             Handling::Elide,
             Some(b.start_byte()),
             // Lines of hidden content: the `{` and `}` lines stay, so exclude them.
-            (b.end_position().row.saturating_sub(b.start_position().row).saturating_sub(1)) as u32,
+            (b.end_position()
+                .row
+                .saturating_sub(b.start_position().row)
+                .saturating_sub(1)) as u32,
         ),
         (Handling::Recurse, Some(b)) => (Handling::Recurse, Some(b.start_byte()), 0),
         // No body to elide or recurse into (e.g. `mod foo;`, `fn f();`, a struct)
@@ -170,7 +181,10 @@ fn lead_start(node: &Node, source: &str) -> usize {
 }
 
 fn is_doc_comment(text: &str) -> bool {
-    text.starts_with("///") || text.starts_with("//!") || text.starts_with("/**") || text.starts_with("/*!")
+    text.starts_with("///")
+        || text.starts_with("//!")
+        || text.starts_with("/**")
+        || text.starts_with("/*!")
 }
 
 /// Whether `node` has a direct child of the given kind. The intermediate

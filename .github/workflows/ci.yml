@@ -71,6 +71,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Clippy
         run: cargo clippy -- -D warnings
+      - name: Clippy (outline feature)
+        run: cargo clippy --features outline -- -D warnings
       - name: Format check
         run: cargo fmt --check
 
@@ -106,6 +108,8 @@ jobs:
 
       - name: Run tests
         run: cargo test --verbose
+      - name: Run tests (outline feature)
+        run: cargo test --features outline --verbose
 
   build:
     name: Build ${{ matrix.target }}

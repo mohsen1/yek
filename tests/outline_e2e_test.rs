@@ -44,7 +44,10 @@ fn fallback_full_keeps_unsupported_verbatim() {
 
     let (out, files) = serialize_repo(&cfg).unwrap();
 
-    assert!(out.contains("body text"), "unsupported file should be verbatim");
+    assert!(
+        out.contains("body text"),
+        "unsupported file should be verbatim"
+    );
     let md = files.iter().find(|f| f.rel_path == "notes.md").unwrap();
     assert_eq!(md.outline_level, None);
 }
@@ -61,7 +64,10 @@ fn fallback_omit_drops_unsupported() {
     let (out, files) = serialize_repo(&cfg).unwrap();
 
     assert!(files.iter().any(|f| f.rel_path == "a.rs"));
-    assert!(!files.iter().any(|f| f.rel_path == "notes.md"), "md not omitted");
+    assert!(
+        !files.iter().any(|f| f.rel_path == "notes.md"),
+        "md not omitted"
+    );
     assert!(!out.contains("body text"));
 }
 
@@ -74,7 +80,10 @@ fn json_output_includes_level_field() {
     cfg.json = true;
 
     let (out, _) = serialize_repo(&cfg).unwrap();
-    assert!(out.contains("\"level\""), "json level field missing:\n{out}");
+    assert!(
+        out.contains("\"level\""),
+        "json level field missing:\n{out}"
+    );
     assert!(out.contains("\"outline\""));
 }
 
@@ -97,14 +106,27 @@ fn degrade_keeps_high_priority_full_and_outlines_rest() {
     cfg.token_mode = true;
     cfg.tokens = "80".to_string();
     cfg.priority_rules = vec![
-        PriorityRule { pattern: "important.rs".to_string(), score: 100 },
-        PriorityRule { pattern: "minor.rs".to_string(), score: 1 },
+        PriorityRule {
+            pattern: "important.rs".to_string(),
+            score: 100,
+        },
+        PriorityRule {
+            pattern: "minor.rs".to_string(),
+            score: 1,
+        },
     ];
 
     let (_out, files) = serialize_repo(&cfg).unwrap();
 
     let important = files.iter().find(|f| f.rel_path == "important.rs").unwrap();
     let minor = files.iter().find(|f| f.rel_path == "minor.rs").unwrap();
-    assert_eq!(important.outline_level, None, "high-priority file should stay full");
-    assert_eq!(minor.outline_level, Some("outline"), "low-priority file should be outlined");
+    assert_eq!(
+        important.outline_level, None,
+        "high-priority file should stay full"
+    );
+    assert_eq!(
+        minor.outline_level,
+        Some("outline"),
+        "low-priority file should be outlined"
+    );
 }

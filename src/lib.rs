@@ -176,7 +176,10 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
     if config.json {
         // JSON array of objects
         Ok(serde_json::to_string_pretty(
-            &files_to_include.iter().map(|f| file_json(f)).collect::<Vec<_>>(),
+            &files_to_include
+                .iter()
+                .map(|f| file_json(f))
+                .collect::<Vec<_>>(),
         )?)
     } else {
         // Use the user-defined template

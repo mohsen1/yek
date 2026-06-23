@@ -37,7 +37,12 @@ pub fn apply(files: &mut Vec<ProcessedFile>, config: &YekConfig) {
 /// Budget-aware (simple): keep the highest-priority files at full content until
 /// roughly half the budget is spent, then outline the remaining supported files.
 /// The final hard cap is still enforced by `concat_files`.
-fn degrade(files: &mut [ProcessedFile], config: &YekConfig, level: OutlineLevel, tag: &'static str) {
+fn degrade(
+    files: &mut [ProcessedFile],
+    config: &YekConfig,
+    level: OutlineLevel,
+    tag: &'static str,
+) {
     // Pre-render outlines in parallel; only supported files yield `Some`.
     let outlines: Vec<Option<String>> = files
         .par_iter()
@@ -77,7 +82,11 @@ fn outline_one(
     level: OutlineLevel,
 ) -> Option<String> {
     let lang = detect_language(rel_path)?;
-    if !restrict.is_empty() && !restrict.iter().any(|r| Language::from_name(r) == Some(lang)) {
+    if !restrict.is_empty()
+        && !restrict
+            .iter()
+            .any(|r| Language::from_name(r) == Some(lang))
+    {
         return None;
     }
     let symbols = extract(content, lang)?;
