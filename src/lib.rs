@@ -92,6 +92,13 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 
     let mut files = merged_files;
 
+    // Replace file contents with structural outlines when requested. Runs before
+    // the budget step so the (smaller) outlined content is what gets capped.
+    #[cfg(feature = "outline")]
+    if config.outline_active() {
+        outline::pipeline::apply(&mut files, config);
+    }
+
     // Sort final (priority asc, then file_index asc)
     files.par_sort_by(|a, b| {
         a.priority
@@ -120,24 +127,22 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .as_u64() as usize
     };
 
-    // Sort by priority (asc) and file_index (asc)
-    let mut sorted_files: Vec<_> = files.iter().collect();
-    sorted_files.sort_by(|a, b| {
-        a.priority
-            .cmp(&b.priority)
+    // Select most-important-first so that, when the budget is tight, it is the
+    // least important files that get dropped (not the most important ones).
+    let mut by_priority: Vec<_> = files.iter().collect();
+    by_priority.sort_by(|a, b| {
+        b.priority
+            .cmp(&a.priority)
             .then_with(|| a.rel_path.cmp(&b.rel_path))
     });
 
     let mut files_to_include = Vec::new();
-    for file in sorted_files {
+    for file in by_priority {
         let content_size = if config.token_mode {
             // Format the file content with template first, then count tokens
             let formatted = if config.json {
-                serde_json::to_string(&serde_json::json!({
-                    "filename": &file.rel_path,
-                    "content": &file.content,
-                }))
-                .map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?
+                serde_json::to_string(&file_json(file))
+                    .map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?
             } else {
                 config
                     .output_template
@@ -153,22 +158,25 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             accumulated += content_size;
             files_to_include.push(file);
         } else {
-            break;
+            // Skip this file but keep trying smaller, lower-priority ones rather
+            // than aborting — otherwise one oversized high-priority file would
+            // drop everything below it.
+            continue;
         }
     }
+
+    // Emit least-important-first so the most important files appear last, where
+    // LLMs attend most.
+    files_to_include.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| a.rel_path.cmp(&b.rel_path))
+    });
 
     if config.json {
         // JSON array of objects
         Ok(serde_json::to_string_pretty(
-            &files_to_include
-                .iter()
-                .map(|f| {
-                    serde_json::json!({
-                        "filename": &f.rel_path,
-                        "content": &f.content,
-                    })
-                })
-                .collect::<Vec<_>>(),
+            &files_to_include.iter().map(|f| file_json(f)).collect::<Vec<_>>(),
         )?)
     } else {
         // Use the user-defined template
@@ -186,6 +194,19 @@ pub fn concat_files(files: &[ProcessedFile], config: &YekConfig) -> anyhow::Resu
             .collect::<Vec<_>>()
             .join("\n"))
     }
+}
+
+/// Build the JSON object for one file, including an outline `level` field when
+/// the file's content was abbreviated.
+fn file_json(file: &ProcessedFile) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "filename": &file.rel_path,
+        "content": &file.content,
+    });
+    if let Some(level) = file.outline_level {
+        obj["level"] = serde_json::Value::String(level.to_string());
+    }
+    obj
 }
 
 /// Parse a token limit string like "800k" or "1000" into a number

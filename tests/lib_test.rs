@@ -503,12 +503,14 @@ mod lib_tests {
             ProcessedFile {
                 priority: 100,
                 file_index: 0,
+                outline_level: None,
                 rel_path: "src/main.rs".to_string(),
                 content: "fn main() {}".to_string(),
             },
             ProcessedFile {
                 priority: 50,
                 file_index: 1,
+                outline_level: None,
                 rel_path: "README.md".to_string(),
                 content: "# Yek".to_string(),
             },
@@ -545,6 +547,7 @@ mod lib_tests {
         let files = vec![ProcessedFile {
             priority: 100,
             file_index: 0,
+            outline_level: None,
             rel_path: "file with ünicöde.txt".to_string(),
             content: "content".to_string(),
         }];
@@ -562,6 +565,7 @@ mod lib_tests {
         let files = vec![ProcessedFile {
             priority: 100,
             file_index: 0,
+            outline_level: None,
             rel_path: "file.txt".to_string(),
             content: "".to_string(), // Empty content
         }];
@@ -579,6 +583,7 @@ mod lib_tests {
         let files = vec![ProcessedFile {
             priority: 100,
             file_index: 0,
+            outline_level: None,
             rel_path: "file.txt".to_string(),
             content: "".to_string(), // Empty content
         }];
@@ -605,6 +610,7 @@ mod lib_tests {
             content: "Hello world".to_string(),
             priority: 0,
             file_index: 0,
+            outline_level: None,
         }];
         let output = concat_files(&files, &config).unwrap();
         let tokens = count_tokens(&output);
@@ -623,6 +629,7 @@ mod lib_tests {
             content: "Hello world".to_string(),
             priority: 0,
             file_index: 0,
+            outline_level: None,
         }];
         let output = concat_files(&files, &config).unwrap();
         let tokens = count_tokens(&output);
@@ -645,12 +652,14 @@ mod lib_tests {
                 content: "This is a short test".to_string(),
                 priority: 0,
                 file_index: 0,
+                outline_level: None,
             },
             ProcessedFile {
                 rel_path: "test2.txt".to_string(),
                 content: "This is another test that should be excluded".to_string(),
                 priority: 0,
                 file_index: 1,
+                outline_level: None,
             },
         ];
         let output = concat_files(&files, &config).unwrap();
@@ -662,6 +671,43 @@ mod lib_tests {
         assert!(
             !output.contains("test2.txt"),
             "Expected file test2.txt to be excluded"
+        );
+    }
+
+    #[test]
+    fn test_oversized_high_priority_does_not_drop_smaller_files() {
+        // Regression: an oversized high-priority file must be skipped without
+        // wiping smaller, lower-priority files that still fit.
+        let config = YekConfig {
+            token_mode: true,
+            tokens: "20".to_string(),
+            output_template: ">>>> FILE_PATH\nFILE_CONTENT".to_string(),
+            ..Default::default()
+        };
+        let files = vec![
+            ProcessedFile {
+                rel_path: "big.txt".to_string(),
+                content: "word ".repeat(100), // far exceeds the 20-token cap
+                priority: 100,
+                file_index: 0,
+                outline_level: None,
+            },
+            ProcessedFile {
+                rel_path: "small.txt".to_string(),
+                content: "tiny".to_string(),
+                priority: 1,
+                file_index: 1,
+                outline_level: None,
+            },
+        ];
+        let output = concat_files(&files, &config).unwrap();
+        assert!(
+            output.contains("small.txt"),
+            "small lower-priority file should survive: {output}"
+        );
+        assert!(
+            !output.contains("big.txt"),
+            "oversized high-priority file should be skipped: {output}"
         );
     }
 

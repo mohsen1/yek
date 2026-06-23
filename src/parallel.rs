@@ -18,6 +18,9 @@ pub struct ProcessedFile {
     pub file_index: usize,
     pub rel_path: String,
     pub content: String,
+    /// Tag of the outline level applied to `content` (e.g. "outline"), or `None`
+    /// when `content` is the verbatim file. Drives the `--json` `level` field.
+    pub outline_level: Option<&'static str>,
 }
 
 /// Process a single file, checking ignore patterns and reading its contents.
@@ -63,6 +66,7 @@ fn process_single_file(
                     file_index: 0, // For a single file, the index is always 0
                     rel_path,
                     content: String::from_utf8_lossy(&content).to_string(),
+                    outline_level: None,
                 });
             }
         }
@@ -168,6 +172,7 @@ fn process_files_parallel_internal(
                             file_index: 0, // assigned later
                             rel_path,
                             content: String::from_utf8_lossy(&content).to_string(),
+                            outline_level: None,
                         });
                     }
                     Err(e) => {

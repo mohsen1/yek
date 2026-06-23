@@ -8,6 +8,7 @@
 
 mod extract;
 mod lang;
+pub mod pipeline;
 mod render;
 
 #[cfg(test)]
