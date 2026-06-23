@@ -15,6 +15,8 @@ use tiktoken_rs::CoreBPE;
 
 pub mod config;
 pub mod defaults;
+#[cfg(feature = "outline")]
+pub mod outline;
 pub mod parallel;
 pub mod priority;
 

@@ -10,6 +10,12 @@ readme = "README.md"
 keywords = ["git", "repository", "serialization", "text", "chunks"]
 categories = ["command-line-utilities", "development-tools"]
 
+[features]
+default = []
+# Structural outline mode. Opt-in: pulls in tree-sitter grammars (C code), so it
+# is off by default to keep the standard build slim and language-agnostic.
+outline = ["dep:tree-sitter", "dep:tree-sitter-rust"]
+
 [dependencies]
 anyhow = "1.0"
 atty = "0.2.14"
@@ -40,6 +46,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2.4"
 tiktoken-rs = "0.6.0"
+
+# Outline mode (optional; enabled by the `outline` feature).
+tree-sitter = { version = "0.25", optional = true }
+tree-sitter-rust = { version = "0.24", optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"
