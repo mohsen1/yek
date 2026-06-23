@@ -153,8 +153,40 @@ Options:
       --output-template <OUTPUT_TEMPLATE>         [default: ">>>> FILE_PATH\nFILE_CONTENT"]
       --ignore-patterns <IGNORE_PATTERNS>...
       --unignore-patterns <UNIGNORE_PATTERNS>...
+      --outline                                   Shorthand for --outline-mode always
+      --outline-mode <OUTLINE_MODE>               off | always | degrade [default: off]
+      --outline-level <OUTLINE_LEVEL>             outline | api | symbols [default: outline]
+      --outline-languages <OUTLINE_LANGUAGES>...
+      --outline-fallback <OUTLINE_FALLBACK>       full | omit [default: full]
   -h, --help                                      Print help
 ```
+
+### Outline mode (experimental)
+
+Outline mode replaces file contents with a compact structural **skeleton** —
+imports, type and function signatures, with bodies elided — so far more of a
+repository fits in a fixed context budget. It is built on tree-sitter and is
+**opt-in behind the `outline` Cargo feature** (so the default build stays slim
+and language-agnostic). Currently supported: **Rust** (more languages planned).
+
+```bash
+# Emit a structural map of the whole repo
+yek --outline
+
+# Choose how much detail: outline (default), api (public only), or symbols
+yek --outline-mode always --outline-level symbols
+
+# Budget-aware: keep the most important files full, outline the rest to fit
+yek --outline-mode degrade --tokens 128k
+```
+
+Files in unsupported languages keep their full content (`--outline-fallback
+full`, the default) or are dropped (`--outline-fallback omit`). Abbreviated files
+are marked with `⟪yek:LEVEL⟫` in text output, and `--json` adds a `"level"`
+field. All of these can also be set in `yek.yaml` (`outline_mode`,
+`outline_level`, `outline_languages`, `outline_fallback`).
+
+> Build with outline support: `cargo install --path . --features outline`.
 
 ## Configuration File
 

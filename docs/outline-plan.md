@@ -716,3 +716,30 @@ A 1,200-line, 5-file TypeScript service, budget `--tokens 8k`:
   3 collapse to outlines (exports + signatures). All 5 files are represented, the
   budget is respected, and the model has a complete structural map plus full
   detail where it matters most.
+
+## 17. Implementation status
+
+What has shipped so far (behind the `outline` Cargo feature), and where it
+deviates from the design above:
+
+- **Engine (M1):** `src/outline/` with `Full/Outline/Api/Symbols` levels,
+  attribute + doc-comment capture, depth re-indentation, and `MAX_SYMBOLS` /
+  error-ratio guards. **Rust only.**
+- **Extraction approach — deviation:** a **field-based tree walk** driven by a
+  per-language classification table, *not* the `.scm` query protocol of §15.4.
+  It is more robust across tree-sitter/grammar versions and avoids the
+  streaming-iterator query API churn, while staying data-driven. The `.scm`
+  route (and user-overridable rules, M4) remains a future option.
+- **Config/CLI (M1):** `--outline[-mode|-level|-languages|-fallback]` plus the
+  matching `yek.yaml` keys; resolver accessors; feature-off warning.
+- **Pipeline (M1) + degrade (partial M3):** `apply` runs before the budget step.
+  `always` is complete. `degrade` is the **"simpler v1"** from §9 (full for the
+  highest-priority files up to ~half the budget, outline the rest) — *not yet*
+  the single-pass suffix-floor allocator of §15.7, and its cost accounting is
+  approximate (raw content, see `pipeline::cost`). The global compact-index
+  fallback and L2/L3 budget integration are still to come.
+- **Budget fix:** `concat_files` now selects most-important-first (the §3 note),
+  which also makes `degrade` correct.
+- **Not yet started:** more languages (M2), the exact suffix-floor allocator and
+  metrics (rest of M3), user-overridable rules (M4), MCP/lazy-retrieval (M5),
+  and the benchmark/binary-size CI from §15.10.
