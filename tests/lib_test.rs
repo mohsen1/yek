@@ -794,6 +794,37 @@ mod lib_tests {
     }
 
     #[test]
+    fn test_bug_multiple_input_dirs_preserve_root_names_in_output() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let dir1 = temp_dir.path().join("dir_1");
+        let dir2 = temp_dir.path().join("dir_2");
+        let dir3 = temp_dir.path().join("dir_3");
+
+        std::fs::create_dir_all(&dir1).unwrap();
+        std::fs::create_dir_all(&dir2).unwrap();
+        std::fs::create_dir_all(&dir3).unwrap();
+        std::fs::write(dir1.join("file_1"), "content1").unwrap();
+        std::fs::write(dir2.join("file_1"), "content2").unwrap();
+        std::fs::write(dir3.join("file_1"), "content3").unwrap();
+
+        let config = create_test_config(vec![
+            dir1.to_string_lossy().to_string(),
+            dir2.to_string_lossy().to_string(),
+            dir3.to_string_lossy().to_string(),
+        ]);
+
+        let (output, files) = serialize_repo(&config).unwrap();
+
+        assert!(files.iter().any(|file| file.rel_path == "dir_1/file_1"));
+        assert!(files.iter().any(|file| file.rel_path == "dir_2/file_1"));
+        assert!(files.iter().any(|file| file.rel_path == "dir_3/file_1"));
+        assert!(output.contains(">>>> dir_1/file_1\ncontent1"));
+        assert!(output.contains(">>>> dir_2/file_1\ncontent2"));
+        assert!(output.contains(">>>> dir_3/file_1\ncontent3"));
+    }
+
+    #[test]
     fn test_bug_144_missing_file_paths_in_output() {
         init_tracing();
         let temp_dir = tempdir().unwrap();

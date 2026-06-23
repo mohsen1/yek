@@ -38,7 +38,7 @@ impl ParallelFileProcessor {
         let expanded_paths = self.expand_globs(base_path)?;
 
         // Determine the base directory for relative path calculation
-        let base_dir = self.determine_base_dir(base_path, &expanded_paths);
+        let base_dir = self.determine_base_dir(base_path);
 
         // Process each expanded path
         for path in expanded_paths {
@@ -97,14 +97,14 @@ impl ParallelFileProcessor {
     }
 
     /// Determine the base directory for relative path calculations
-    fn determine_base_dir(
-        &self,
-        base_path: &Path,
-        _expanded_paths: &[std::path::PathBuf],
-    ) -> std::path::PathBuf {
+    fn determine_base_dir(&self, base_path: &Path) -> std::path::PathBuf {
+        if let Some(shared_base_dir) = self.calculate_shared_base_dir() {
+            return shared_base_dir;
+        }
+
         let path_str = base_path.to_string_lossy();
 
-        if path_str.contains('*') || path_str.contains('?') {
+        if Self::is_glob_pattern(&path_str) {
             // For glob patterns, use current directory to ensure unique paths across different sources
             std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
         } else if base_path.is_file() {
@@ -113,6 +113,68 @@ impl ParallelFileProcessor {
         } else {
             // For directories, use the directory itself
             base_path.to_path_buf()
+        }
+    }
+
+    fn calculate_shared_base_dir(&self) -> Option<std::path::PathBuf> {
+        let input_paths = &self.context.input_config.input_paths;
+        if input_paths.len() <= 1 {
+            return None;
+        }
+
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+        input_paths
+            .iter()
+            .map(|input_path| Self::resolve_input_base(input_path, &current_dir))
+            .reduce(|base, path| Self::find_common_base(&base, &path))
+    }
+
+    fn resolve_input_base(input_path: &str, current_dir: &Path) -> std::path::PathBuf {
+        let path = Path::new(input_path);
+
+        if Self::is_glob_pattern(input_path) {
+            let wildcard_index = input_path
+                .char_indices()
+                .find(|(_, c)| matches!(c, '*' | '?' | '['))
+                .map(|(i, _)| i)
+                .unwrap_or(input_path.len());
+
+            let prefix = &input_path[..wildcard_index];
+            let prefix_path = Path::new(prefix);
+            let base_dir = prefix_path.parent().unwrap_or(Path::new(""));
+
+            if base_dir.as_os_str().is_empty() {
+                current_dir.to_path_buf()
+            } else if base_dir.is_absolute() {
+                base_dir.to_path_buf()
+            } else {
+                current_dir.join(base_dir)
+            }
+        } else if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            current_dir.join(path)
+        }
+    }
+
+    fn is_glob_pattern(path: &str) -> bool {
+        path.contains('*') || path.contains('?') || path.contains('[')
+    }
+
+    fn find_common_base(path1: &Path, path2: &Path) -> std::path::PathBuf {
+        let mut common_base = std::path::PathBuf::new();
+
+        for (component1, component2) in path1.components().zip(path2.components()) {
+            if component1 != component2 {
+                break;
+            }
+            common_base.push(component1.as_os_str());
+        }
+
+        if common_base.as_os_str().is_empty() {
+            Path::new(".").to_path_buf()
+        } else {
+            common_base
         }
     }
 
@@ -153,7 +215,8 @@ impl ParallelFileProcessor {
         let gitignore = self.build_gitignore(dir_path)?;
 
         // Use parallel processing for directory contents
-        let files_to_process: Vec<_> = self.collect_files_to_process(dir_path, &gitignore)?;
+        let files_to_process: Vec<_> =
+            self.collect_files_to_process(dir_path, base_dir, &gitignore)?;
 
         // Process files in parallel with proper synchronization
         let results: Vec<Result<ProcessedFile>> = files_to_process
@@ -171,6 +234,7 @@ impl ParallelFileProcessor {
     fn collect_files_to_process(
         &self,
         dir_path: &Path,
+        base_dir: &Path,
         gitignore: &Arc<ignore::gitignore::Gitignore>,
     ) -> Result<Vec<(std::path::PathBuf, String)>> {
         let mut files_to_process = Vec::new();
@@ -182,7 +246,6 @@ impl ParallelFileProcessor {
             .standard_filters(true)
             .require_git(false);
 
-        let base_dir = dir_path.to_path_buf();
         let gitignore = Arc::clone(gitignore);
 
         // Use sequential walking instead of parallel to avoid closure issues
@@ -198,17 +261,16 @@ impl ParallelFileProcessor {
             }
 
             let path = entry.path().to_path_buf();
-            let rel_path = crate::repository::convenience::get_relative_path(&path, &base_dir)
-                .unwrap_or_else(|_| path.to_string_lossy().to_string().into());
+            let rel_path = self.normalize_path(&path, base_dir);
 
             // Check gitignore
             if gitignore.matched(&path, false).is_ignore() {
-                debug!("Skipping ignored file: {}", rel_path.display());
+                debug!("Skipping ignored file: {rel_path}");
                 continue;
             }
 
             // Send to processing
-            files_to_process.push((path, rel_path.to_string_lossy().to_string()));
+            files_to_process.push((path, rel_path));
         }
 
         Ok(files_to_process)
@@ -413,7 +475,7 @@ pub fn process_files_parallel(
     // this would be replaced with the new pipeline-based approach
     let processor = ParallelFileProcessor::new(ProcessingContext::new(
         InputConfig {
-            input_paths: vec![], // Not used in this context
+            input_paths: config.input_paths.clone(),
             ignore_patterns: config
                 .ignore_patterns
                 .iter()
