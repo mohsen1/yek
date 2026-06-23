@@ -18,6 +18,49 @@ pub enum ConfigFormat {
     Json,
 }
 
+/// How outline mode replaces file content with structural skeletons.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum OutlineMode {
+    /// Disabled: emit full file content (today's behavior).
+    #[default]
+    Off,
+    /// Outline every supported file at `outline_level`.
+    Always,
+    /// Budget-aware: keep important files full, degrade the rest to outlines.
+    Degrade,
+}
+
+/// The base level of detail used when a file is outlined.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum OutlineLevel {
+    /// Signatures + declarations; bodies elided.
+    #[default]
+    Outline,
+    /// Public/exported symbols only.
+    Api,
+    /// One line per symbol.
+    Symbols,
+}
+
+/// What to do with files whose language has no outline support.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum OutlineFallback {
+    /// Emit the full content (default).
+    #[default]
+    Full,
+    /// Drop the file.
+    Omit,
+}
+
 #[derive(ClapConfigFile, Clone)]
 #[config_file_name = "yek"]
 #[config_file_formats = "toml,yaml,json"]
@@ -53,6 +96,27 @@ pub struct YekConfig {
     /// Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
     #[config_arg(default_value = ">>>> FILE_PATH\nFILE_CONTENT")]
     pub output_template: String,
+
+    /// Shorthand for `--outline-mode always`.
+    #[config_arg()]
+    pub outline: bool,
+
+    /// Outline mode (default: off). Use `outline_mode()` for the resolved value.
+    /// Left as `Option` (no clap default) so a `yek.yaml` value is honored.
+    #[config_arg()]
+    pub outline_mode: Option<OutlineMode>,
+
+    /// Base level of detail when outlining (default: outline). See `outline_level()`.
+    #[config_arg()]
+    pub outline_level: Option<OutlineLevel>,
+
+    /// Restrict outlining to these languages (e.g. rust). Empty means all supported.
+    #[config_arg(long = "outline-languages", multi_value_behavior = "extend")]
+    pub outline_languages: Vec<String>,
+
+    /// Unsupported-language fallback when outlining (default: full). See `outline_fallback()`.
+    #[config_arg()]
+    pub outline_fallback: Option<OutlineFallback>,
 
     /// Ignore patterns
     #[config_arg(long = "ignore-patterns", multi_value_behavior = "extend")]
@@ -100,6 +164,11 @@ impl Default for YekConfig {
             debug: false,
             output_dir: None,
             output_template: DEFAULT_OUTPUT_TEMPLATE.to_string(),
+            outline: false,
+            outline_mode: None,
+            outline_level: None,
+            outline_languages: Vec::new(),
+            outline_fallback: None,
             ignore_patterns: Vec::new(),
             unignore_patterns: Vec::new(),
             priority_rules: Vec::new(),
@@ -169,6 +238,22 @@ impl YekConfig {
 
         // 2) compute derived fields:
         cfg.token_mode = !cfg.tokens.is_empty();
+
+        // `--outline` is shorthand for `--outline-mode always` (unless an explicit
+        // mode was given on the CLI or in the config file).
+        if cfg.outline && cfg.outline_mode.is_none() {
+            cfg.outline_mode = Some(OutlineMode::Always);
+        }
+
+        // Outline support is a build-time feature. If it isn't compiled in, warn
+        // once and behave as `off` so scripts that pass the flag still work.
+        if cfg.outline_active() && !cfg!(feature = "outline") {
+            eprintln!(
+                "Warning: this build of yek was compiled without the `outline` feature; \
+                 ignoring --outline/--outline-mode."
+            );
+            cfg.outline_mode = Some(OutlineMode::Off);
+        }
         let force_tty = std::env::var("FORCE_TTY").is_ok();
 
         cfg.stream = !std::io::stdout().is_terminal() && !force_tty;
@@ -283,6 +368,26 @@ impl YekConfig {
         hex[..8].to_owned()
     }
 
+    /// Resolved outline mode (`off` when unset).
+    pub fn outline_mode(&self) -> OutlineMode {
+        self.outline_mode.unwrap_or_default()
+    }
+
+    /// Resolved outline level (`outline` when unset).
+    pub fn outline_level(&self) -> OutlineLevel {
+        self.outline_level.unwrap_or_default()
+    }
+
+    /// Resolved unsupported-language fallback (`full` when unset).
+    pub fn outline_fallback(&self) -> OutlineFallback {
+        self.outline_fallback.unwrap_or_default()
+    }
+
+    /// Whether outline mode is requested (any mode other than `off`).
+    pub fn outline_active(&self) -> bool {
+        self.outline_mode() != OutlineMode::Off
+    }
+
     /// Validate the final config.
     pub fn validate(&self) -> Result<()> {
         if !self.output_template.contains("FILE_PATH")
@@ -328,6 +433,14 @@ impl YekConfig {
         for pattern in &self.ignore_patterns {
             glob::Pattern::new(pattern)
                 .map_err(|e| anyhow!("ignore_patterns: Invalid pattern '{}': {}", pattern, e))?;
+        }
+
+        // Validate outline language names (only meaningful with the feature on).
+        #[cfg(feature = "outline")]
+        for lang in &self.outline_languages {
+            if crate::outline::Language::from_name(lang).is_none() {
+                return Err(anyhow!("outline_languages: unsupported language '{}'", lang));
+            }
         }
 
         // Validate priority rules

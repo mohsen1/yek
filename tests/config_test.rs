@@ -560,3 +560,35 @@ fn test_is_text_file_with_binary_content() {
         "Expected a binary file to be detected as binary"
     );
 }
+
+#[test]
+fn test_outline_defaults_off() {
+    let config =
+        YekConfig::extend_config_with_defaults(vec![".".to_string()], "output".to_string());
+    assert_eq!(config.outline_mode, None);
+    assert_eq!(config.outline_mode(), yek::config::OutlineMode::Off);
+    assert_eq!(config.outline_level(), yek::config::OutlineLevel::Outline);
+    assert_eq!(config.outline_fallback(), yek::config::OutlineFallback::Full);
+    assert!(!config.outline_active());
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn test_outline_active_when_set() {
+    let mut config =
+        YekConfig::extend_config_with_defaults(vec![".".to_string()], "output".to_string());
+    config.outline_mode = Some(yek::config::OutlineMode::Degrade);
+    assert!(config.outline_active());
+    assert_eq!(config.outline_mode(), yek::config::OutlineMode::Degrade);
+}
+
+#[cfg(feature = "outline")]
+#[test]
+fn test_outline_rejects_unknown_language() {
+    let mut config =
+        YekConfig::extend_config_with_defaults(vec![".".to_string()], "output".to_string());
+    config.outline_languages = vec!["rust".to_string(), "cobol".to_string()];
+    let err = config.validate().unwrap_err().to_string();
+    assert!(err.contains("outline_languages"), "got: {err}");
+    assert!(err.contains("cobol"), "got: {err}");
+}
