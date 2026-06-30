@@ -1024,6 +1024,18 @@ fn test_ensure_output_dir_creation_failure() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
+
+        // Skip this test when running as root (permission checks don't apply)
+        if std::process::Command::new("id")
+            .arg("-u")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+            .unwrap_or(false)
+        {
+            eprintln!("Skipping test_ensure_output_dir_creation_failure: running as root");
+            return;
+        }
+
         let temp_dir = tempdir().unwrap();
         let readonly_dir = temp_dir.path().join("readonly");
         fs::create_dir(&readonly_dir).unwrap();

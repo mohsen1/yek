@@ -146,15 +146,16 @@ Options:
       --no-config                              Do not use a config file
       --config-file <CONFIG_FILE>              Path to the config file
   -V, --version                                Print version of yek
-      --max-size <MAX_SIZE>                    Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K" [default: 10MB]
+      --update                                 Update yek to the latest version
+      --max-size <MAX_SIZE>                    Max size per chunk. e.g. "10MB" or "128K" or when using token counting mode, "100" or "128K"
       --tokens <TOKENS>                        Use token mode instead of byte mode
       --json                                   Enable JSON output
       --debug                                  Enable debug output
       --line-numbers                           Include line numbers in output
-      --output-dir [<OUTPUT_DIR>]              Output directory. If none is provided & stdout is a TTY, we pick a temp dir
-      --output-name [<OUTPUT_NAME>]            Output filename. If provided, write output to this file in current directory
-      --output-template [<OUTPUT_TEMPLATE>]    Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
-      --ignore-patterns <IGNORE_PATTERNS>...  Ignore patterns
+      --output-dir <OUTPUT_DIR>                Output directory. If none is provided & stdout is a TTY, we pick a temp dir
+      --output-name <OUTPUT_NAME>              Output filename. If provided, write output to this file in current directory
+      --output-template <OUTPUT_TEMPLATE>      Output template. Defaults to ">>>> FILE_PATH\nFILE_CONTENT"
+      --ignore-patterns <IGNORE_PATTERNS>...   Ignore patterns
       --unignore-patterns <UNIGNORE_PATTERNS>... Unignore patterns. Yek has some built-in ignore patterns, but you can override them here.
   -t, --tree-header                            Include directory tree header in output (incompatible with JSON output)
       --tree-only                              Show only the directory tree (no file contents, incompatible with JSON output)
@@ -167,6 +168,7 @@ Options:
 - `--no-config` - Skip loading any configuration file
 - `--config-file <CONFIG_FILE>` - Use a specific configuration file path instead of searching for default config files
 - `-V, --version` - Print version information and exit
+- `--update` - Update yek to the latest version
 - `--max-size <MAX_SIZE>` - Maximum size limit per output (e.g., "10MB", "128K"). Used in byte mode
 - `--tokens <TOKENS>` - Use token-based counting instead of bytes (e.g., "128k", "100"). Enables token mode
 - `--json` - Output results in JSON format instead of text
@@ -217,7 +219,7 @@ Most CLI options can be configured in the config file. The following options can
 - `git_boost_max` - Maximum Git-based priority boost (config file only)
 
 > [!NOTE]
-> Some CLI options like `--no-config`, `--config-file`, and `--version` are CLI-only and cannot be set in config files.
+> Some CLI options like `--no-config`, `--config-file`, `--version`, and `--update` are CLI-only and cannot be set in config files.
 
 ### Example `yek.yaml`
 
@@ -269,6 +271,31 @@ output_name: yek-output.txt
 # FILE_PATH and FILE_CONTENT are expected to be present in the template.
 output_template: "FILE_PATH\n\nFILE_CONTENT"
 ```
+
+## MCP Server
+
+`yek` includes an MCP (Model Context Protocol) server that exposes repository serialization as a tool for AI assistants. The server binary is `yek-mcp` and communicates over stdio using JSON-RPC.
+
+### Usage with Claude Desktop
+
+Add the following to your Claude Desktop MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "yek": {
+      "command": "yek-mcp"
+    }
+  }
+}
+```
+
+This exposes a `serialize_repo` tool with the following parameters:
+
+- `path` - Path to the repository or directory to serialize (defaults to current directory)
+- `max_size` - Maximum output size (e.g., "10MB", "500KB")
+- `tokens` - Maximum number of tokens (e.g., "128000") for token-based sizing
+- `ignore_patterns` - Additional glob patterns to ignore
 
 ## Performance
 

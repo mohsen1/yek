@@ -117,6 +117,17 @@ fn test_process_files_parallel_file_read_error() {
 
     // Make the file unreadable (Unix only)
     if cfg!(unix) {
+        // Skip when running as root (permission checks don't apply)
+        if std::process::Command::new("id")
+            .arg("-u")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+            .unwrap_or(false)
+        {
+            eprintln!("Skipping test_process_files_parallel_file_read_error: running as root");
+            return;
+        }
+
         make_unreadable(&file_path).unwrap();
 
         let config = YekConfig::extend_config_with_defaults(
@@ -565,4 +576,102 @@ fn test_process_files_parallel_with_channel_error_simulation() {
     assert!(result.is_ok());
     let files = result.unwrap();
     assert_eq!(files.len(), 100);
+}
+
+/// Test that ignore patterns work for files with node_modules in path names (issue #241)
+#[test]
+fn test_ignore_patterns_with_node_modules_in_path() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+
+    // Create files that mimic the TypeScript submodule structure from issue #241
+    let files_to_create = vec![
+        "TypeScript/src/compiler/parser.ts",
+        "TypeScript/tests/baselines/reference/project/maprootUrlSingleFileNoOutdir/amd/test.js",
+        "TypeScript/tests/baselines/reference/project/nodeModulesImportHigher/amd/importHigher/root.js",
+        "TypeScript/tests/baselines/reference/project/NodeModulesSearch/amd/search.js",
+        "TypeScript/tests/baselines/reference/project/node_modules/some_package/index.js",
+        "other_project/src/main.rs",
+    ];
+
+    for file_path in &files_to_create {
+        let full_path = temp_dir.path().join(file_path);
+        fs::create_dir_all(full_path.parent().unwrap()).expect("failed to create dir");
+        fs::write(&full_path, "dummy content").expect("failed to write file");
+    }
+
+    // Configure with TypeScript/** as ignore pattern (matching issue #241 scenario)
+    let mut config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    config.ignore_patterns.push("TypeScript/**".to_string());
+
+    let boosts: HashMap<String, i32> = HashMap::new();
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts)
+        .expect("process_files_parallel failed");
+
+    // All TypeScript/** files should be ignored, including those with node_modules in the path
+    let paths: Vec<&str> = result.iter().map(|pf| pf.rel_path.as_str()).collect();
+
+    assert!(
+        !paths.iter().any(|p| p.starts_with("TypeScript")),
+        "Files under TypeScript/ should be ignored, but found: {:?}",
+        paths
+            .iter()
+            .filter(|p| p.starts_with("TypeScript"))
+            .collect::<Vec<_>>()
+    );
+
+    // other_project should still be included
+    assert!(
+        paths.iter().any(|p| p.contains("main.rs")),
+        "other_project/src/main.rs should be included, paths: {:?}",
+        paths
+    );
+}
+
+/// Test that node_modules default ignore pattern works at any directory level
+#[test]
+fn test_node_modules_ignored_at_any_level() {
+    let temp_dir = tempdir().expect("failed to create temp dir");
+
+    let files_to_create = vec![
+        "src/main.rs",
+        "node_modules/package/index.js",
+        "subproject/node_modules/dep/lib.js",
+    ];
+
+    for file_path in &files_to_create {
+        let full_path = temp_dir.path().join(file_path);
+        fs::create_dir_all(full_path.parent().unwrap()).expect("failed to create dir");
+        fs::write(&full_path, "dummy content").expect("failed to write file");
+    }
+
+    let mut config = YekConfig::extend_config_with_defaults(
+        vec![temp_dir.path().to_string_lossy().to_string()],
+        ".".to_string(),
+    );
+    config
+        .ignore_patterns
+        .push("**/node_modules/**".to_string());
+
+    let boosts: HashMap<String, i32> = HashMap::new();
+    let result = process_files_parallel(temp_dir.path(), &config, &boosts)
+        .expect("process_files_parallel failed");
+
+    let paths: Vec<&str> = result.iter().map(|pf| pf.rel_path.as_str()).collect();
+
+    assert!(
+        !paths.iter().any(|p| p.contains("node_modules")),
+        "Files in node_modules should be ignored, but found: {:?}",
+        paths
+            .iter()
+            .filter(|p| p.contains("node_modules"))
+            .collect::<Vec<_>>()
+    );
+
+    assert!(
+        paths.iter().any(|p| p.contains("main.rs")),
+        "src/main.rs should be included"
+    );
 }

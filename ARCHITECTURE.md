@@ -14,13 +14,15 @@ The architecture has been refactored into focused, single-responsibility modules
 src/
 ├── lib.rs           # Main library interface and tokenization
 ├── main.rs          # CLI application entry point
-├── config.rs        # Configuration management (legacy)
+├── mcp.rs           # MCP (Model Context Protocol) server
+├── config.rs        # Configuration management
 ├── models.rs        # Domain models and data structures
 ├── repository.rs    # File system and Git abstraction layer
 ├── pipeline.rs      # Processing pipeline and middleware
-├── parallel_fixed.rs # Thread-safe parallel processing
+├── parallel.rs      # Thread-safe parallel processing
 ├── error.rs         # Comprehensive error handling
 ├── priority.rs      # Priority computation and Git analysis
+├── category.rs      # File category classification
 ├── tree.rs          # Directory tree generation
 └── defaults.rs      # Default configurations
 ```
@@ -337,8 +339,8 @@ The new architecture is backward compatible. No changes are required for existin
 
 ```bash
 # All existing commands work the same
-yek --input src/ --max-size 10MB --output output.txt
-yek --input . --tokens 1000 --json
+yek src/ --max-size 10MB --output-dir /tmp/yek
+yek --tokens 1000 --json
 ```
 
 ### For Developers
@@ -430,9 +432,8 @@ Suggestion: Try reducing the file size or use streaming mode.
 ```
 
 **Solutions:**
-- Enable streaming mode: `--stream`
 - Use token mode instead of byte mode
-- Set memory limits: `--memory-limit 512MB`
+- Reduce `--max-size` to limit output
 - Process files in smaller batches
 
 #### Path Traversal Errors
@@ -462,7 +463,7 @@ Suggestion: Check if the repository is a valid Git repository.
 Enable debug mode for detailed information:
 
 ```bash
-yek --debug --input src/ --max-size 10MB
+yek --debug src/ --max-size 10MB
 ```
 
 This provides detailed logging of:
