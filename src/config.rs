@@ -474,7 +474,7 @@ impl YekConfig {
 
     /// Update yek to the latest version by downloading and replacing the current binary
     pub fn perform_update(&self) -> Result<()> {
-        const REPO_OWNER: &str = "mohsen1";
+        const REPO_OWNER: &str = "prooflinedev";
         const REPO_NAME: &str = "yek";
 
         println!("Checking for latest version...");
@@ -505,7 +505,7 @@ impl YekConfig {
             REPO_OWNER, REPO_NAME
         );
         let releases_output = Command::new("curl")
-            .args(["-s", &releases_url])
+            .args(["-fsSL", &releases_url])
             .output()
             .map_err(|e| anyhow!("Failed to execute curl command: {}. Is curl installed?", e))?;
 
@@ -541,7 +541,7 @@ impl YekConfig {
 
         // Download the archive
         let download_output = Command::new("curl")
-            .args(["-L", "-o"])
+            .args(["-fsSL", "-o"])
             .arg(&archive_path)
             .arg(&download_url)
             .output()

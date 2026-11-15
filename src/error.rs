@@ -332,11 +332,7 @@ impl ErrorReporter {
                     field, value, reason
                 );
             }
-            YekError::Memory {
-                operation,
-                requested: _,
-                ..
-            } => {
+            YekError::Memory { operation, .. } => {
                 eprintln!(
                     "Suggestion: Try reducing the '{}' size or use streaming mode.",
                     operation
@@ -345,7 +341,7 @@ impl ErrorReporter {
                     "Suggestion: Consider using token mode instead of byte mode for large files."
                 );
             }
-            YekError::Security { violation: _, .. } => {
+            YekError::Security { .. } => {
                 eprintln!("Suggestion: This appears to be a security violation. Please check your input paths.");
             }
             YekError::Validation {

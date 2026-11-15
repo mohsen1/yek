@@ -609,11 +609,7 @@ impl FileDiscoveryStage {
         }
 
         // Handle patterns ending with /
-        if pattern.ends_with('/') && text.starts_with(pattern) {
-            return true;
-        }
-
-        false
+        pattern.ends_with('/') && text.starts_with(pattern)
     }
 }
 
