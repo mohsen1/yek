@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Build
+
+- Update git2 and openssl-sys to support system libgit2 1.9 and OpenSSL 4.
+
 ## [0.26.0] - 2026-11-15
 [0.26.0]: https://github.com/prooflinedev/yek/compare/v0.25.5...v0.26.0
 ### Features
