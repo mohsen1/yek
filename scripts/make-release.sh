@@ -71,5 +71,6 @@ echo "Local release commit and tag v${NEW_VERSION} created."
 echo "Review your changes, then push if desired:"
 echo "  git push origin HEAD"
 echo "  git push origin v${NEW_VERSION}"
+echo "Pushing the tag runs the release workflow, which publishes the GitHub release and the crate."
 echo
 echo "Done."

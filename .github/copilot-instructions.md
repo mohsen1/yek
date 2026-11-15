@@ -76,7 +76,7 @@ git commit -m "Initial commit"
 ```
 
 ### CI Requirements
-- All CI steps are defined in `.github/workflows/ci.yml`
+- CI steps are defined in `.github/workflows/ci.yml`; `build.yml` holds the release build matrix that CI and `release.yml` share
 - CI includes: lint, test, build for multiple platforms, stress tests, benchmarks
 - **ALWAYS ensure your changes pass local lint and test before pushing**
 
@@ -129,7 +129,7 @@ make test                            # Runs full test suite
 ### Release Process
 - Version management: Edit `Cargo.toml` version field
 - Release script: `scripts/make-release.sh [patch|minor|major]`
-- CI handles building cross-platform binaries and publishing to crates.io
+- Pushing the `vX.Y.Z` tag runs `.github/workflows/release.yml`, which builds every target, publishes the GitHub release with `SHA256SUMS` and provenance, then publishes the crate to crates.io
 
 ### Troubleshooting
 - **Build failures**: Check Rust version (requires recent stable), ensure OpenSSL dev libraries installed

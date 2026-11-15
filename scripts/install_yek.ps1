@@ -52,11 +52,41 @@ if (!$asset) {
     exit 1
 }
 
+$sumsAsset = $releaseData.assets | Where-Object { $_.name -eq "SHA256SUMS" }
+if (!$sumsAsset) {
+    Write-Host "The latest release has no SHA256SUMS file, so the download cannot be verified."
+    exit 1
+}
+
 $downloadUrl = $asset.browser_download_url
 Write-Host "Downloading from: $downloadUrl"
 
 $zipPath = Join-Path $env:TEMP $assetName
+$sumsPath = Join-Path $env:TEMP "yek-SHA256SUMS"
 Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
+Invoke-WebRequest -Uri $sumsAsset.browser_download_url -OutFile $sumsPath -UseBasicParsing
+
+Write-Host "Verifying the SHA-256 checksum..."
+$expectedSum = $null
+foreach ($line in Get-Content -Path $sumsPath) {
+    $fields = $line.Trim() -split '\s+'
+    if ($fields.Count -eq 2 -and $fields[1].TrimStart('*') -eq $assetName) {
+        $expectedSum = $fields[0]
+        break
+    }
+}
+Remove-Item -Force $sumsPath
+$actualSum = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+if (!$expectedSum) {
+    Remove-Item -Force $zipPath
+    Write-Host "SHA256SUMS lists no checksum for $assetName."
+    exit 1
+}
+if ($actualSum -ne $expectedSum) {
+    Remove-Item -Force $zipPath
+    Write-Host "Checksum mismatch for ${assetName}: expected $expectedSum, got $actualSum."
+    exit 1
+}
 
 Write-Host "Extracting archive..."
 $extractDir = Join-Path $env:TEMP "yek-$($arch)"

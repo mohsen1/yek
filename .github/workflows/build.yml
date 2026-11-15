@@ -1,0 +1,87 @@
+name: Build
+
+# Builds and packages every release target. CI and the release workflow both
+# call it, so a pull request builds exactly the archives a release ships.
+on:
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            asset_name: yek-x86_64-unknown-linux-musl.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            asset_name: yek-aarch64-unknown-linux-musl.tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset_name: yek-x86_64-apple-darwin.tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_name: yek-aarch64-apple-darwin.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: yek-x86_64-pc-windows-msvc.zip
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            asset_name: yek-aarch64-pc-windows-msvc.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        uses: ./.github/actions/build
+        id: build
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          staging="yek-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp "${{ steps.build.outputs.binary_path }}" "$staging/"
+          tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
+          [ -s "release-artifacts/${{ matrix.asset_name }}" ] || { echo "::error::Artifact is missing or empty"; exit 1; }
+
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-artifacts
+          $staging = "yek-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $staging
+          Copy-Item "${{ steps.build.outputs.binary_path }}" $staging
+          7z a "release-artifacts\${{ matrix.asset_name }}" "$staging"
+          if (-not (Test-Path "release-artifacts\${{ matrix.asset_name }}") -or
+              (Get-Item "release-artifacts\${{ matrix.asset_name }}").Length -eq 0) {
+            Write-Error "Artifact is missing or empty"
+            exit 1
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.target }}
+          path: release-artifacts/${{ matrix.asset_name }}
+          if-no-files-found: error

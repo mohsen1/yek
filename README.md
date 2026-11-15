@@ -91,6 +91,13 @@ cargo install --path .
 
 </details>
 
+The install scripts check each download against the release's `SHA256SUMS` file. To verify an archive from the [releases page](https://github.com/prooflinedev/yek/releases) yourself, check its checksum and its build provenance with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify yek-x86_64-unknown-linux-gnu.tar.gz --repo prooflinedev/yek
+```
+
 ## Usage
 
 `yek` has sensible defaults, you can simply run `yek` in a directory to serialize the entire repository. It will serialize all files in the repository and write them into a temporary file. The path to the file will be printed to the console.
