@@ -269,7 +269,7 @@ jobs:
         run: |
           mkdir -p coverage-base
           CARGO_TARGET_DIR=target-base LLVM_PROFILE_FILE="coverage-base/yek-%p-%m.profraw" cargo test --profile coverage
-          grcov . \
+          grcov coverage-base \
             --binary-path ./target-base/coverage/ \
             -s . \
             -t lcov \
@@ -279,7 +279,7 @@ jobs:
             --ignore "tests/*" \
             --ignore "target*/*" \
             -o coverage-base/lcov.info
-          grcov . \
+          grcov coverage-base \
             --binary-path ./target-base/coverage/ \
             -s . \
             -t covdir \
@@ -300,7 +300,7 @@ jobs:
         run: |
           mkdir -p coverage
           CARGO_TARGET_DIR=target-pr LLVM_PROFILE_FILE="coverage/yek-%p-%m.profraw" cargo test --profile coverage
-          grcov . \
+          grcov coverage \
             --binary-path ./target-pr/coverage/ \
             -s . \
             -t lcov \
@@ -310,7 +310,7 @@ jobs:
             --ignore "tests/*" \
             --ignore "target*/*" \
             -o coverage/lcov.info
-          grcov . \
+          grcov coverage \
             --binary-path ./target-pr/coverage/ \
             -s . \
             -t covdir \
