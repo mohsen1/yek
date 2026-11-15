@@ -27,7 +27,7 @@ switch ($arch) {
     }
 }
 
-$repoOwner = "mohsen1"
+$repoOwner = "prooflinedev"
 $repoName  = "yek"
 $assetName = "yek-$target.zip"
 

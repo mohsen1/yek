@@ -12,6 +12,8 @@ By default:
 - Supports glob patterns and individual file selection.
 - Configurable via a `yek.yaml` file.
 
+`yek` is a free, open-source tool from [Proofline](https://proofline.sh/open-source/yek/).
+
 Yek <a href="https://fa.wikipedia.org/wiki/۱">يک</a> means "One" in Farsi/Persian.
 
 Consider having a simple repo like this:
@@ -51,7 +53,7 @@ Choose the installation method for your platform:
 <!-- UNIX_INSTALLATION_BEGIN -->
 
 ```bash
-curl -fsSL https://azimi.me/yek.sh | bash
+curl -fsSL https://proofline.sh/yek/install.sh | bash
 ```
 
 <!-- UNIX_INSTALLATION_END -->
@@ -61,16 +63,28 @@ For Windows (PowerShell):
 <!-- WINDOWS_INSTALLATION_BEGIN -->
 
 ```powershell
-irm https://azimi.me/yek.ps1 | iex
+irm https://proofline.sh/yek/install.ps1 | iex
 ```
 
 <!-- WINDOWS_INSTALLATION_END -->
+
+With Homebrew:
+
+```bash
+brew install yek
+```
+
+With Cargo:
+
+```bash
+cargo install yek
+```
 
 <details>
 <summary style="cursor: pointer;">Build from Source</summary>
 
 ```bash
-git clone https://github.com/mohsen1/yek
+git clone https://github.com/prooflinedev/yek
 cd yek
 cargo install --path .
 ```
@@ -294,7 +308,7 @@ Executed in   22.24 mins    fish           external
 
 ## Roadmap
 
-See [proposed features](https://github.com/mohsen1/yek/issues?q=type:%22Feature%22). I am open to accepting new feature requests. Please write a detailed proposal to discuss new features.
+See [proposed features](https://github.com/prooflinedev/yek/issues?q=type:%22Feature%22). I am open to accepting new feature requests. Please write a detailed proposal to discuss new features.
 
 ## Alternatives
 

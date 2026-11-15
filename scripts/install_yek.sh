@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_OWNER="mohsen1"
+REPO_OWNER="prooflinedev"
 REPO_NAME="yek"
 
 # Determine a sensible default install directory
@@ -133,7 +133,7 @@ echo "Asset name => ${ASSET_NAME}"
 
 echo "Fetching latest release info from GitHub..."
 LATEST_URL=$(
-    curl -s "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest" |
+    curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest" |
         grep "browser_download_url" |
         grep "${ASSET_NAME}" |
         cut -d '"' -f 4
@@ -146,7 +146,7 @@ if [ -z "${LATEST_URL}" ]; then
 fi
 
 echo "Downloading from: ${LATEST_URL}"
-curl -L -o "${ASSET_NAME}" "${LATEST_URL}"
+curl -fsSL -o "${ASSET_NAME}" "${LATEST_URL}"
 
 echo "Extracting archive..."
 tar xzf "${ASSET_NAME}"
