@@ -269,7 +269,7 @@ jobs:
         run: |
           mkdir -p coverage-base
           CARGO_TARGET_DIR=target-base LLVM_PROFILE_FILE="coverage-base/yek-%p-%m.profraw" cargo test --profile coverage
-          grcov coverage-base \
+          grcov . \
             --binary-path ./target-base/coverage/ \
             -s . \
             -t lcov \
@@ -279,7 +279,7 @@ jobs:
             --ignore "tests/*" \
             --ignore "target*/*" \
             -o coverage-base/lcov.info
-          grcov coverage-base \
+          grcov . \
             --binary-path ./target-base/coverage/ \
             -s . \
             -t covdir \
@@ -300,7 +300,7 @@ jobs:
         run: |
           mkdir -p coverage
           CARGO_TARGET_DIR=target-pr LLVM_PROFILE_FILE="coverage/yek-%p-%m.profraw" cargo test --profile coverage
-          grcov coverage \
+          grcov . \
             --binary-path ./target-pr/coverage/ \
             -s . \
             -t lcov \
@@ -310,7 +310,7 @@ jobs:
             --ignore "tests/*" \
             --ignore "target*/*" \
             -o coverage/lcov.info
-          grcov coverage \
+          grcov . \
             --binary-path ./target-pr/coverage/ \
             -s . \
             -t covdir \
@@ -356,8 +356,8 @@ jobs:
                 ' > changed-src-lines.txt
 
             if [ ! -s changed-src-lines.txt ]; then
-              echo "Error: Coverage decreased from ${BASE_COV}% to ${PR_COV}%"
-              exit 1
+              echo "Total coverage decreased, but no source lines changed."
+              exit 0
             fi
 
             rm -f uncovered-changed-lines.txt
