@@ -132,12 +132,15 @@ echo "OS/ARCH => ${TARGET}"
 echo "Asset name => ${ASSET_NAME}"
 
 echo "Fetching latest release info from GitHub..."
-LATEST_URL=$(
-    curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest" |
-        grep "browser_download_url" |
-        grep "${ASSET_NAME}" |
-        cut -d '"' -f 4
-)
+RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest")
+
+# Prints the download URL of the latest release's asset named $1, if any.
+asset_url() {
+    printf '%s\n' "${RELEASE_JSON}" | grep '"browser_download_url"' | grep -F "/$1\"" | cut -d '"' -f 4 || true
+}
+
+LATEST_URL=$(asset_url "${ASSET_NAME}")
+SUMS_URL=$(asset_url "SHA256SUMS")
 
 if [ -z "${LATEST_URL}" ]; then
     echo "Failed to find a release asset named ${ASSET_NAME} in the latest release."
@@ -145,21 +148,47 @@ if [ -z "${LATEST_URL}" ]; then
     exit 1
 fi
 
+if [ -z "${SUMS_URL}" ]; then
+    echo "The latest release has no SHA256SUMS file, so the download cannot be verified."
+    exit 1
+fi
+
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "${WORK_DIR}"' EXIT
+
 echo "Downloading from: ${LATEST_URL}"
-curl -fsSL -o "${ASSET_NAME}" "${LATEST_URL}"
+curl -fsSL -o "${WORK_DIR}/${ASSET_NAME}" "${LATEST_URL}"
+curl -fsSL -o "${WORK_DIR}/SHA256SUMS" "${SUMS_URL}"
+
+echo "Verifying the SHA-256 checksum..."
+EXPECTED_SUM=$(awk -v name="${ASSET_NAME}" '$2 == name || $2 == "*" name { print $1; exit }' "${WORK_DIR}/SHA256SUMS")
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL_SUM=$(sha256sum "${WORK_DIR}/${ASSET_NAME}" | cut -d ' ' -f 1)
+elif command -v shasum >/dev/null 2>&1; then
+    ACTUAL_SUM=$(shasum -a 256 "${WORK_DIR}/${ASSET_NAME}" | cut -d ' ' -f 1)
+else
+    echo "Neither sha256sum nor shasum is installed, so the download cannot be verified."
+    exit 1
+fi
+
+if [ -z "${EXPECTED_SUM}" ]; then
+    echo "SHA256SUMS lists no checksum for ${ASSET_NAME}."
+    exit 1
+fi
+if [ "${EXPECTED_SUM}" != "${ACTUAL_SUM}" ]; then
+    echo "Checksum mismatch for ${ASSET_NAME}: expected ${EXPECTED_SUM}, got ${ACTUAL_SUM}."
+    exit 1
+fi
 
 echo "Extracting archive..."
-tar xzf "${ASSET_NAME}"
+tar xzf "${WORK_DIR}/${ASSET_NAME}" -C "${WORK_DIR}"
 
-# The tar will contain a folder named something like: yek-${TARGET}/yek
+# The archive contains a folder named yek-${TARGET} holding the binary.
 echo "Moving binary to ${install_dir}..."
-mv "yek-${TARGET}/yek" "${install_dir}/yek"
+mv "${WORK_DIR}/yek-${TARGET}/yek" "${install_dir}/yek"
 
 echo "Making the binary executable..."
 chmod +x "${install_dir}/yek"
-
-# Cleanup
-rm -rf "yek-${TARGET}" "${ASSET_NAME}"
 
 echo "Installation complete!"
 

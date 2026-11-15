@@ -1,54 +1,73 @@
 name: Installation Test
 
+# The release workflow calls this once the release is published. It runs the
+# installers from the released commit against the latest release.
 on:
-  release:
-    types: [published]
-  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      version:
+        description: "Release tag the installers must install, such as v1.2.3"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag the installers must install, such as v1.2.3"
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   test-installation:
-    name: Test Installation
+    name: Test Installation (${{ matrix.os }})
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            shell: bash
-            script_section: UNIX_INSTALLATION
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            shell: bash
-            script_section: UNIX_INSTALLATION
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            shell: pwsh
-            script_section: WINDOWS_INSTALLATION
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get installation script
-        id: get_install_script
+      - name: Install (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
-          script=$(awk '/<!-- ${{ matrix.script_section }}_BEGIN -->/{p=1;next}/<!-- ${{ matrix.script_section }}_END -->/{p=0}p' README.md | grep -v '^```')
-          [ -n "$script" ] || { echo "Could not extract installation script"; exit 1; }
-          {
-            echo "script<<EOF"
-            echo "$script"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          bash scripts/install_yek.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Test installation script (Unix)
-        if: matrix.shell == 'bash'
-        shell: bash
-        run: ${{ steps.get_install_script.outputs.script }}
-
-      - name: Test installation script (Windows)
-        if: matrix.shell == 'pwsh'
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
-        run: ${{ steps.get_install_script.outputs.script }}
+        run: |
+          $installDir = Join-Path $HOME ".local\bin"
+          ./scripts/install_yek.ps1 -InstallDir $installDir
+          $installDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Verify final installation
-        run: yek --help
+      - name: Check the installed version
+        shell: bash
+        run: |
+          installed="$(yek --version)"
+          echo "yek --version: $installed"
+          [ "$installed" = "${VERSION#v}" ] || { echo "::error::Expected ${VERSION#v}"; exit 1; }
+        env:
+          VERSION: ${{ inputs.version }}
+
+  # Alpine has no glibc, so the installer selects the aarch64 musl archive.
+  test-installation-musl:
+    name: Test Installation (Alpine ARM64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install and check the version
+        run: |
+          docker run --rm -v "$PWD/scripts:/scripts:ro" -e VERSION alpine:3.20 sh -euc '
+            apk add --no-cache bash curl >/dev/null
+            bash /scripts/install_yek.sh
+            installed="$("$HOME/.local/bin/yek" --version)"
+            echo "yek --version: $installed"
+            [ "$installed" = "${VERSION#v}" ]
+          '
+        env:
+          VERSION: ${{ inputs.version }}

@@ -5,20 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-11-15
+[0.26.0]: https://github.com/prooflinedev/yek/compare/v0.25.5...v0.26.0
+### Features
+
+- Publish every release archive with a `SHA256SUMS` file and a build provenance attestation
+- Check each download against `SHA256SUMS` in both install scripts, which refuse a release without one
+- Publish the crate to crates.io through trusted publishing
+
+### Bug Fixes
+
+- Fix clippy lints reported by Rust 1.100
+
+### Miscellaneous Tasks
+
+- Move the repository to prooflinedev/yek
+
 ## [0.25.5] - 2026-06-29
-[0.25.5]: https://github.com/mohsen1/yek/compare/v0.25.4...v0.25.5
+[0.25.5]: https://github.com/prooflinedev/yek/compare/v0.25.4...v0.25.5
 ### Bug Fixes
 
 - Preserve input root directory names in multi-directory runs
 
+### Release
+
+- V0.25.5
+
 ## [0.25.4] - 2026-06-06
-[0.25.4]: https://github.com/mohsen1/yek/compare/v0.25.3...v0.25.4
+[0.25.4]: https://github.com/prooflinedev/yek/compare/v0.25.3...v0.25.4
 ### Release
 
 - V0.25.4
 
 ## [0.25.3] - 2026-06-02
-[0.25.3]: https://github.com/mohsen1/yek/compare/v0.25.2...v0.25.3
+[0.25.3]: https://github.com/prooflinedev/yek/compare/v0.25.2...v0.25.3
 ### Features
 
 - Add Homebrew formula
@@ -40,19 +60,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.25.3
 
 ## [0.25.2] - 2025-10-17
-[0.25.2]: https://github.com/mohsen1/yek/compare/v0.25.0...v0.25.2
+[0.25.2]: https://github.com/prooflinedev/yek/compare/v0.25.0...v0.25.2
 ### Release
 
 - V0.25.2
 
 ## [0.25.0] - 2025-09-25
-[0.25.0]: https://github.com/mohsen1/yek/compare/v0.24.0...v0.25.0
+[0.25.0]: https://github.com/prooflinedev/yek/compare/v0.24.0...v0.25.0
 ### Release
 
 - V0.25.0
 
 ## [0.24.0] - 2025-09-25
-[0.24.0]: https://github.com/mohsen1/yek/compare/v0.23.0...v0.24.0
+[0.24.0]: https://github.com/prooflinedev/yek/compare/v0.23.0...v0.24.0
 ### Bug Fixes
 
 - Resolve syntax error in main_test.rs - final verification complete
@@ -84,7 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.24.0
 
 ## [0.23.0] - 2025-09-17
-[0.23.0]: https://github.com/mohsen1/yek/compare/v0.21.0...v0.23.0
+[0.23.0]: https://github.com/prooflinedev/yek/compare/v0.21.0...v0.23.0
 ### Bug Fixes
 
 - Fix `Windows` installation script
@@ -122,7 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.23.0
 
 ## [0.21.0] - 2025-02-23
-[0.21.0]: https://github.com/mohsen1/yek/compare/v0.20.0...v0.21.0
+[0.21.0]: https://github.com/prooflinedev/yek/compare/v0.20.0...v0.21.0
 ### Bug Fixes
 
 - Glob pattern handling in e2e tests
@@ -150,7 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.21.0
 
 ## [0.20.0] - 2025-02-22
-[0.20.0]: https://github.com/mohsen1/yek/compare/v0.19.0...v0.20.0
+[0.20.0]: https://github.com/prooflinedev/yek/compare/v0.19.0...v0.20.0
 ### Bug Fixes
 
 - Handle root directory paths correctly
@@ -173,7 +193,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.20.0
 
 ## [0.19.0] - 2025-02-19
-[0.19.0]: https://github.com/mohsen1/yek/compare/v0.18.0...v0.19.0
+[0.19.0]: https://github.com/prooflinedev/yek/compare/v0.18.0...v0.19.0
 ### Bug Fixes
 
 - Improve token counting accuracy
@@ -200,7 +220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.19.0
 
 ## [0.18.0] - 2025-02-13
-[0.18.0]: https://github.com/mohsen1/yek/compare/v0.16.0...v0.18.0
+[0.18.0]: https://github.com/prooflinedev/yek/compare/v0.16.0...v0.18.0
 ### Bug Fixes
 
 - Ensure files with same timestamp get same boost
@@ -239,7 +259,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.18.0
 
 ## [0.16.0] - 2025-01-30
-[0.16.0]: https://github.com/mohsen1/yek/compare/v0.15.0...v0.16.0
+[0.16.0]: https://github.com/prooflinedev/yek/compare/v0.15.0...v0.16.0
 ### Bug Fixes
 
 - Add explicit target installation to build action
@@ -278,7 +298,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.16.0
 
 ## [0.15.0] - 2025-01-29
-[0.15.0]: https://github.com/mohsen1/yek/compare/v0.14.0...v0.15.0
+[0.15.0]: https://github.com/prooflinedev/yek/compare/v0.14.0...v0.15.0
 ### Bug Fixes
 
 - Add musl toolchain support for Linux builds
@@ -319,7 +339,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.15.0
 
 ## [0.14.0] - 2025-01-29
-[0.14.0]: https://github.com/mohsen1/yek/compare/v0.13.8...v0.14.0
+[0.14.0]: https://github.com/prooflinedev/yek/compare/v0.13.8...v0.14.0
 ### Bug Fixes
 
 - Clean up imports and remove duplicates
@@ -421,7 +441,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.14.0
 
 ## [0.13.8] - 2025-01-20
-[0.13.8]: https://github.com/mohsen1/yek/compare/v0.13.7...v0.13.8
+[0.13.8]: https://github.com/prooflinedev/yek/compare/v0.13.7...v0.13.8
 ### Bug Fixes
 
 - Ensure files are processed only once and fix priority test
@@ -468,7 +488,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.13.8
 
 ## [0.13.7] - 2025-01-19
-[0.13.7]: https://github.com/mohsen1/yek/compare/v0.13.5...v0.13.7
+[0.13.7]: https://github.com/prooflinedev/yek/compare/v0.13.5...v0.13.7
 ### Bug Fixes
 
 - Ensure most important chunks are output last when streaming
@@ -543,7 +563,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.13.6
 
 ## [0.13.5] - 2025-01-19
-[0.13.5]: https://github.com/mohsen1/yek/compare/v0.13.4...v0.13.5
+[0.13.5]: https://github.com/prooflinedev/yek/compare/v0.13.4...v0.13.5
 ### Bug Fixes
 
 - Add aarch64-linux-gnu linker configuration
@@ -557,7 +577,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.13.5
 
 ## [0.13.4] - 2025-01-19
-[0.13.4]: https://github.com/mohsen1/yek/compare/v0.13.3...v0.13.4
+[0.13.4]: https://github.com/prooflinedev/yek/compare/v0.13.3...v0.13.4
 ### Bug Fixes
 
 - Lint
@@ -567,7 +587,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.13.4
 
 ## [0.13.3] - 2025-01-19
-[0.13.3]: https://github.com/mohsen1/yek/compare/v0.13.2...v0.13.3
+[0.13.3]: https://github.com/prooflinedev/yek/compare/v0.13.2...v0.13.3
 ### Bug Fixes
 
 - Update Formula version to match project version
@@ -590,14 +610,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.13.3
 
 ## [0.13.2] - 2025-01-19
-[0.13.2]: https://github.com/mohsen1/yek/compare/v0.13.1...v0.13.2
+[0.13.2]: https://github.com/prooflinedev/yek/compare/v0.13.1...v0.13.2
 ### Bug Fixes
 
 - Handle Windows paths correctly in gitignore matching
 - Handle Windows paths correctly in gitignore matching
 
 ## [0.13.1] - 2025-01-19
-[0.13.1]: https://github.com/mohsen1/yek/compare/v0.7.5...v0.13.1
+[0.13.1]: https://github.com/prooflinedev/yek/compare/v0.7.5...v0.13.1
 ### Miscellaneous Tasks
 
 - Bump version to 0.13.1
@@ -607,7 +627,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.13.1
 
 ## [0.7.5] - 2025-01-19
-[0.7.5]: https://github.com/mohsen1/yek/compare/v0.13.0...v0.7.5
+[0.7.5]: https://github.com/prooflinedev/yek/compare/v0.13.0...v0.7.5
 ### Bug Fixes
 
 - Manually update Formula version
@@ -617,13 +637,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.7.5
 
 ## [0.13.0] - 2025-01-19
-[0.13.0]: https://github.com/mohsen1/yek/compare/v0.7.4...v0.13.0
+[0.13.0]: https://github.com/prooflinedev/yek/compare/v0.7.4...v0.13.0
 ### Bug Fixes
 
 - Make tag cleanup cross-platform compatible
 
 ## [0.7.4] - 2025-01-19
-[0.7.4]: https://github.com/mohsen1/yek/compare/v0.12.5...v0.7.4
+[0.7.4]: https://github.com/prooflinedev/yek/compare/v0.12.5...v0.7.4
 ### Bug Fixes
 
 - Pr feedback
@@ -657,31 +677,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - V0.7.4
 
 ## [0.12.4] - 2025-01-19
-[0.12.4]: https://github.com/mohsen1/yek/compare/v0.12.3...v0.12.4
+[0.12.4]: https://github.com/prooflinedev/yek/compare/v0.12.3...v0.12.4
 ### Bug Fixes
 
 - Use GITHUB_TOKEN for authentication in CI workflow
 
 ## [0.12.3] - 2025-01-19
-[0.12.3]: https://github.com/mohsen1/yek/compare/v0.12.2...v0.12.3
+[0.12.3]: https://github.com/prooflinedev/yek/compare/v0.12.2...v0.12.3
 ### Bug Fixes
 
 - Update GitHub authentication in CI workflow
 
 ## [0.12.2] - 2025-01-19
-[0.12.2]: https://github.com/mohsen1/yek/compare/v0.12.1...v0.12.2
+[0.12.2]: https://github.com/prooflinedev/yek/compare/v0.12.1...v0.12.2
 ### Bug Fixes
 
 - Add PAT token to git push command in CI workflow
 
 ## [0.12.1] - 2025-01-19
-[0.12.1]: https://github.com/mohsen1/yek/compare/v0.12.0...v0.12.1
+[0.12.1]: https://github.com/prooflinedev/yek/compare/v0.12.0...v0.12.1
 ### Bug Fixes
 
 - Improve git change detection in CI workflow
 
 ## [0.12.0] - 2025-01-19
-[0.12.0]: https://github.com/mohsen1/yek/compare/v0.11.0...v0.12.0
+[0.12.0]: https://github.com/prooflinedev/yek/compare/v0.11.0...v0.12.0
 ### Bug Fixes
 
 - Add aarch64 Linux target configurations
@@ -694,7 +714,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add ARM64 Linux support
 
 ## [0.11.0] - 2025-01-19
-[0.11.0]: https://github.com/mohsen1/yek/compare/v0.10.0...v0.11.0
+[0.11.0]: https://github.com/prooflinedev/yek/compare/v0.10.0...v0.11.0
 ### Documentation
 
 - Update README with K suffix example
@@ -704,7 +724,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support K suffix for token count
 
 ## [0.10.0] - 2025-01-19
-[0.10.0]: https://github.com/mohsen1/yek/compare/v0.9.0...v0.10.0
+[0.10.0]: https://github.com/prooflinedev/yek/compare/v0.9.0...v0.10.0
 ### Bug Fixes
 
 - Remove default priority list
@@ -729,13 +749,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reduce benchmarking threshold
 
 ## [0.9.0] - 2025-01-19
-[0.9.0]: https://github.com/mohsen1/yek/compare/v0.8.1...v0.9.0
+[0.9.0]: https://github.com/prooflinedev/yek/compare/v0.8.1...v0.9.0
 ### Styling
 
 - Use tempfile::tempdir() for performance tests
 
 ## [0.8.1] - 2025-01-19
-[0.8.1]: https://github.com/mohsen1/yek/compare/v0.8.0...v0.8.1
+[0.8.1]: https://github.com/prooflinedev/yek/compare/v0.8.0...v0.8.1
 ### Bug Fixes
 
 - Update readme
@@ -757,7 +777,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Undo parallel execution in test branch
 
 ## [0.8.0] - 2025-01-19
-[0.8.0]: https://github.com/mohsen1/yek/compare/v0.7.0...v0.8.0
+[0.8.0]: https://github.com/prooflinedev/yek/compare/v0.7.0...v0.8.0
 ### Bug Fixes
 
 - Improve installation test workflow
@@ -809,7 +829,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add installer tests
 
 ## [0.6.0] - 2025-01-15
-[0.6.0]: https://github.com/mohsen1/yek/compare/v0.5.0...v0.6.0
+[0.6.0]: https://github.com/prooflinedev/yek/compare/v0.5.0...v0.6.0
 ### Features
 
 - Remove --stream flag in favor of automatic pipe detection
@@ -820,19 +840,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prepare for v0.6.0
 
 ## [0.5.0] - 2025-01-15
-[0.5.0]: https://github.com/mohsen1/yek/compare/v0.4.0...v0.5.0
+[0.5.0]: https://github.com/prooflinedev/yek/compare/v0.4.0...v0.5.0
 ### Documentation
 
 - Update README to match actual CLI implementation
 
 ## [0.4.0] - 2025-01-13
-[0.4.0]: https://github.com/mohsen1/yek/compare/v0.3.0...v0.4.0
+[0.4.0]: https://github.com/prooflinedev/yek/compare/v0.3.0...v0.4.0
 ### Features
 
 - Add git-based priority boost for recently changed files
 
 ## [0.3.0] - 2025-01-13
-[0.3.0]: https://github.com/mohsen1/yek/compare/v0.2.0...v0.3.0
+[0.3.0]: https://github.com/prooflinedev/yek/compare/v0.2.0...v0.3.0
 ### Bug Fixes
 
 - Improve file processing and error handling
@@ -847,7 +867,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix formatting and linting issues
 
 ## [0.2.0] - 2025-01-13
-[0.2.0]: https://github.com/mohsen1/yek/compare/v0.1.0...v0.2.0
+[0.2.0]: https://github.com/prooflinedev/yek/compare/v0.1.0...v0.2.0
 ### Bug Fixes
 
 - Fix token counting flag handling

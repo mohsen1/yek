@@ -1,0 +1,138 @@
+name: Release
+
+# Pushing a vX.Y.Z tag releases yek. The GitHub release stays a draft until
+# every archive, SHA256SUMS and the provenance attestation exist, and the crate
+# is published to crates.io only after all of that has succeeded.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches Cargo.toml
+        run: |
+          version="$(cargo pkgid | cut -d# -f2 | cut -d@ -f2)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Clippy
+        run: cargo clippy --locked -- -D warnings
+      - name: Format check
+        run: cargo fmt --check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run tests
+        run: cargo test --locked
+
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yml
+
+  release:
+    name: GitHub release
+    needs: [lint, test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: build-*
+          merge-multiple: true
+
+      - name: Write SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum yek-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/yek-*
+
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --current --strip header
+        env:
+          OUTPUT: CHANGES.md
+
+      # A rerun reuses its own draft; a published release is never modified.
+      - name: Create the draft release
+        run: |
+          if is_draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$is_draft" != "true" ]; then
+              echo "::error::Release $TAG is already published"
+              exit 1
+            fi
+          else
+            gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes-file CHANGES.md
+          fi
+
+      - name: Attach the archives and SHA256SUMS
+        run: gh release upload "$TAG" dist/* --clobber
+
+      - name: Publish the release
+        run: gh release edit "$TAG" --draft=false --latest
+
+  install-test:
+    name: Installation Test
+    needs: release
+    uses: ./.github/workflows/test-install.yml
+    with:
+      version: ${{ github.ref_name }}
+
+  crates-io:
+    name: Publish to crates.io
+    needs: [lint, test, build, release]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Authenticate with crates.io
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - name: Publish
+        run: cargo publish --locked --token "$CRATES_IO_TOKEN"
+        env:
+          CRATES_IO_TOKEN: ${{ steps.auth.outputs.token }}

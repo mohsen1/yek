@@ -5,8 +5,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  release:
-    types: [published]
 
 env:
   CARGO_TERM_COLOR: always
@@ -15,7 +13,7 @@ env:
   PKG_CONFIG_ALLOW_CROSS: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   determine-changes:
@@ -111,102 +109,12 @@ jobs:
         run: cargo test --verbose
 
   build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+    name: Build
     needs: determine-changes
     if: >
       needs.determine-changes.outputs.only_docs != 'true' &&
       needs.determine-changes.outputs.only_tests != 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux builds
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            asset_name: yek-x86_64-unknown-linux-gnu.tar.gz
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            asset_name: yek-aarch64-unknown-linux-gnu.tar.gz
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            asset_name: yek-x86_64-unknown-linux-musl.tar.gz
-          # macOS
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            asset_name: yek-x86_64-apple-darwin.tar.gz
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            asset_name: yek-aarch64-apple-darwin.tar.gz
-          # Windows
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            asset_name: yek-x86_64-pc-windows-msvc.zip
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            asset_name: yek-aarch64-pc-windows-msvc.zip
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev lcov
-
-      - name: Build
-        uses: ./.github/actions/build
-        id: build
-        with:
-          target: ${{ matrix.target }}
-
-      - name: Package binary (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          mkdir -p release-artifacts
-          staging="yek-${{ matrix.target }}"
-          mkdir -p "$staging"
-          cp "${{ steps.build.outputs.binary_path }}" "$staging/"
-          tar czf "release-artifacts/${{ matrix.asset_name }}" "$staging"
-          [ -f "release-artifacts/${{ matrix.asset_name }}" ] || { echo "::error::No artifact"; exit 1; }
-          [ -s "release-artifacts/${{ matrix.asset_name }}" ] || { echo "::error::Artifact is empty"; exit 1; }
-
-      - name: Package binary (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path release-artifacts
-          $staging = "yek-${{ matrix.target }}"
-          New-Item -ItemType Directory -Force -Path $staging
-          Copy-Item "${{ steps.build.outputs.binary_path }}" $staging
-          7z a "release-artifacts\${{ matrix.asset_name }}" "$staging"
-          if (-not (Test-Path "release-artifacts\${{ matrix.asset_name }}")) {
-            Write-Error "No artifact"
-            exit 1
-          }
-          if ((Get-Item "release-artifacts\${{ matrix.asset_name }}").Length -eq 0) {
-            Write-Error "Artifact is empty"
-            exit 1
-          }
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.target }}
-          path: release-artifacts/${{ matrix.asset_name }}
+    uses: ./.github/workflows/build.yml
 
   stress:
     name: Stress ${{ matrix.target }}
@@ -321,87 +229,6 @@ jobs:
         with:
           name: criterion-${{ matrix.benchmark_group.group }}-results
           path: benchmark_results.md
-  should-release:
-    name: Should Release
-    runs-on: ubuntu-latest
-    outputs:
-      yes: ${{ steps.check.outputs.yes }}
-      version: ${{ steps.check.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          # get current cargo version from Cargo.toml using cargo CLI tool
-          # then use `cargo info` to see if it's already released
-          cargo_version=$(cargo pkgid | cut -d# -f2)
-          echo "version=v$cargo_version" >> $GITHUB_OUTPUT
-          if cargo info "yek@$cargo_version"; then
-            echo "yek@$cargo_version is already released"
-            echo "yes=false" >> $GITHUB_OUTPUT
-          else
-            if git tag -l "v$cargo_version" | grep -q "v$cargo_version"; then
-              echo "yes=true" >> $GITHUB_OUTPUT
-            else
-              echo "Error: Git tag v$cargo_version is not pushed"
-              echo "yes=false" >> $GITHUB_OUTPUT
-            fi
-          fi
-        id: check
-
-  release:
-    name: Release
-    needs: [test, lint, build, should-release]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          pattern: build-*
-
-      - name: Generate release notes
-        uses: orhun/git-cliff-action@v4
-        id: git-cliff
-        with:
-          config: cliff.toml
-          args: --current --strip header
-        env:
-          OUTPUT: CHANGES.md
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/build-*/yek-*
-          body_path: CHANGES.md
-          tag_name: ${{ github.event.release.tag_name }}
-          draft: false
-
-  publish:
-    name: Publish to crates.io
-    runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.84.0"
-
-      - name: Publish
-        run: |
-          cargo_version=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
-          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
-            echo "Error: CARGO_REGISTRY_TOKEN is not configured"
-            exit 1
-          fi
-
-          if (cd /tmp && cargo info "yek@$cargo_version" 2>/dev/null); then
-            echo "yek@$cargo_version already published"
-            exit 0
-          fi
-          cargo publish --token "$CARGO_REGISTRY_TOKEN"
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
   coverage:
     name: Code Coverage
     needs: determine-changes
@@ -529,8 +356,8 @@ jobs:
                 ' > changed-src-lines.txt
 
             if [ ! -s changed-src-lines.txt ]; then
-              echo "Error: Coverage decreased from ${BASE_COV}% to ${PR_COV}%"
-              exit 1
+              echo "Total coverage decreased, but no source lines changed."
+              exit 0
             fi
 
             rm -f uncovered-changed-lines.txt
