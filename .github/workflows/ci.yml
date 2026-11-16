@@ -213,6 +213,7 @@ jobs:
 
       - name: Run benchmarks
         run: |
+          git branch ${{ github.head_ref }} || true
           git fetch origin ${{ github.base_ref }}
           git checkout ${{ github.base_ref }}
           cargo bench --bench serialization --no-run
@@ -261,6 +262,7 @@ jobs:
       - name: Fetch and check out base branch
         if: github.event_name == 'pull_request'
         run: |
+          git branch ${{ github.head_ref }} || true
           git fetch origin ${{ github.base_ref }}
           git checkout ${{ github.base_ref }}
 

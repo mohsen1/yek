@@ -794,10 +794,7 @@ fn test_compute_dependency_centrality_basic() {
             "src/lib.rs".to_string(),
             "pub mod models;\npub mod priority;".to_string(),
         ),
-        (
-            "src/models.rs".to_string(),
-            "pub struct Model;".to_string(),
-        ),
+        ("src/models.rs".to_string(), "pub struct Model;".to_string()),
         (
             "src/priority.rs".to_string(),
             "use crate::models;\npub fn score() {}".to_string(),
@@ -961,7 +958,8 @@ fn test_hybrid_priority_foundational_hub_beats_recent_peripheral_file() {
     assert!(
         lib_boost > leaf_boost,
         "Foundational hub lib.rs ({}) must rank strictly above peripheral leaf ({})",
-        lib_boost, leaf_boost
+        lib_boost,
+        leaf_boost
     );
     assert_eq!(lib_boost, 60);
     assert_eq!(leaf_boost, 40);
@@ -992,9 +990,68 @@ fn test_hybrid_priority_pure_recency_fallback_when_centrality_empty() {
     commit_times.insert("old.rs".to_string(), 1000);
     commit_times.insert("new.rs".to_string(), 2000);
 
-    let hybrid_boosts =
-        compute_hybrid_priority_boost(Some(&commit_times), None, 100, 0.4, 0.6);
+    let hybrid_boosts = compute_hybrid_priority_boost(Some(&commit_times), None, 100, 0.4, 0.6);
 
     assert_eq!(hybrid_boosts.get("old.rs"), Some(&0));
     assert_eq!(hybrid_boosts.get("new.rs"), Some(&100));
+}
+
+#[test]
+fn test_hybrid_priority_when_centrality_disabled_by_weight_zero() {
+    use yek::priority::compute_hybrid_priority_boost;
+
+    let mut commit_times = std::collections::HashMap::new();
+    commit_times.insert("old.rs".to_string(), 1000);
+    commit_times.insert("new.rs".to_string(), 2000);
+
+    let mut centrality_scores = std::collections::HashMap::new();
+    centrality_scores.insert("old.rs".to_string(), 10);
+    centrality_scores.insert("new.rs".to_string(), 0);
+    centrality_scores.insert("no_git.rs".to_string(), 20);
+
+    // Centrality disabled: centrality_weight = 0.0, recency_weight = 0.4
+    let hybrid_boosts =
+        compute_hybrid_priority_boost(Some(&commit_times), Some(&centrality_scores), 100, 0.4, 0.0);
+
+    // Because centrality is disabled, rankings depend 100% on recency
+    assert_eq!(hybrid_boosts.get("old.rs"), Some(&0));
+    assert_eq!(hybrid_boosts.get("new.rs"), Some(&100));
+    // File without git history gets 0 boost when centrality is disabled
+    assert_eq!(hybrid_boosts.get("no_git.rs"), Some(&0));
+}
+
+#[test]
+fn test_hybrid_priority_when_recency_disabled_by_weight_zero() {
+    use yek::priority::compute_hybrid_priority_boost;
+
+    let mut commit_times = std::collections::HashMap::new();
+    commit_times.insert("hub.rs".to_string(), 1000);
+    commit_times.insert("leaf.rs".to_string(), 2000);
+
+    let mut centrality_scores = std::collections::HashMap::new();
+    centrality_scores.insert("hub.rs".to_string(), 10);
+    centrality_scores.insert("leaf.rs".to_string(), 0);
+
+    // Recency disabled: recency_weight = 0.0, centrality_weight = 0.6
+    let hybrid_boosts =
+        compute_hybrid_priority_boost(Some(&commit_times), Some(&centrality_scores), 100, 0.0, 0.6);
+
+    // Because recency is disabled, hub gets 100 and leaf gets 0
+    assert_eq!(hybrid_boosts.get("hub.rs"), Some(&100));
+    assert_eq!(hybrid_boosts.get("leaf.rs"), Some(&0));
+}
+
+#[test]
+fn test_hybrid_priority_when_both_weights_zero() {
+    use yek::priority::compute_hybrid_priority_boost;
+
+    let mut commit_times = std::collections::HashMap::new();
+    commit_times.insert("a.rs".to_string(), 1000);
+    let mut centrality_scores = std::collections::HashMap::new();
+    centrality_scores.insert("a.rs".to_string(), 10);
+
+    let hybrid_boosts =
+        compute_hybrid_priority_boost(Some(&commit_times), Some(&centrality_scores), 100, 0.0, 0.0);
+
+    assert_eq!(hybrid_boosts.get("a.rs"), Some(&0));
 }

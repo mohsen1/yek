@@ -558,10 +558,7 @@ mod lib_tests {
             let worker_path = repo_path.join(&worker_file);
             std::fs::write(
                 &worker_path,
-                format!(
-                    "use crate::lib::CoreArchitecture;\npub fn run_{}() {{}}",
-                    i
-                ),
+                format!("use crate::lib::CoreArchitecture;\npub fn run_{}() {{}}", i),
             )
             .unwrap();
 

@@ -212,13 +212,17 @@ pub fn extract_import_specifiers(content: &str) -> Vec<String> {
     });
 
     let rust_use_re = RUST_USE_RE.get_or_init(|| {
-        regex::Regex::new(r#"(?m)^\s*(?:pub(?:\([^)]+\))?\s+)?use\s+(?:crate::|super::)?([a-zA-Z0-9_]+)"#)
-            .expect("valid rust use regex")
+        regex::Regex::new(
+            r#"(?m)^\s*(?:pub(?:\([^)]+\))?\s+)?use\s+(?:crate::|super::)?([a-zA-Z0-9_]+)"#,
+        )
+        .expect("valid rust use regex")
     });
 
     let python_import_re = PYTHON_IMPORT_RE.get_or_init(|| {
-        regex::Regex::new(r#"(?m)^\s*(?:from\s+([a-zA-Z0-9_.]+)\s+import|import\s+([a-zA-Z0-9_.]+))"#)
-            .expect("valid python import regex")
+        regex::Regex::new(
+            r#"(?m)^\s*(?:from\s+([a-zA-Z0-9_.]+)\s+import|import\s+([a-zA-Z0-9_.]+))"#,
+        )
+        .expect("valid python import regex")
     });
 
     let mut specifiers = Vec::new();
@@ -472,9 +476,7 @@ fn resolve_relative_path(base_dir: &str, relative: &str) -> String {
 /// Compute in-degree dependency centrality for each file in the project.
 ///
 /// Returns a map of relative file path -> in-degree count (how many other project files reference it).
-pub fn compute_dependency_centrality(
-    files: &[(String, String)],
-) -> HashMap<String, usize> {
+pub fn compute_dependency_centrality(files: &[(String, String)]) -> HashMap<String, usize> {
     if files.is_empty() {
         return HashMap::new();
     }
@@ -615,24 +617,52 @@ pub fn compute_hybrid_priority_boost(
     let cw = centrality_weight.max(0.0);
     let total_weight = rw + cw;
 
+    if total_weight == 0.0 {
+        let mut result = HashMap::new();
+        for path in all_paths {
+            result.insert(path, 0);
+        }
+        return result;
+    }
+
+    // Pure recency fallback when centrality is not available across the project
+    if has_recency && !has_centrality {
+        let mut result = HashMap::new();
+        for path in all_paths {
+            let r = recency_ranks.get(&path).copied().unwrap_or(0.0);
+            let boost = if rw > 0.0 {
+                (r * max_boost as f64).round() as i32
+            } else {
+                0
+            };
+            result.insert(path, boost);
+        }
+        return result;
+    }
+
+    // Pure centrality fallback when git recency is not available across the project
+    if !has_recency && has_centrality {
+        let mut result = HashMap::new();
+        for path in all_paths {
+            let c = centrality_ranks.get(&path).copied().unwrap_or(0.0);
+            let boost = if cw > 0.0 {
+                (c * max_boost as f64).round() as i32
+            } else {
+                0
+            };
+            result.insert(path, boost);
+        }
+        return result;
+    }
+
+    // Both signals are present: combine with normalized weights.
+    // If a file is absent from one signal, its rank for that signal defaults to 0.0.
     let mut result = HashMap::new();
     for path in all_paths {
-        let r_rank = recency_ranks.get(&path).copied();
-        let c_rank = centrality_ranks.get(&path).copied();
+        let r = recency_ranks.get(&path).copied().unwrap_or(0.0);
+        let c = centrality_ranks.get(&path).copied().unwrap_or(0.0);
 
-        let combined_rank = match (r_rank, c_rank) {
-            (Some(r), Some(c)) => {
-                if total_weight > 0.0 {
-                    (rw * r + cw * c) / total_weight
-                } else {
-                    0.0
-                }
-            }
-            (Some(r), None) => r,
-            (None, Some(c)) => c,
-            (None, None) => 0.0,
-        };
-
+        let combined_rank = (rw * r + cw * c) / total_weight;
         let boost = (combined_rank * max_boost as f64).round() as i32;
         result.insert(path, boost);
     }

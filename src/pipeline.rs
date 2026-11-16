@@ -772,7 +772,11 @@ impl ProcessingPipeline {
                 .collect();
             let centralities = crate::priority::compute_dependency_centrality(&file_inputs);
             let max_boost = self.context.input_config.git_boost_max.unwrap_or(100);
-            let c_weight = self.context.processing_config.centrality_weight.unwrap_or(0.6);
+            let c_weight = self
+                .context
+                .processing_config
+                .centrality_weight
+                .unwrap_or(0.6);
             let r_weight = self.context.processing_config.recency_weight.unwrap_or(0.4);
 
             let commit_times = &self.context.repository_info.commit_times;
