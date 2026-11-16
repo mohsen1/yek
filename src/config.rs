@@ -86,6 +86,18 @@ pub struct YekConfig {
     #[config_arg(accept_from = "config_only")]
     pub git_boost_max: Option<i32>,
 
+    /// Enable dependency centrality ranking (fixes #255)
+    #[config_arg(accept_from = "config_only")]
+    pub centrality: Option<bool>,
+
+    /// Weight for dependency centrality ranking (0.0..1.0, default 0.6)
+    #[config_arg(accept_from = "config_only")]
+    pub centrality_weight: Option<f64>,
+
+    /// Weight for Git recency ranking (0.0..1.0, default 0.4)
+    #[config_arg(accept_from = "config_only")]
+    pub recency_weight: Option<f64>,
+
     /// Category-based priority weights
     #[config_arg(accept_from = "config_only")]
     pub category_weights: Option<crate::category::CategoryWeights>,
@@ -135,6 +147,9 @@ impl Default for YekConfig {
                 .map(|s| s.to_string())
                 .collect(),
             git_boost_max: Some(100),
+            centrality: Some(true),
+            centrality_weight: Some(0.6),
+            recency_weight: Some(0.4),
             category_weights: None,
 
             // computed fields
@@ -324,6 +339,10 @@ impl YekConfig {
         self.line_numbers |= config_bool(&settings, "line_numbers", "line-numbers");
         self.tree_header |= config_bool(&settings, "tree_header", "tree-header");
         self.tree_only |= config_bool(&settings, "tree_only", "tree-only");
+
+        if let Ok(val) = settings.get_bool("centrality") {
+            self.centrality = Some(val);
+        }
     }
 
     /// Compute a quick checksum for the input paths (files and directories).
@@ -453,6 +472,18 @@ impl YekConfig {
             glob::Pattern::new(&rule.pattern).map_err(|e| {
                 anyhow!("priority_rules: Invalid pattern '{}': {}", rule.pattern, e)
             })?;
+        }
+
+        // Validate centrality weights
+        if let Some(w) = self.centrality_weight {
+            if !(0.0..=1.0).contains(&w) {
+                return Err(anyhow!("centrality_weight: must be between 0.0 and 1.0"));
+            }
+        }
+        if let Some(w) = self.recency_weight {
+            if !(0.0..=1.0).contains(&w) {
+                return Err(anyhow!("recency_weight: must be between 0.0 and 1.0"));
+            }
         }
 
         // Validate tree options are mutually exclusive

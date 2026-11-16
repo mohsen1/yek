@@ -116,6 +116,41 @@ pub fn serialize_repo(config: &YekConfig) -> Result<(String, Vec<ProcessedFile>)
 
     let mut files = merged_files;
 
+    // Apply hybrid priority boost (combining Git recency + Dependency Centrality, fixes #255)
+    let enable_centrality = config.centrality.unwrap_or(true);
+    let max_boost = config.git_boost_max.unwrap_or(100);
+    let r_weight = config.recency_weight.unwrap_or(0.4);
+    let c_weight = config.centrality_weight.unwrap_or(0.6);
+
+    let file_inputs: Vec<(String, String)> = files
+        .iter()
+        .map(|f| (f.rel_path.clone(), f.content.clone()))
+        .collect();
+
+    let centrality_scores = if enable_centrality {
+        Some(priority::compute_dependency_centrality(&file_inputs))
+    } else {
+        None
+    };
+
+    let hybrid_boosts = priority::compute_hybrid_priority_boost(
+        if combined_commit_times.is_empty() {
+            None
+        } else {
+            Some(&combined_commit_times)
+        },
+        centrality_scores.as_ref(),
+        max_boost,
+        r_weight,
+        c_weight,
+    );
+
+    for file in &mut files {
+        if let Some(boost) = hybrid_boosts.get(&file.rel_path) {
+            file.priority += *boost;
+        }
+    }
+
     // Sort final (priority asc, then file_index asc)
     files.par_sort_by(|a, b| {
         a.priority

@@ -494,6 +494,9 @@ pub fn process_files_parallel(
             max_threads: None,
             memory_limit_mb: None,
             batch_size: 1000,
+            centrality: config.centrality,
+            centrality_weight: config.centrality_weight,
+            recency_weight: config.recency_weight,
         },
         crate::models::RepositoryInfo::new(base_path.to_path_buf(), false), // TODO: Proper repo info
         Arc::new(crate::repository::RealFileSystem),

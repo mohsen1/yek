@@ -300,6 +300,12 @@ pub struct ProcessingConfig {
     pub memory_limit_mb: Option<usize>,
     /// Batch size for processing
     pub batch_size: usize,
+    /// Whether to enable dependency centrality ranking
+    pub centrality: Option<bool>,
+    /// Weight for dependency centrality ranking (0.0..1.0)
+    pub centrality_weight: Option<f64>,
+    /// Weight for Git recency ranking (0.0..1.0)
+    pub recency_weight: Option<f64>,
 }
 
 impl Default for ProcessingConfig {
@@ -312,6 +318,9 @@ impl Default for ProcessingConfig {
             max_threads: None,
             memory_limit_mb: None,
             batch_size: 1000,
+            centrality: Some(true),
+            centrality_weight: Some(0.6),
+            recency_weight: Some(0.4),
         }
     }
 }

@@ -729,3 +729,272 @@ fn test_get_recent_commit_times_git_with_submodules() {
     // Should handle repos with submodules configuration
     assert!(times.is_none() || times.unwrap().is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Tests for Dependency Centrality Ranking (Issue #255)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_extract_import_specifiers() {
+    use yek::priority::extract_import_specifiers;
+
+    let rust_content = r#"
+        pub mod models;
+        mod priority;
+        use crate::config::YekConfig;
+        use super::category::CategoryWeights;
+        use std::collections::HashMap;
+    "#;
+    let specs = extract_import_specifiers(rust_content);
+    assert!(specs.contains(&"models".to_string()));
+    assert!(specs.contains(&"priority".to_string()));
+    assert!(specs.contains(&"config".to_string()));
+    assert!(specs.contains(&"category".to_string()));
+    // std should be filtered out
+    assert!(!specs.contains(&"std".to_string()));
+
+    let ts_content = r#"
+        import { User } from './models';
+        import { db } from "../db/client";
+        const auth = require('@/auth/middleware');
+        export { helper } from './utils';
+        export * from './constants';
+    "#;
+    let ts_specs = extract_import_specifiers(ts_content);
+    assert!(ts_specs.contains(&"./models".to_string()));
+    assert!(ts_specs.contains(&"../db/client".to_string()));
+    assert!(ts_specs.contains(&"@/auth/middleware".to_string()));
+    assert!(ts_specs.contains(&"./utils".to_string()));
+    assert!(ts_specs.contains(&"./constants".to_string()));
+
+    let py_content = r#"
+        from .models import User
+        from app.services import payment
+        import helpers
+    "#;
+    let py_specs = extract_import_specifiers(py_content);
+    assert!(py_specs.contains(&".models".to_string()));
+    assert!(py_specs.contains(&"app.services".to_string()));
+    assert!(py_specs.contains(&"helpers".to_string()));
+
+    let c_content = r#"
+        #include "models.h"
+        #include <stdio.h>
+    "#;
+    let c_specs = extract_import_specifiers(c_content);
+    assert!(c_specs.contains(&"models.h".to_string()));
+}
+
+#[test]
+fn test_compute_dependency_centrality_basic() {
+    use yek::priority::compute_dependency_centrality;
+
+    let files = vec![
+        (
+            "src/lib.rs".to_string(),
+            "pub mod models;\npub mod priority;".to_string(),
+        ),
+        (
+            "src/models.rs".to_string(),
+            "pub struct Model;".to_string(),
+        ),
+        (
+            "src/priority.rs".to_string(),
+            "use crate::models;\npub fn score() {}".to_string(),
+        ),
+        (
+            "src/pipeline.rs".to_string(),
+            "use crate::models;\nuse crate::priority;".to_string(),
+        ),
+    ];
+
+    let scores = compute_dependency_centrality(&files);
+
+    // models is imported by lib.rs, priority.rs, and pipeline.rs => in-degree = 3
+    assert_eq!(scores.get("src/models.rs"), Some(&3));
+    // priority is imported by lib.rs and pipeline.rs => in-degree = 2
+    assert_eq!(scores.get("src/priority.rs"), Some(&2));
+    // lib.rs is imported by 0 files => in-degree = 0
+    assert_eq!(scores.get("src/lib.rs"), Some(&0));
+    // pipeline.rs is imported by 0 files => in-degree = 0
+    assert_eq!(scores.get("src/pipeline.rs"), Some(&0));
+}
+
+#[test]
+fn test_compute_dependency_centrality_circular_imports() {
+    use yek::priority::compute_dependency_centrality;
+
+    // File A imports B, File B imports A
+    let files = vec![
+        (
+            "src/a.ts".to_string(),
+            "import { b } from './b';".to_string(),
+        ),
+        (
+            "src/b.ts".to_string(),
+            "import { a } from './a';".to_string(),
+        ),
+    ];
+
+    let scores = compute_dependency_centrality(&files);
+    assert_eq!(scores.get("src/a.ts"), Some(&1));
+    assert_eq!(scores.get("src/b.ts"), Some(&1));
+}
+
+#[test]
+fn test_compute_dependency_centrality_self_and_duplicate_imports() {
+    use yek::priority::compute_dependency_centrality;
+
+    // A file importing itself or importing another file multiple times
+    let files = vec![
+        (
+            "src/models.ts".to_string(),
+            "export interface User {};".to_string(),
+        ),
+        (
+            "src/service.ts".to_string(),
+            "import { User } from './models';\nimport { Account } from './models';\nimport { self } from './service';".to_string(),
+        ),
+    ];
+
+    let scores = compute_dependency_centrality(&files);
+    // models imported twice in same file => in-degree = 1 (unique referencing files)
+    assert_eq!(scores.get("src/models.ts"), Some(&1));
+    // service imports itself => in-degree = 0 (self-references ignored)
+    assert_eq!(scores.get("src/service.ts"), Some(&0));
+}
+
+#[test]
+fn test_compute_dependency_centrality_non_code_and_isolated_files() {
+    use yek::priority::compute_dependency_centrality;
+
+    let files = vec![
+        ("README.md".to_string(), "# Project docs".to_string()),
+        ("config.json".to_string(), r#"{"key": "val"}"#.to_string()),
+        (
+            "src/isolated.rs".to_string(),
+            "// isolated file with no imports".to_string(),
+        ),
+    ];
+
+    let scores = compute_dependency_centrality(&files);
+    assert_eq!(scores.get("README.md"), Some(&0));
+    assert_eq!(scores.get("config.json"), Some(&0));
+    assert_eq!(scores.get("src/isolated.rs"), Some(&0));
+}
+
+#[test]
+fn test_compute_centrality_boost() {
+    use yek::priority::compute_centrality_boost;
+
+    let mut scores = std::collections::HashMap::new();
+    scores.insert("src/hub.rs".to_string(), 10);
+    scores.insert("src/mid.rs".to_string(), 5);
+    scores.insert("src/leaf.rs".to_string(), 0);
+
+    let boosts = compute_centrality_boost(&scores, 100);
+    assert_eq!(boosts.get("src/hub.rs"), Some(&100));
+    assert_eq!(boosts.get("src/mid.rs"), Some(&50));
+    assert_eq!(boosts.get("src/leaf.rs"), Some(&0));
+}
+
+#[test]
+fn test_compute_centrality_boost_all_zero() {
+    use yek::priority::compute_centrality_boost;
+
+    let mut scores = std::collections::HashMap::new();
+    scores.insert("a.rs".to_string(), 0);
+    scores.insert("b.rs".to_string(), 0);
+
+    let boosts = compute_centrality_boost(&scores, 100);
+    assert_eq!(boosts.get("a.rs"), Some(&0));
+    assert_eq!(boosts.get("b.rs"), Some(&0));
+}
+
+/// Issue #255 Core Verification:
+/// Test a synthetic project where a foundational `lib.rs` has zero recent commits (oldest timestamp)
+/// but is imported by 10 other files, verifying it ranks ABOVE a peripheral file with a recent commit.
+#[test]
+fn test_hybrid_priority_foundational_hub_beats_recent_peripheral_file() {
+    use yek::priority::compute_hybrid_priority_boost;
+
+    let mut commit_times = std::collections::HashMap::new();
+    let oldest_time = 1_000_000;
+    let newest_time = 2_000_000;
+
+    // Foundational lib.rs: oldest commit (zero recent commits)
+    commit_times.insert("src/lib.rs".to_string(), oldest_time);
+
+    // Peripheral file: newest commit
+    commit_times.insert("src/peripheral_leaf.rs".to_string(), newest_time);
+
+    // 10 other files with intermediate timestamps
+    for i in 1..=10 {
+        commit_times.insert(format!("src/worker_{}.rs", i), oldest_time + (i * 50_000));
+    }
+
+    // Centrality: lib.rs is imported by 10 files
+    let mut centrality_scores = std::collections::HashMap::new();
+    centrality_scores.insert("src/lib.rs".to_string(), 10);
+    centrality_scores.insert("src/peripheral_leaf.rs".to_string(), 0);
+    for i in 1..=10 {
+        centrality_scores.insert(format!("src/worker_{}.rs", i), 1);
+    }
+
+    // Default weights: centrality_weight = 0.6, recency_weight = 0.4, max_boost = 100
+    let max_boost = 100;
+    let hybrid_boosts = compute_hybrid_priority_boost(
+        Some(&commit_times),
+        Some(&centrality_scores),
+        max_boost,
+        0.4, // recency_weight
+        0.6, // centrality_weight
+    );
+
+    let lib_boost = *hybrid_boosts.get("src/lib.rs").expect("lib.rs boost");
+    let leaf_boost = *hybrid_boosts
+        .get("src/peripheral_leaf.rs")
+        .expect("leaf boost");
+
+    // lib.rs: recency_rank = 0.0, centrality_rank = 1.0 => (0.4*0 + 0.6*1.0) = 0.60 => 60
+    // peripheral: recency_rank = 1.0, centrality_rank = 0.0 => (0.4*1.0 + 0.6*0) = 0.40 => 40
+    assert!(
+        lib_boost > leaf_boost,
+        "Foundational hub lib.rs ({}) must rank strictly above peripheral leaf ({})",
+        lib_boost, leaf_boost
+    );
+    assert_eq!(lib_boost, 60);
+    assert_eq!(leaf_boost, 40);
+}
+
+#[test]
+fn test_hybrid_priority_pure_centrality_fallback_when_no_git() {
+    use yek::priority::compute_hybrid_priority_boost;
+
+    let mut centrality_scores = std::collections::HashMap::new();
+    centrality_scores.insert("src/core.rs".to_string(), 8);
+    centrality_scores.insert("src/leaf.rs".to_string(), 2);
+
+    // Git commit times unavailable (None)
+    let hybrid_boosts =
+        compute_hybrid_priority_boost(None, Some(&centrality_scores), 100, 0.4, 0.6);
+
+    // Core should scale to 100%, leaf to 25%
+    assert_eq!(hybrid_boosts.get("src/core.rs"), Some(&100));
+    assert_eq!(hybrid_boosts.get("src/leaf.rs"), Some(&25));
+}
+
+#[test]
+fn test_hybrid_priority_pure_recency_fallback_when_centrality_empty() {
+    use yek::priority::compute_hybrid_priority_boost;
+
+    let mut commit_times = std::collections::HashMap::new();
+    commit_times.insert("old.rs".to_string(), 1000);
+    commit_times.insert("new.rs".to_string(), 2000);
+
+    let hybrid_boosts =
+        compute_hybrid_priority_boost(Some(&commit_times), None, 100, 0.4, 0.6);
+
+    assert_eq!(hybrid_boosts.get("old.rs"), Some(&0));
+    assert_eq!(hybrid_boosts.get("new.rs"), Some(&100));
+}

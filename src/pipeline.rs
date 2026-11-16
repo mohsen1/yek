@@ -532,11 +532,14 @@ impl FileDiscoveryStage {
             }
         }
 
-        // Apply git boost if available
-        if let Some(commit_time) = repo_info.commit_times.get(rel_path) {
-            let max_boost = context.input_config.git_boost_max.unwrap_or(100);
-            let boost = self.calculate_git_boost(*commit_time, &repo_info.commit_times, max_boost);
-            priority += boost;
+        // Apply git boost if available and centrality is disabled (otherwise hybrid boost is applied at pipeline completion)
+        if !context.processing_config.centrality.unwrap_or(true) {
+            if let Some(commit_time) = repo_info.commit_times.get(rel_path) {
+                let max_boost = context.input_config.git_boost_max.unwrap_or(100);
+                let boost =
+                    self.calculate_git_boost(*commit_time, &repo_info.commit_times, max_boost);
+                priority += boost;
+            }
         }
 
         priority
@@ -758,6 +761,37 @@ impl ProcessingPipeline {
 
         for stage in &self.stages {
             files = stage.process(files, &self.context)?;
+        }
+
+        // Apply hybrid boost (dependency centrality + Git recency, fixes #255)
+        let enable_centrality = self.context.processing_config.centrality.unwrap_or(true);
+        if enable_centrality {
+            let file_inputs: Vec<(String, String)> = files
+                .iter()
+                .map(|f| (f.rel_path.clone(), f.content.clone()))
+                .collect();
+            let centralities = crate::priority::compute_dependency_centrality(&file_inputs);
+            let max_boost = self.context.input_config.git_boost_max.unwrap_or(100);
+            let c_weight = self.context.processing_config.centrality_weight.unwrap_or(0.6);
+            let r_weight = self.context.processing_config.recency_weight.unwrap_or(0.4);
+
+            let commit_times = &self.context.repository_info.commit_times;
+            let hybrid_boosts = crate::priority::compute_hybrid_priority_boost(
+                if commit_times.is_empty() {
+                    None
+                } else {
+                    Some(commit_times)
+                },
+                Some(&centralities),
+                max_boost,
+                r_weight,
+                c_weight,
+            );
+            for f in &mut files {
+                if let Some(boost) = hybrid_boosts.get(&f.rel_path) {
+                    f.priority += *boost;
+                }
+            }
         }
 
         // Final sorting by priority and file_index

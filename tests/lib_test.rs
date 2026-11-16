@@ -513,6 +513,123 @@ mod lib_tests {
     }
 
     #[test]
+    fn test_dependency_centrality_ranks_hub_above_peripheral_file() {
+        init_tracing();
+        let temp_dir = tempdir().unwrap();
+        let repo_path = temp_dir.path();
+
+        // 1. Initialize git repository
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // 2. Commit foundational architectural hub file FIRST (oldest commit)
+        std::fs::create_dir_all(repo_path.join("src")).unwrap();
+        let lib_path = repo_path.join("src/lib.rs");
+        std::fs::write(&lib_path, "pub struct CoreArchitecture;\npub fn init() {}").unwrap();
+
+        std::process::Command::new("git")
+            .args(["add", "src/lib.rs"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "Initial architectural commit (oldest)"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // 3. Create 10 files that import src/lib.rs
+        for i in 1..=10 {
+            let worker_file = format!("src/worker_{}.rs", i);
+            let worker_path = repo_path.join(&worker_file);
+            std::fs::write(
+                &worker_path,
+                format!(
+                    "use crate::lib::CoreArchitecture;\npub fn run_{}() {{}}",
+                    i
+                ),
+            )
+            .unwrap();
+
+            std::process::Command::new("git")
+                .args(["add", &worker_file])
+                .current_dir(repo_path)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["commit", "-m", &format!("Add worker {}", i)])
+                .current_dir(repo_path)
+                .output()
+                .unwrap();
+        }
+
+        // 4. Create peripheral leaf file with ZERO imports, committed LAST (newest commit)
+        let peripheral_path = repo_path.join("src/peripheral_leaf.rs");
+        std::fs::write(
+            &peripheral_path,
+            "// Peripheral leaf file with no dependencies\npub fn unused_helper() {}",
+        )
+        .unwrap();
+
+        std::process::Command::new("git")
+            .args(["add", "src/peripheral_leaf.rs"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "Peripheral recent edit (newest)"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // 5. Serialize repository with Dependency Centrality enabled
+        let mut config = create_test_config(vec![repo_path.to_string_lossy().to_string()]);
+        config.priority_rules = Vec::new(); // Zero manual priority rules to isolate algorithmic ranking
+        config.centrality = Some(true);
+        config.centrality_weight = Some(0.6);
+        config.recency_weight = Some(0.4);
+        config.git_boost_max = Some(100);
+
+        let (_output, files) = serialize_repo(&config).unwrap();
+
+        let lib_file = files
+            .iter()
+            .find(|f| f.rel_path.ends_with("lib.rs"))
+            .expect("lib.rs must be present");
+        let peripheral_file = files
+            .iter()
+            .find(|f| f.rel_path.ends_with("peripheral_leaf.rs"))
+            .expect("peripheral_leaf.rs must be present");
+
+        println!(
+            "lib.rs priority: {}, peripheral_leaf.rs priority: {}",
+            lib_file.priority, peripheral_file.priority
+        );
+
+        // Foundational hub file MUST rank higher than peripheral leaf
+        assert!(
+            lib_file.priority > peripheral_file.priority,
+            "Foundational hub lib.rs (priority {}) must rank strictly above peripheral leaf (priority {})",
+            lib_file.priority,
+            peripheral_file.priority
+        );
+    }
+
+    #[test]
     fn test_serialize_repo_with_ignore_patterns_config() {
         init_tracing();
         let temp_dir = tempdir().unwrap();
