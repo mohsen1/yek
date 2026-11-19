@@ -24,19 +24,25 @@ runs:
     - name: Build with cross (Linux)
       if: runner.os == 'Linux'
       shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
       run: |
         cargo install cross --locked
-        cross build --release --locked --target ${{ inputs.target }}
+        cross build --release --locked --target "$TARGET"
 
     - name: Build natively (macOS/Windows)
       if: runner.os != 'Linux'
       shell: bash
-      run: cargo build --release --locked --target ${{ inputs.target }}
+      env:
+        TARGET: ${{ inputs.target }}
+      run: cargo build --release --locked --target "$TARGET"
 
     - name: Final path
       id: get_binary_path
       shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
       run: |
         binary=yek
-        [ "${{ runner.os }}" = "Windows" ] && binary=yek.exe
-        echo "path=target/${{ inputs.target }}/release/$binary" >> "$GITHUB_OUTPUT"
+        [ "$RUNNER_OS" = "Windows" ] && binary=yek.exe
+        echo "path=target/$TARGET/release/$binary" >> "$GITHUB_OUTPUT"

@@ -212,15 +212,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Run benchmarks
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          git fetch origin ${{ github.base_ref }}
-          git checkout ${{ github.base_ref }}
+          git fetch origin "$BASE_REF"
+          git checkout "$BASE_REF"
           cargo bench --bench serialization --no-run
-          cargo bench --bench serialization -- --save-baseline ${{ github.base_ref }} '${{ matrix.benchmark_group.group }}/'
+          cargo bench --bench serialization -- --save-baseline "$BASE_REF" '${{ matrix.benchmark_group.group }}/'
 
-          git checkout ${{ github.head_ref }}
+          git checkout "$HEAD_REF"
           cargo bench --bench serialization --no-run
-          cargo bench --bench serialization -- --baseline ${{ github.base_ref }} --noise-threshold 2 '${{ matrix.benchmark_group.group }}/' > benchmark_results.md
+          cargo bench --bench serialization -- --baseline "$BASE_REF" --noise-threshold 2 '${{ matrix.benchmark_group.group }}/' > benchmark_results.md
           echo "## Benchmark Results for ${{ matrix.benchmark_group.name }}" >> $GITHUB_STEP_SUMMARY
           cat benchmark_results.md >> $GITHUB_STEP_SUMMARY
 
@@ -260,9 +263,11 @@ jobs:
       # --- Base Branch Coverage ---
       - name: Fetch and check out base branch
         if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin ${{ github.base_ref }}
-          git checkout ${{ github.base_ref }}
+          git fetch origin "$BASE_REF"
+          git checkout "$BASE_REF"
 
       - name: Build + Test coverage on base
         if: github.event_name == 'pull_request'
@@ -293,8 +298,10 @@ jobs:
       # --- PR Branch Coverage ---
       - name: Check out head branch (PR)
         if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          git checkout ${{ github.head_ref }}
+          git checkout "$HEAD_REF"
 
       - name: Build + Test coverage on PR
         run: |
@@ -323,6 +330,8 @@ jobs:
 
       - name: Compare coverage
         if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           # Check if base coverage file exists
           if [ ! -f coverage-base/coverage.json ]; then
@@ -341,7 +350,7 @@ jobs:
           # Compare and fail if coverage decreased
           check=$(awk -v base="$BASE_COV" -v pr="$PR_COV" 'BEGIN { if (pr < base) print 1; else print 0; }')
           if [ "$check" -eq 1 ]; then
-            git diff --unified=0 origin/${{ github.base_ref }}...HEAD -- 'src/*.rs' \
+            git diff --unified=0 "origin/$BASE_REF...HEAD" -- 'src/*.rs' \
               | awk '
                   /^\+\+\+ b\/src\// { file = substr($0, 11); next }
                   /^@@/ {
