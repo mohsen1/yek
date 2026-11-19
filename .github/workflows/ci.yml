@@ -214,14 +214,14 @@ jobs:
       - name: Run benchmarks
         env:
           BASE_REF: ${{ github.base_ref }}
-          HEAD_REF: ${{ github.head_ref }}
         run: |
           git fetch origin "$BASE_REF"
           git checkout "$BASE_REF"
           cargo bench --bench serialization --no-run
           cargo bench --bench serialization -- --save-baseline "$BASE_REF" '${{ matrix.benchmark_group.group }}/'
 
-          git checkout "$HEAD_REF"
+          # Back to the commit actions/checkout fetched; a fork's branch is not on origin.
+          git checkout "$GITHUB_SHA"
           cargo bench --bench serialization --no-run
           cargo bench --bench serialization -- --baseline "$BASE_REF" --noise-threshold 2 '${{ matrix.benchmark_group.group }}/' > benchmark_results.md
           echo "## Benchmark Results for ${{ matrix.benchmark_group.name }}" >> $GITHUB_STEP_SUMMARY
@@ -298,10 +298,9 @@ jobs:
       # --- PR Branch Coverage ---
       - name: Check out head branch (PR)
         if: github.event_name == 'pull_request'
-        env:
-          HEAD_REF: ${{ github.head_ref }}
         run: |
-          git checkout "$HEAD_REF"
+          # Back to the commit actions/checkout fetched; a fork's branch is not on origin.
+          git checkout "$GITHUB_SHA"
 
       - name: Build + Test coverage on PR
         run: |
